@@ -5,6 +5,8 @@ using Dalamud.Game.Text.SeStringHandling;
 using Dalamud.Game.Text.SeStringHandling.Payloads;
 using Dalamud.Plugin;
 using Dalamud.Plugin.Ipc;
+using HuntTrainAuto.Chat;
+using HuntTrainAuto.Contracts;
 
 namespace HuntTrainAuto.Services;
 
@@ -12,7 +14,7 @@ namespace HuntTrainAuto.Services;
 /// ChatTwo context-menu IPC. Cannot be unit-tested without a live ChatTwo provider;
 /// registration soft-fails when ChatTwo is absent and re-registers on Available.
 /// </summary>
-public sealed class Chat2Ipc : IDisposable
+public sealed class Chat2Ipc : IChat2Service
 {
 	private readonly Configuration config;
 	private readonly Action saveConfig;

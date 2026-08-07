@@ -2,6 +2,7 @@
 using System;
 using Dalamud.Plugin;
 using Dalamud.Plugin.Ipc;
+using HuntTrainAuto.Contracts;
 
 namespace HuntTrainAuto.Services;
 
@@ -12,7 +13,7 @@ namespace HuntTrainAuto.Services;
 /// with <c>EzIPC.Init(this, "Teleport", …)</c> resolves to that tag
 /// (not <c>"Teleporter.Teleport"</c>).
 /// </summary>
-public sealed class TeleporterIpc : IDisposable
+public sealed class TeleporterIpc : ITeleporterService
 {
 	/// <summary>
 	/// IPC tag registered by Teleporter / consumed by HTA TeleporterIPC.
