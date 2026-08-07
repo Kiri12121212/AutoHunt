@@ -18,6 +18,7 @@ public sealed class ConfigWindow : Window, IDisposable
 	private readonly Func<bool> lifestreamAvailable;
 	private readonly Func<bool> vnavmeshAvailable;
 	private readonly Func<bool> rsrAvailable;
+	private readonly Func<StatusSnapshot> getStatus;
 	private string conductorInput = string.Empty;
 	private int selectedConductor;
 	private int selectedTab;
@@ -28,7 +29,8 @@ public sealed class ConfigWindow : Window, IDisposable
 		Func<bool> teleporterAvailable,
 		Func<bool> lifestreamAvailable,
 		Func<bool> vnavmeshAvailable,
-		Func<bool> rsrAvailable) : base("HuntTrainAuto")
+		Func<bool> rsrAvailable,
+		Func<StatusSnapshot> getStatus) : base("HuntTrainAuto")
 	{
 		this.config = config;
 		this.saveConfig = saveConfig;
@@ -36,6 +38,7 @@ public sealed class ConfigWindow : Window, IDisposable
 		this.lifestreamAvailable = lifestreamAvailable;
 		this.vnavmeshAvailable = vnavmeshAvailable;
 		this.rsrAvailable = rsrAvailable;
+		this.getStatus = getStatus;
 		SizeConstraints = new WindowSizeConstraints
 		{
 			MinimumSize = new Vector2(420, 420),
@@ -53,6 +56,13 @@ public sealed class ConfigWindow : Window, IDisposable
 		selectedTab = ConfigTabs.ClampSelected(selectedTab);
 		if (!ImGui.BeginTabBar("##htaConfigTabs"))
 			return;
+
+		if (ImGui.BeginTabItem(ConfigTabs.Labels[ConfigTabs.Status]))
+		{
+			selectedTab = ConfigTabs.Status;
+			DrawStatusTab();
+			ImGui.EndTabItem();
+		}
 
 		if (ImGui.BeginTabItem(ConfigTabs.Labels[ConfigTabs.Settings]))
 		{
@@ -138,6 +148,24 @@ public sealed class ConfigWindow : Window, IDisposable
 				saveConfig();
 			}
 		}
+	}
+
+	private void DrawStatusTab()
+	{
+		ImGui.TextWrapped("Live train pipeline status (read-only).");
+		ImGui.Spacing();
+
+		var snap = StatusDisplay.SafeCapture(getStatus);
+		ImGui.Text(StatusDisplay.FormatPhaseLine(snap.Phase));
+		ImGui.Text(StatusDisplay.FormatMountLine(
+			snap.Mounted,
+			snap.MountPipeline,
+			snap.UnmountPipeline));
+		ImGui.Text(StatusDisplay.FormatFollowLine(snap.FollowTargetName, snap.FollowEnabled));
+		ImGui.Text(StatusDisplay.FormatNavLine(
+			snap.NavPathRunning,
+			snap.NavWaypoints,
+			snap.NavPathfindInProgress));
 	}
 
 	private void DrawSettingsTab()

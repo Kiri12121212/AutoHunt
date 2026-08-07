@@ -4,18 +4,20 @@ using System;
 namespace HuntTrainAuto.Windows;
 
 /// <summary>
-/// Pure helpers for config-window tab ids, mount labels, and TP-delay clamps (TASKS 8.1–8.5).
+/// Pure helpers for config-window tab ids, mount labels, and TP-delay clamps (TASKS 8.1–8.6).
 /// </summary>
 public static class ConfigTabs
 {
-	public const int Settings = 0;
-	public const int Mount = 1;
-	public const int Follow = 2;
-	public const int Combat = 3;
-	public const int Integrations = 4;
+	public const int Status = 0;
+	public const int Settings = 1;
+	public const int Mount = 2;
+	public const int Follow = 3;
+	public const int Combat = 4;
+	public const int Integrations = 5;
 
 	public static readonly string[] Labels =
 	[
+		"Status",
 		"Settings",
 		"Mount",
 		"Follow",
@@ -40,7 +42,7 @@ public static class ConfigTabs
 	public static int ClampSelected(int selected)
 	{
 		if (selected < 0)
-			return Settings;
+			return Status;
 		if (selected >= Labels.Length)
 			return Labels.Length - 1;
 		return selected;

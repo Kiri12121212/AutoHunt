@@ -75,6 +75,64 @@ public sealed class Plugin : IDalamudPlugin
 	/// <summary>Current <see cref="HuntTrainController.Phase"/>.</summary>
 	public HuntTrainPhase TrainPhase => train.Phase;
 
+	/// <summary>
+	/// Read-only Status panel snapshot (TASKS 8.6): phase, mount, follow target, nav.
+	/// Soft-fails individual probes; never throws to UI.
+	/// </summary>
+	public StatusSnapshot CaptureStatus()
+	{
+		var mounted = false;
+		try
+		{
+			mounted = condition[ConditionFlag.Mounted];
+		}
+		catch
+		{
+			// soft-fail
+		}
+
+		string? followName = null;
+		var followEnabled = false;
+		try
+		{
+			followEnabled = follow.Enabled;
+			var target = follow.FollowTarget;
+			if (target != null)
+				followName = target.Name.TextValue;
+		}
+		catch
+		{
+			// soft-fail
+		}
+
+		var pathRunning = false;
+		var waypoints = 0;
+		var pathfindInProgress = false;
+		try
+		{
+			pathRunning = VNavmeshIpc.PathIsRunning();
+			waypoints = VNavmeshIpc.PathNumWaypoints();
+			pathfindInProgress = VNavmeshIpc.SimpleMovePathfindInProgress();
+		}
+		catch
+		{
+			// soft-fail
+		}
+
+		return new StatusSnapshot
+		{
+			Phase = train.Phase,
+			Mounted = mounted,
+			MountPipeline = mount.Session.Phase,
+			UnmountPipeline = unmount.Session.Phase,
+			FollowTargetName = followName,
+			FollowEnabled = followEnabled,
+			NavPathRunning = pathRunning,
+			NavWaypoints = waypoints,
+			NavPathfindInProgress = pathfindInProgress,
+		};
+	}
+
 	/// <summary>Active Framework teleport plan (HTA <c>TeleportTo</c>).</summary>
 	public TeleportPlan TeleportPlan => teleportPlan;
 
@@ -125,7 +183,8 @@ public sealed class Plugin : IDalamudPlugin
 			() => TeleporterIpc.IsAvailable,
 			() => LifestreamIpc.IsAvailable,
 			() => VNavmeshIpc.IsAvailable,
-			() => RsrIpc.IsAvailable);
+			() => RsrIpc.IsAvailable,
+			CaptureStatus);
 		windowSystem.AddWindow(configWindow);
 
 		chat = new GameChat();

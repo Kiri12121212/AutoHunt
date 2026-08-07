@@ -9,30 +9,32 @@ public sealed class ConfigTabsTests
 	public void Labels_match_phase8_tabs()
 	{
 		Assert.Equal(
-			["Settings", "Mount", "Follow", "Combat", "Integrations"],
+			["Status", "Settings", "Mount", "Follow", "Combat", "Integrations"],
 			ConfigTabs.Labels);
-		Assert.Equal(5, ConfigTabs.Labels.Length);
-		Assert.Equal(0, ConfigTabs.Settings);
-		Assert.Equal(1, ConfigTabs.Mount);
-		Assert.Equal(2, ConfigTabs.Follow);
-		Assert.Equal(3, ConfigTabs.Combat);
-		Assert.Equal(4, ConfigTabs.Integrations);
+		Assert.Equal(6, ConfigTabs.Labels.Length);
+		Assert.Equal(0, ConfigTabs.Status);
+		Assert.Equal(1, ConfigTabs.Settings);
+		Assert.Equal(2, ConfigTabs.Mount);
+		Assert.Equal(3, ConfigTabs.Follow);
+		Assert.Equal(4, ConfigTabs.Combat);
+		Assert.Equal(5, ConfigTabs.Integrations);
 	}
 
 	[Theory]
 	[InlineData(-3, 0)]
 	[InlineData(0, 0)]
 	[InlineData(2, 2)]
-	[InlineData(4, 4)]
-	[InlineData(99, 4)]
+	[InlineData(5, 5)]
+	[InlineData(99, 5)]
 	public void ClampSelected_stays_in_range(int input, int expected)
 		=> Assert.Equal(expected, ConfigTabs.ClampSelected(input));
 
 	[Theory]
-	[InlineData(0, "Settings")]
-	[InlineData(1, "Mount")]
-	[InlineData(4, "Integrations")]
-	[InlineData(-1, "Settings")]
+	[InlineData(0, "Status")]
+	[InlineData(1, "Settings")]
+	[InlineData(2, "Mount")]
+	[InlineData(5, "Integrations")]
+	[InlineData(-1, "Status")]
 	public void LabelAt_uses_clamped_index(int index, string expected)
 		=> Assert.Equal(expected, ConfigTabs.LabelAt(index));
 
