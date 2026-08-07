@@ -262,32 +262,90 @@ public sealed class Plugin : IDalamudPlugin
 
 	private void OnTerritoryChanged(uint territoryId)
 	{
-		if (teleportPlan.Active is { } plan)
+		try
 		{
-			if (TeleportGate.ShouldEnqueueInstanceChange(plan.Instance) && territoryId == plan.Territory)
-				EnqueueChangeInstanceAfterTeleport(plan.Instance, plan.Territory);
+			var hunting = HuntingTerritory.IsHuntingTerritory(territoryId, GetIntendedUseRowId);
+			var plan = TerritoryCleanupDecision.Decide(teleportPlan.HasActive, hunting);
+			ApplyTerritoryCleanup(territoryId, plan);
+		}
+		catch (Exception ex)
+		{
+			pluginLog.Debug($"OnTerritoryChanged soft-fail: {ex.Message}");
+		}
+	}
 
-			// HTA: TaskMount.EnqueueIfEnabled after TeleportTo clear (waits for instance idle).
+	/// <summary>
+	/// Apply <see cref="TerritoryCleanupDecision"/> flags (TASKS 7.3).
+	/// Dismount-safe: stop-path + clear jobs; do not force dismount mid-zone-load.
+	/// </summary>
+	private void ApplyTerritoryCleanup(uint territoryId, TerritoryCleanupPlan plan)
+	{
+		if (plan.Kind == TerritoryCleanupKind.StayHuntingNoop)
+			return;
+
+		// Snapshot plan before ClearTeleportPlan so instance enqueue still sees destination.
+		var activePlan = teleportPlan.Active;
+
+		// Stale session / path first — then TP handoff enqueue (mount must not be cleared after).
+		if (plan.StopNavPath)
+		{
+			try
+			{
+				movement.Stop();
+			}
+			catch
+			{
+				// soft-fail: vnav / player may be unavailable mid-load
+			}
+		}
+
+		if (plan.ClearFollow)
+			follow.Clear();
+		if (plan.ClearFlagArrival)
+			flagArrival.Clear();
+		if (plan.ClearUnmount)
+			unmount.ClearAll();
+		if (plan.ClearEngage)
+			engage.Clear();
+		if (plan.ClearCombat)
+			combat.Clear();
+		if (plan.ClearRsr)
+		{
+			// RSR stop: RsrStopTrigger.TerritoryLeave → ImmediateClear (leave);
+			// TP-arrival also clears any stale rotation latch from the previous zone.
+			rsrEnable.Clear();
+		}
+
+		if (plan.EnqueueInstanceChangeIfNeeded && activePlan is { } tp)
+		{
+			if (TeleportGate.ShouldEnqueueInstanceChange(tp.Instance) && territoryId == tp.Territory)
+				EnqueueChangeInstanceAfterTeleport(tp.Instance, tp.Territory);
+		}
+
+		if (plan.EnqueueMount)
 			mount.EnqueueIfEnabled(Config.UseMount);
-			pluginLog.Debug("TeleportPlan cleared (territory changed)");
+
+		if (plan.ClearTeleportPlan)
+		{
+			pluginLog.Debug(
+				plan.Kind == TerritoryCleanupKind.TpArrivalHandoff
+					? "TeleportPlan cleared (TP arrival handoff)"
+					: "TeleportPlan cleared (territory leave)");
 			teleportPlan.Clear();
 		}
 
-		if (HuntingTerritory.IsHuntingTerritory(territoryId, GetIntendedUseRowId))
-			return;
-
-		// RSR stop: RsrStopTrigger.TerritoryLeave → ImmediateClear.
-		instanceChange.Clear();
-		mount.Clear();
-		activeHuntFlag = null;
-		flagArrival.Clear();
-		unmount.ClearAll();
-		engage.Clear();
-		combat.Clear();
-		rsrEnable.Clear();
-		ConductorList.Clear(Config.Conductors);
-		train.Reset();
-		pluginInterface.SavePluginConfig(Config);
+		if (plan.ClearInstanceChange)
+			instanceChange.Clear();
+		if (plan.ClearMount)
+			mount.Clear();
+		if (plan.ClearActiveHuntFlag)
+			activeHuntFlag = null;
+		if (plan.ClearConductors)
+			ConductorList.Clear(Config.Conductors);
+		if (plan.ResetTrainController)
+			train.Reset();
+		if (plan.SaveConfig)
+			pluginInterface.SavePluginConfig(Config);
 	}
 
 	private void OnFrameworkUpdate(IFramework fw)
