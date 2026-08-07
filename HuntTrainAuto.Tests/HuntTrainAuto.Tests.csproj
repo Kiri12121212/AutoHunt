@@ -20,6 +20,7 @@
 	<ItemGroup>
 		<Compile Include="..\HuntTrainAuto\ConductorList.cs" Link="ConductorList.cs" />
 		<Compile Include="..\HuntTrainAuto\ChatCommands.cs" Link="ChatCommands.cs" />
+		<Compile Include="..\HuntTrainAuto\ChatSender.cs" Link="ChatSender.cs" />
 		<Compile Include="..\HuntTrainAuto\HuntingTerritory.cs" Link="HuntingTerritory.cs" />
 	</ItemGroup>
 </Project>

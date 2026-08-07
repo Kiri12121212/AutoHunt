@@ -42,7 +42,7 @@ public sealed class Plugin : IDalamudPlugin
 			() => pluginInterface.SavePluginConfig(Config),
 			() => configWindow.IsOpen = true);
 
-		chatMessageHandler = new ChatMessageHandler(chatGui);
+		chatMessageHandler = new ChatMessageHandler(chatGui, Config);
 
 		pluginInterface.UiBuilder.Draw += Draw;
 		pluginInterface.UiBuilder.OpenConfigUi += ToggleUi;
