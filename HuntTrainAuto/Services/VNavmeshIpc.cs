@@ -1,5 +1,6 @@
 #nullable enable
 using System;
+using System.Collections.Generic;
 using System.Numerics;
 using Dalamud.Plugin;
 using Dalamud.Plugin.Ipc;
@@ -24,14 +25,28 @@ public sealed class VNavmeshIpc : IDisposable
 	/// <summary>IPC: <c>vnavmesh.Path.IsRunning</c> — <c>Func&lt;bool&gt;</c>.</summary>
 	private const string PathIsRunningChannel = "vnavmesh.Path.IsRunning";
 
+	/// <summary>IPC: <c>vnavmesh.Path.NumWaypoints</c> — <c>Func&lt;int&gt;</c>.</summary>
+	private const string PathNumWaypointsChannel = "vnavmesh.Path.NumWaypoints";
+
 	/// <summary>IPC: <c>vnavmesh.Path.SetTolerance</c> — <c>Action&lt;float&gt;</c>.</summary>
 	private const string PathSetToleranceChannel = "vnavmesh.Path.SetTolerance";
+
+	/// <summary>
+	/// IPC: <c>vnavmesh.Path.MoveTo</c> —
+	/// <c>Action&lt;List&lt;Vector3&gt;, bool&gt;</c>.
+	/// </summary>
+	private const string PathMoveToChannel = "vnavmesh.Path.MoveTo";
 
 	/// <summary>
 	/// IPC: <c>vnavmesh.SimpleMove.PathfindAndMoveTo</c> —
 	/// <c>Func&lt;Vector3, bool, bool&gt;</c>.
 	/// </summary>
 	private const string PathfindAndMoveToChannel = "vnavmesh.SimpleMove.PathfindAndMoveTo";
+
+	/// <summary>
+	/// IPC: <c>vnavmesh.SimpleMove.PathfindInProgress</c> — <c>Func&lt;bool&gt;</c>.
+	/// </summary>
+	private const string SimpleMovePathfindInProgressChannel = "vnavmesh.SimpleMove.PathfindInProgress";
 
 	/// <summary>
 	/// IPC: <c>vnavmesh.Query.Mesh.PointOnFloor</c> —
@@ -42,8 +57,11 @@ public sealed class VNavmeshIpc : IDisposable
 	private readonly ICallGateSubscriber<bool> navIsReady;
 	private readonly ICallGateSubscriber<object?> pathStop;
 	private readonly ICallGateSubscriber<bool> pathIsRunning;
+	private readonly ICallGateSubscriber<int> pathNumWaypoints;
 	private readonly ICallGateSubscriber<float, object> pathSetTolerance;
+	private readonly ICallGateSubscriber<List<Vector3>, bool, object> pathMoveTo;
 	private readonly ICallGateSubscriber<Vector3, bool, bool> pathfindAndMoveTo;
+	private readonly ICallGateSubscriber<bool> simpleMovePathfindInProgress;
 	private readonly ICallGateSubscriber<Vector3, bool, float, Vector3?> pointOnFloor;
 
 	public VNavmeshIpc(IDalamudPluginInterface pluginInterface)
@@ -51,11 +69,13 @@ public sealed class VNavmeshIpc : IDisposable
 		navIsReady = pluginInterface.GetIpcSubscriber<bool>(NavIsReadyChannel);
 		pathStop = pluginInterface.GetIpcSubscriber<object?>(PathStopChannel);
 		pathIsRunning = pluginInterface.GetIpcSubscriber<bool>(PathIsRunningChannel);
+		pathNumWaypoints = pluginInterface.GetIpcSubscriber<int>(PathNumWaypointsChannel);
 		pathSetTolerance = pluginInterface.GetIpcSubscriber<float, object>(PathSetToleranceChannel);
+		pathMoveTo = pluginInterface.GetIpcSubscriber<List<Vector3>, bool, object>(PathMoveToChannel);
 		pathfindAndMoveTo = pluginInterface.GetIpcSubscriber<Vector3, bool, bool>(PathfindAndMoveToChannel);
+		simpleMovePathfindInProgress = pluginInterface.GetIpcSubscriber<bool>(SimpleMovePathfindInProgressChannel);
 		pointOnFloor = pluginInterface.GetIpcSubscriber<Vector3, bool, float, Vector3?>(PointOnFloorChannel);
 	}
-
 	/// <summary>
 	/// True when the <c>vnavmesh.Nav.IsReady</c> CallGate has a registered provider.
 	/// Mesh may still be building (<see cref="NavIsReady"/> false) — this only
@@ -125,6 +145,40 @@ public sealed class VNavmeshIpc : IDisposable
 	}
 
 	/// <summary>
+	/// Remaining path waypoints (<c>vnavmesh.Path.NumWaypoints</c>).
+	/// Soft-fails (returns 0) when vnavmesh is absent or IPC throws.
+	/// </summary>
+	public int PathNumWaypoints()
+	{
+		try
+		{
+			return pathNumWaypoints.InvokeFunc();
+		}
+		catch
+		{
+			return 0;
+		}
+	}
+
+	/// <summary>
+	/// Follow an explicit waypoint list (<c>vnavmesh.Path.MoveTo</c>).
+	/// Soft-fails silently when vnavmesh is absent or IPC throws.
+	/// </summary>
+	/// <param name="waypoints">World waypoints.</param>
+	/// <param name="fly">True to follow in flight mode.</param>
+	public void PathMoveTo(List<Vector3> waypoints, bool fly)
+	{
+		try
+		{
+			pathMoveTo.InvokeAction(waypoints, fly);
+		}
+		catch
+		{
+			// vnavmesh may be absent.
+		}
+	}
+
+	/// <summary>
 	/// Pathfind then follow to <paramref name="destination"/>
 	/// (<c>vnavmesh.SimpleMove.PathfindAndMoveTo</c>).
 	/// Soft-fails (returns false) when vnavmesh is absent, busy, or IPC throws.
@@ -136,6 +190,23 @@ public sealed class VNavmeshIpc : IDisposable
 		try
 		{
 			return pathfindAndMoveTo.InvokeFunc(destination, fly);
+		}
+		catch
+		{
+			return false;
+		}
+	}
+
+	/// <summary>
+	/// Whether a SimpleMove pathfind task is in progress
+	/// (<c>vnavmesh.SimpleMove.PathfindInProgress</c>).
+	/// Soft-fails (returns false) when vnavmesh is absent or IPC throws.
+	/// </summary>
+	public bool SimpleMovePathfindInProgress()
+	{
+		try
+		{
+			return simpleMovePathfindInProgress.InvokeFunc();
 		}
 		catch
 		{

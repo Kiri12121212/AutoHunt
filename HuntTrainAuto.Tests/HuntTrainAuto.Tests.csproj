@@ -39,5 +39,6 @@
 		<Compile Include="..\HuntTrainAuto\InstanceChangeSession.cs" Link="InstanceChangeSession.cs" />
 		<Compile Include="..\HuntTrainAuto\MountDecision.cs" Link="MountDecision.cs" />
 		<Compile Include="..\HuntTrainAuto\MountSession.cs" Link="MountSession.cs" />
+		<Compile Include="..\HuntTrainAuto\MovementDecision.cs" Link="MovementDecision.cs" />
 	</ItemGroup>
 </Project>
