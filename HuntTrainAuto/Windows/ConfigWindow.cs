@@ -3,6 +3,8 @@ using System;
 using System.Numerics;
 using Dalamud.Bindings.ImGui;
 using Dalamud.Interface.Windowing;
+using HuntTrainAuto.Domain;
+using HuntTrainAuto.HuntAlerts;
 
 namespace HuntTrainAuto.Windows;
 
@@ -10,7 +12,6 @@ public sealed class ConfigWindow : Window, IDisposable
 {
 	private static readonly Vector4 AvailableColor = new(0.45f, 0.85f, 0.45f, 1f);
 	private static readonly Vector4 MissingColor = new(0.95f, 0.40f, 0.40f, 1f);
-	private static readonly Vector4 PlaceholderColor = new(0.70f, 0.70f, 0.70f, 1f);
 
 	private readonly Configuration config;
 	private readonly Action saveConfig;
@@ -18,6 +19,8 @@ public sealed class ConfigWindow : Window, IDisposable
 	private readonly Func<bool> lifestreamAvailable;
 	private readonly Func<bool> vnavmeshAvailable;
 	private readonly Func<bool> rsrAvailable;
+	private readonly Func<HuntAlertsPluginStatus> huntAlertsStatus;
+	private readonly Func<HuntAlertsLastAlert?> getHuntAlertsLastAlert;
 	private readonly Func<StatusSnapshot> getStatus;
 	private readonly DebugEventLog debugLog;
 	private string conductorInput = string.Empty;
@@ -31,6 +34,8 @@ public sealed class ConfigWindow : Window, IDisposable
 		Func<bool> lifestreamAvailable,
 		Func<bool> vnavmeshAvailable,
 		Func<bool> rsrAvailable,
+		Func<HuntAlertsPluginStatus> huntAlertsStatus,
+		Func<HuntAlertsLastAlert?> getHuntAlertsLastAlert,
 		Func<StatusSnapshot> getStatus,
 		DebugEventLog debugLog) : base("HuntTrainAuto")
 	{
@@ -40,6 +45,8 @@ public sealed class ConfigWindow : Window, IDisposable
 		this.lifestreamAvailable = lifestreamAvailable;
 		this.vnavmeshAvailable = vnavmeshAvailable;
 		this.rsrAvailable = rsrAvailable;
+		this.huntAlertsStatus = huntAlertsStatus;
+		this.getHuntAlertsLastAlert = getHuntAlertsLastAlert;
 		this.getStatus = getStatus;
 		this.debugLog = debugLog;
 		SizeConstraints = new WindowSizeConstraints
@@ -399,8 +406,78 @@ public sealed class ConfigWindow : Window, IDisposable
 		DrawDependencyLine(DependencyAvailability.LifestreamDisplayName, lifestreamAvailable);
 		DrawDependencyLine(DependencyAvailability.VnavmeshDisplayName, vnavmeshAvailable);
 		DrawDependencyLine(DependencyAvailability.RsrDisplayName, rsrAvailable);
-		ImGui.TextColored(PlaceholderColor, ConfigTabs.FormatHuntAlertsPlaceholder());
-		ImGui.TextDisabled("HuntAlerts intake lands in Phase 10.");
+		DrawHuntAlertsAvailabilityLine();
+
+		ImGui.Spacing();
+		var huntAlerts = config.HuntAlertsIntegration;
+		if (ImGui.Checkbox("Enable HuntAlerts integration", ref huntAlerts))
+		{
+			config.HuntAlertsIntegration = huntAlerts;
+			saveConfig();
+		}
+
+		ImGui.BeginDisabled(!config.HuntAlertsIntegration);
+		ImGui.Indent();
+		ImGui.Text("Accept ranks");
+		DrawHuntAlertsRankCheckbox("A-rank trains (new_hunt)", HuntMarkRank.A);
+		DrawHuntAlertsRankCheckbox("S-rank alerts (srank)", HuntMarkRank.S);
+
+		ImGui.Spacing();
+		ImGui.Text("Accept expansions");
+		ImGui.TextDisabled("Empty = all. Prefers start-zone ExVersion; else HuntAlerts huntKind.");
+		foreach (var group in HuntAlertsFilter.TrainGroups.All)
+			DrawHuntAlertsTrainGroupCheckbox(group);
+		ImGui.Unindent();
+		ImGui.EndDisabled();
+
+		ImGui.TextDisabled(HuntAlertsAvailability.FormatLastAlertStatus(
+			SafeGetHuntAlertsLastAlert()));
+		ImGui.TextWrapped(
+			"When a hunt mark notification is received from HuntAlerts, automatically teleport to the target world and zone.");
+	}
+
+	private void DrawHuntAlertsRankCheckbox(string label, HuntMarkRank rank)
+	{
+		var enabled = HuntAlertsFilter.IsRankFilterEnabled(config.HuntAlertsRankFilter, rank);
+		if (!ImGui.Checkbox(label, ref enabled))
+			return;
+
+		HuntAlertsFilter.SetRankFilterEnabled(config.HuntAlertsRankFilter, rank, enabled);
+		saveConfig();
+	}
+
+	private void DrawHuntAlertsTrainGroupCheckbox(string group)
+	{
+		var enabled = HuntAlertsFilter.IsTrainGroupFilterEnabled(
+			config.HuntAlertsTrainGroupFilter,
+			group);
+		if (!ImGui.Checkbox(group, ref enabled))
+			return;
+
+		HuntAlertsFilter.SetTrainGroupFilterEnabled(
+			config.HuntAlertsTrainGroupFilter,
+			group,
+			enabled);
+		saveConfig();
+	}
+
+	private void DrawHuntAlertsAvailabilityLine()
+	{
+		var status = HuntAlertsAvailability.SafeEvaluate(huntAlertsStatus);
+		var color = status == HuntAlertsPluginStatus.Available ? AvailableColor : MissingColor;
+		ImGui.TextColored(color, HuntAlertsAvailability.FormatAvailabilityLine(status));
+	}
+
+	private HuntAlertsLastAlert? SafeGetHuntAlertsLastAlert()
+	{
+		try
+		{
+			return getHuntAlertsLastAlert();
+		}
+		catch
+		{
+			return null;
+		}
 	}
 
 	private void DrawDebugTab()

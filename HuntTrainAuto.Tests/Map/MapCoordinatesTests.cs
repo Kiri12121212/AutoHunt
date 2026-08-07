@@ -87,6 +87,31 @@ public sealed class MapCoordinatesTests
 		Assert.Equal(world, back, precision: 3);
 	}
 
+	[Theory]
+	[InlineData(21.5f, 100f, 0)]
+	[InlineData(12.3f, 100f, 0)]
+	[InlineData(21.5f, 200f, 10)]
+	[InlineData(8.25f, 95f, -5)]
+	public void ConvertMapCoordinateToRaw_matches_Dalamud_formula(float mapCoord, float scale, int offset)
+	{
+		var trueScale = scale / 100f;
+		var num2 = (float)((((mapCoord - 1.0) * trueScale / 41.0 * 2048.0) - 1024.0) / trueScale);
+		num2 *= 1000f;
+		var expected = (int)num2 - (offset * 1000);
+		Assert.Equal(expected, MapCoordinates.ConvertMapCoordinateToRawPosition(mapCoord, scale, offset));
+	}
+
+	[Fact]
+	public void ConvertMapCoordinateToRaw_offset_zero_aligns_with_HTA_raw_pipeline()
+	{
+		// With offset 0, Dalamud nice→raw inverts HTA ConvertRawPositionToMapCoordinate.
+		const float scale = 100f;
+		const int raw = 12_345;
+		var map = MapCoordinates.ConvertRawPositionToMapCoordinate(raw, scale);
+		var back = MapCoordinates.ConvertMapCoordinateToRawPosition(map, scale);
+		Assert.InRange(back, raw - 1, raw + 1);
+	}
+
 	[Fact]
 	public void MapDistance_same_point_is_zero()
 	{

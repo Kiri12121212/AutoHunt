@@ -117,4 +117,28 @@ public sealed class Configuration : IPluginConfiguration
 
 	/// <summary>Record phase / follow / mount edges into the Debug tab ring buffer (TASKS 9.2).</summary>
 	public bool EnableDebugLogging { get; set; } = true;
+
+	/// <summary>
+	/// Optional HuntAlerts IPC intake (TASKS 10.1). Default off — feature stays inert until enabled.
+	/// </summary>
+	public bool HuntAlertsIntegration { get; set; } = HuntAlertsFilter.DefaultIntegration;
+
+	/// <summary>
+	/// Worlds excluded from HuntAlerts auto-intake (HTA <c>WorldBlacklist</c> parity).
+	/// Entries are world names and/or decimal RowIds; empty = no world filter.
+	/// </summary>
+	public List<string> HuntAlertsWorldBlacklist { get; set; } = [];
+
+	/// <summary>
+	/// Optional HuntAlerts rank gate. Empty = accept A-train (<c>new_hunt</c>) and S-rank (<c>srank</c>).
+	/// Otherwise only listed <see cref="HuntMarkRank.A"/> / <see cref="HuntMarkRank.S"/>.
+	/// </summary>
+	public List<HuntMarkRank> HuntAlertsRankFilter { get; set; } = [];
+
+	/// <summary>
+	/// Optional HuntAlerts expansion / train-group gate (HuntAlerts <c>EnabledTrainGroups</c> names).
+	/// Empty = all expansions. Otherwise only listed groups (Dawntrail, Endwalker, …).
+	/// Resolved from start-territory <c>ExVersion</c> when known, else <c>huntKind</c>.
+	/// </summary>
+	public List<string> HuntAlertsTrainGroupFilter { get; set; } = [];
 }

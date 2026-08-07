@@ -57,12 +57,6 @@ public sealed class ConfigTabsTests
 	public void ClampMountId_floors_at_never(int input, int expected)
 		=> Assert.Equal(expected, ConfigTabs.ClampMountId(input));
 
-	[Fact]
-	public void FormatHuntAlertsPlaceholder_is_phase10_disabled()
-		=> Assert.Equal(
-			"HuntAlerts: Phase 10 — not wired",
-			ConfigTabs.FormatHuntAlertsPlaceholder());
-
 	[Theory]
 	[InlineData(-10, 0)]
 	[InlineData(0, 0)]

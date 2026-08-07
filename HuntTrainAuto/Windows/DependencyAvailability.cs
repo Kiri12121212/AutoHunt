@@ -13,6 +13,7 @@ public static class DependencyAvailability
 	public const string LifestreamDisplayName = "Lifestream";
 	public const string VnavmeshDisplayName = "vnavmesh";
 	public const string RsrDisplayName = "Rotation Solver Reborn";
+	public const string HuntAlertsDisplayName = "HuntAlerts";
 
 	public const string AvailableLabel = "available";
 	public const string MissingLabel = "missing";

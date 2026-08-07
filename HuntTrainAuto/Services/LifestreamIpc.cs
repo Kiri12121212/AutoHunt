@@ -31,6 +31,21 @@ public sealed class LifestreamIpc : ILifestreamService
 	/// <summary>IPC: <c>Lifestream.IsBusy</c> — <c>Func&lt;bool&gt;</c>.</summary>
 	private const string IsBusyChannel = "Lifestream.IsBusy";
 
+	/// <summary>IPC: <c>Lifestream.Abort</c> — <c>Action</c>.</summary>
+	private const string AbortChannel = "Lifestream.Abort";
+
+	/// <summary>IPC: <c>Lifestream.CanVisitSameDC</c> — <c>Func&lt;string, bool&gt;</c>.</summary>
+	private const string CanVisitSameDcChannel = "Lifestream.CanVisitSameDC";
+
+	/// <summary>IPC: <c>Lifestream.CanVisitCrossDC</c> — <c>Func&lt;string, bool&gt;</c>.</summary>
+	private const string CanVisitCrossDcChannel = "Lifestream.CanVisitCrossDC";
+
+	/// <summary>
+	/// IPC: <c>Lifestream.ChangeWorld</c> — <c>Func&lt;string, bool&gt;</c>.
+	/// Validates via CanVisit* then queues <c>TPAndChangeWorld</c> (preferred over raw ExecuteCommand).
+	/// </summary>
+	private const string ChangeWorldChannel = "Lifestream.ChangeWorld";
+
 	/// <summary>
 	/// Probe args that should never resolve to a real aetheryte.
 	/// A successful InvokeFunc only proves the CallGate provider exists.
@@ -44,6 +59,10 @@ public sealed class LifestreamIpc : ILifestreamService
 	private readonly ICallGateSubscriber<int> getNumberOfInstances;
 	private readonly ICallGateSubscriber<bool> canChangeInstance;
 	private readonly ICallGateSubscriber<bool> isBusy;
+	private readonly ICallGateSubscriber<object?> abort;
+	private readonly ICallGateSubscriber<string, bool> canVisitSameDc;
+	private readonly ICallGateSubscriber<string, bool> canVisitCrossDc;
+	private readonly ICallGateSubscriber<string, bool> changeWorld;
 
 	public LifestreamIpc(IDalamudPluginInterface pluginInterface)
 	{
@@ -53,6 +72,10 @@ public sealed class LifestreamIpc : ILifestreamService
 		getNumberOfInstances = pluginInterface.GetIpcSubscriber<int>(GetNumberOfInstancesChannel);
 		canChangeInstance = pluginInterface.GetIpcSubscriber<bool>(CanChangeInstanceChannel);
 		isBusy = pluginInterface.GetIpcSubscriber<bool>(IsBusyChannel);
+		abort = pluginInterface.GetIpcSubscriber<object?>(AbortChannel);
+		canVisitSameDc = pluginInterface.GetIpcSubscriber<string, bool>(CanVisitSameDcChannel);
+		canVisitCrossDc = pluginInterface.GetIpcSubscriber<string, bool>(CanVisitCrossDcChannel);
+		changeWorld = pluginInterface.GetIpcSubscriber<string, bool>(ChangeWorldChannel);
 	}
 
 	/// <summary>
@@ -167,6 +190,70 @@ public sealed class LifestreamIpc : ILifestreamService
 		try
 		{
 			return isBusy.InvokeFunc();
+		}
+		catch
+		{
+			return false;
+		}
+	}
+
+	/// <summary>
+	/// Abort the current Lifestream task / follow path (<c>Lifestream.Abort</c>).
+	/// Soft-fails silently when Lifestream is absent or IPC throws.
+	/// </summary>
+	public void Abort()
+	{
+		try
+		{
+			abort.InvokeAction();
+		}
+		catch
+		{
+			// Lifestream may be absent.
+		}
+	}
+
+	/// <summary>
+	/// Same-DC world visit eligibility (<c>Lifestream.CanVisitSameDC</c>).
+	/// Soft-fails (false) when Lifestream is absent or IPC throws.
+	/// </summary>
+	public bool CanVisitSameDC(string world)
+	{
+		try
+		{
+			return canVisitSameDc.InvokeFunc(world);
+		}
+		catch
+		{
+			return false;
+		}
+	}
+
+	/// <summary>
+	/// Cross-DC world visit eligibility (<c>Lifestream.CanVisitCrossDC</c>).
+	/// Soft-fails (false) when Lifestream is absent or IPC throws.
+	/// </summary>
+	public bool CanVisitCrossDC(string world)
+	{
+		try
+		{
+			return canVisitCrossDc.InvokeFunc(world);
+		}
+		catch
+		{
+			return false;
+		}
+	}
+
+	/// <summary>
+	/// Queue a world visit (<c>Lifestream.ChangeWorld</c>). Soft-fails (false) when
+	/// Lifestream is absent, busy, or the world is not in CanVisit* lists.
+	/// </summary>
+	public bool ChangeWorld(string world)
+	{
+		try
+		{
+			return changeWorld.InvokeFunc(world);
 		}
 		catch
 		{

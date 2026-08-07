@@ -75,6 +75,7 @@ public sealed class MapSizeFactorTests
 
 		var p = MapSizeFactor.ResolveParams(mapId: 2, territoryTypeId: 100, maps);
 		Assert.NotNull(p);
+		Assert.Equal(2u, p.Value.MapId);
 		Assert.Equal(200f, p.Value.SizeFactor);
 		Assert.Equal(30, p.Value.OffsetX);
 		Assert.Equal(40, p.Value.OffsetY);
@@ -91,6 +92,7 @@ public sealed class MapSizeFactorTests
 
 		var p = MapSizeFactor.ResolveParams(mapId: 0, territoryTypeId: 100, maps);
 		Assert.NotNull(p);
+		Assert.Equal(1u, p.Value.MapId);
 		Assert.Equal(95f, p.Value.SizeFactor);
 		Assert.Equal(1, p.Value.OffsetX);
 		Assert.Equal(2, p.Value.OffsetY);

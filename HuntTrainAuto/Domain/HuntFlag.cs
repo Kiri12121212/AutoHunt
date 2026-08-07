@@ -32,6 +32,12 @@ public sealed class HuntFlag
 	public ArrivalData? Arrival { get; set; }
 
 	/// <summary>
+	/// Hunt world display name when known independently of <see cref="Arrival"/>
+	/// (e.g. HuntAlerts <c>huntWorld</c> with aetheryte id 0 — Arrival stays null).
+	/// </summary>
+	public string? HuntWorld { get; set; }
+
+	/// <summary>
 	/// Pure factory from map-link fields (unit-testable without Dalamud payloads).
 	/// </summary>
 	public static HuntFlag FromMapLink(
