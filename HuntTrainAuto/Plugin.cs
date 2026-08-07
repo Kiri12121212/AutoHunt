@@ -113,7 +113,19 @@ public sealed class Plugin : IDalamudPlugin
 			RsrSettingsDecision.DefaultNonTankTargeting);
 
 		windowSystem = new WindowSystem(typeof(Plugin).Assembly.GetName()?.Name ?? "HuntTrainAuto");
-		configWindow = new ConfigWindow(Config, () => pluginInterface.SavePluginConfig(Config));
+
+		TeleporterIpc = new TeleporterIpc(pluginInterface);
+		LifestreamIpc = new LifestreamIpc(pluginInterface);
+		VNavmeshIpc = new VNavmeshIpc(pluginInterface);
+		RsrIpc = new RsrIpc(pluginInterface);
+
+		configWindow = new ConfigWindow(
+			Config,
+			() => pluginInterface.SavePluginConfig(Config),
+			() => TeleporterIpc.IsAvailable,
+			() => LifestreamIpc.IsAvailable,
+			() => VNavmeshIpc.IsAvailable,
+			() => RsrIpc.IsAvailable);
 		windowSystem.AddWindow(configWindow);
 
 		chat = new GameChat();
@@ -122,11 +134,6 @@ public sealed class Plugin : IDalamudPlugin
 			Config,
 			() => pluginInterface.SavePluginConfig(Config),
 			() => configWindow.IsOpen = true);
-
-		TeleporterIpc = new TeleporterIpc(pluginInterface);
-		LifestreamIpc = new LifestreamIpc(pluginInterface);
-		VNavmeshIpc = new VNavmeshIpc(pluginInterface);
-		RsrIpc = new RsrIpc(pluginInterface);
 		instanceChange = new InstanceChangeRunner(
 			LifestreamIpc,
 			chat,

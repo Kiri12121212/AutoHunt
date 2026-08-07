@@ -61,5 +61,6 @@
 		<Compile Include="..\HuntTrainAuto\State\HuntTrainObserve.cs" Link="State\HuntTrainObserve.cs" />
 		<Compile Include="..\HuntTrainAuto\State\TerritoryCleanupDecision.cs" Link="State\TerritoryCleanupDecision.cs" />
 		<Compile Include="..\HuntTrainAuto\State\FlagRestartDecision.cs" Link="State\FlagRestartDecision.cs" />
+		<Compile Include="..\HuntTrainAuto\Windows\DependencyAvailability.cs" Link="Windows\DependencyAvailability.cs" />
 	</ItemGroup>
 </Project>
