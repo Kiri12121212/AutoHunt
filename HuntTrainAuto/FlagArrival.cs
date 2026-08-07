@@ -12,7 +12,7 @@ public readonly struct FlagArrivalResult
 	/// <summary>
 	/// Path should be stopped (<see cref="Services.VNavmeshIpc.PathStop"/>) once on arrival.
 	/// False after the stop has already been issued for this flag so follow/unmount nav can start.
-	/// Does not dismount — that is 4.6.
+	/// Does not dismount — see <see cref="UnmountRunner"/>.
 	/// </summary>
 	public required bool ShouldStopPath { get; init; }
 
@@ -24,7 +24,7 @@ public readonly struct FlagArrivalResult
 /// Pure hunt-flag arrival decisions (TASKS 4.10 / brief 4.5).
 /// Hunt flags are area markers — use <see cref="DefaultTolerance"/> (~5y), not AD's 0.25 path tolerance.
 /// Reuses <see cref="MovementDecision.IsArrived"/> (mesh-style; no direct-path −1 yalm fudge).
-/// Unmount actions live in 4.6 — this only signals arrival / one-shot stop-path.
+/// Unmount is owned by <see cref="UnmountRunner"/> — this only signals arrival / one-shot stop-path.
 /// </summary>
 public static class FlagArrival
 {

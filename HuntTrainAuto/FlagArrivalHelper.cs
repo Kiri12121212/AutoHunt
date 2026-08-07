@@ -7,7 +7,7 @@ namespace HuntTrainAuto;
 
 /// <summary>
 /// Thin vnavmesh wiring for flag-area arrival: evaluate + one-shot <see cref="VNavmeshIpc.PathStop"/>.
-/// Soft-fails; never throws to callers. Does not dismount (4.6).
+/// Soft-fails; never throws to callers. Does not dismount — see <see cref="UnmountRunner"/>.
 /// </summary>
 public sealed class FlagArrivalHelper
 {
