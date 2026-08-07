@@ -23,6 +23,7 @@ public sealed class HuntAlertsIpc : IHuntAlertsService
 	private readonly Configuration config;
 	private readonly IDalamudPluginInterface pluginInterface;
 	private readonly Func<uint, MapCoordParams?>? resolveMapParams;
+	private readonly Func<uint, uint?>? resolveExVersion;
 	private readonly Action<HuntFlag>? onFlag;
 	private readonly ICallGateSubscriber<HuntTrainMessage, object> onHuntTrain;
 	private bool subscribed;
@@ -32,15 +33,21 @@ public sealed class HuntAlertsIpc : IHuntAlertsService
 	/// Territory → sheet map params (<c>MapManager.GetMapParams(0, territory)</c>).
 	/// Null or a null return soft-falls to mapper defaults (scale 100, zero offsets).
 	/// </param>
+	/// <param name="resolveExVersion">
+	/// Territory → <c>TerritoryType.ExVersion</c> RowId for train-group filtering.
+	/// Null / failed lookup falls back to IPC <c>huntKind</c>.
+	/// </param>
 	public HuntAlertsIpc(
 		IDalamudPluginInterface pluginInterface,
 		Configuration config,
 		Func<uint, MapCoordParams?>? resolveMapParams = null,
-		Action<HuntFlag>? onFlag = null)
+		Action<HuntFlag>? onFlag = null,
+		Func<uint, uint?>? resolveExVersion = null)
 	{
 		this.pluginInterface = pluginInterface;
 		this.config = config;
 		this.resolveMapParams = resolveMapParams;
+		this.resolveExVersion = resolveExVersion;
 		this.onFlag = onFlag;
 
 		onHuntTrain = pluginInterface.GetIpcSubscriber<HuntTrainMessage, object>(
@@ -111,6 +118,7 @@ public sealed class HuntAlertsIpc : IHuntAlertsService
 				return;
 
 			MapCoordParams? resolved = null;
+			uint? exVersion = null;
 			try
 			{
 				resolved = resolveMapParams?.Invoke(accepted.startTerritoryTypeId);
@@ -118,6 +126,15 @@ public sealed class HuntAlertsIpc : IHuntAlertsService
 			catch
 			{
 				// Soft-fail: sheets / Excel access must not drop the IPC callback.
+			}
+
+			try
+			{
+				exVersion = resolveExVersion?.Invoke(accepted.startTerritoryTypeId);
+			}
+			catch
+			{
+				// Soft-fail: ExVersion lookup must not drop the IPC callback.
 			}
 
 			HuntTrainMessageMapper.UnpackMapParams(
@@ -136,7 +153,9 @@ public sealed class HuntAlertsIpc : IHuntAlertsService
 				    mapId,
 				    sizeFactor,
 				    offsetX,
-				    offsetY))
+				    offsetY,
+				    trainGroupFilter: config.HuntAlertsTrainGroupFilter,
+				    expansionVersion: exVersion))
 				return;
 
 			lastMappedAlert = HuntAlertsAvailability.FromMappedFlag(flag);

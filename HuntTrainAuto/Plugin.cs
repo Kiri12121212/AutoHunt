@@ -271,7 +271,8 @@ public sealed class Plugin : IDalamudPlugin
 			pluginInterface,
 			Config,
 			territoryTypeId => mapManager.GetMapParams(mapId: 0, territoryTypeId),
-			OnHuntAlertsFlag);
+			OnHuntAlertsFlag,
+			ResolveTerritoryExVersion);
 
 		configWindow = new ConfigWindow(
 			Config,
@@ -1361,6 +1362,9 @@ public sealed class Plugin : IDalamudPlugin
 
 	private uint? GetIntendedUseRowId(uint territoryId) =>
 		dataManager.GetExcelSheet<TerritoryType>()?.GetRowOrDefault(territoryId)?.TerritoryIntendedUse.RowId;
+
+	private uint? ResolveTerritoryExVersion(uint territoryId) =>
+		dataManager.GetExcelSheet<TerritoryType>()?.GetRowOrDefault(territoryId)?.ExVersion.RowId;
 
 	private void Draw() => windowSystem.Draw();
 

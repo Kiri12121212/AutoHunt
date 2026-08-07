@@ -3,6 +3,7 @@ using System;
 using System.Numerics;
 using Dalamud.Bindings.ImGui;
 using Dalamud.Interface.Windowing;
+using HuntTrainAuto.Domain;
 using HuntTrainAuto.HuntAlerts;
 
 namespace HuntTrainAuto.Windows;
@@ -415,10 +416,49 @@ public sealed class ConfigWindow : Window, IDisposable
 			saveConfig();
 		}
 
+		ImGui.BeginDisabled(!config.HuntAlertsIntegration);
+		ImGui.Indent();
+		ImGui.Text("Accept ranks");
+		DrawHuntAlertsRankCheckbox("A-rank trains (new_hunt)", HuntMarkRank.A);
+		DrawHuntAlertsRankCheckbox("S-rank alerts (srank)", HuntMarkRank.S);
+
+		ImGui.Spacing();
+		ImGui.Text("Accept expansions");
+		ImGui.TextDisabled("Empty = all. Prefers start-zone ExVersion; else HuntAlerts huntKind.");
+		foreach (var group in HuntAlertsFilter.TrainGroups.All)
+			DrawHuntAlertsTrainGroupCheckbox(group);
+		ImGui.Unindent();
+		ImGui.EndDisabled();
+
 		ImGui.TextDisabled(HuntAlertsAvailability.FormatLastAlertStatus(
 			SafeGetHuntAlertsLastAlert()));
 		ImGui.TextWrapped(
 			"When a hunt mark notification is received from HuntAlerts, automatically teleport to the target world and zone.");
+	}
+
+	private void DrawHuntAlertsRankCheckbox(string label, HuntMarkRank rank)
+	{
+		var enabled = HuntAlertsFilter.IsRankFilterEnabled(config.HuntAlertsRankFilter, rank);
+		if (!ImGui.Checkbox(label, ref enabled))
+			return;
+
+		HuntAlertsFilter.SetRankFilterEnabled(config.HuntAlertsRankFilter, rank, enabled);
+		saveConfig();
+	}
+
+	private void DrawHuntAlertsTrainGroupCheckbox(string group)
+	{
+		var enabled = HuntAlertsFilter.IsTrainGroupFilterEnabled(
+			config.HuntAlertsTrainGroupFilter,
+			group);
+		if (!ImGui.Checkbox(group, ref enabled))
+			return;
+
+		HuntAlertsFilter.SetTrainGroupFilterEnabled(
+			config.HuntAlertsTrainGroupFilter,
+			group,
+			enabled);
+		saveConfig();
 	}
 
 	private void DrawHuntAlertsAvailabilityLine()

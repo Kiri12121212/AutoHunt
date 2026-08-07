@@ -19,10 +19,12 @@ public sealed class HuntTrainMessageMapperTests
 		float mapX = 12.3f,
 		float mapY = 24.5f,
 		int instance = 2,
-		string locationCoords = "")
+		string locationCoords = "",
+		string huntKind = "Shadowbringers")
 		=> new()
 		{
 			huntType = huntType,
+			huntKind = huntKind,
 			huntWorld = world,
 			startTerritoryTypeId = territory,
 			startLocationAetheryteId = aetheryteId,
@@ -282,6 +284,45 @@ public sealed class HuntTrainMessageMapperTests
 			rankFilter: [HuntMarkRank.A],
 			worldBlacklist: null,
 			out _));
+	}
+
+	[Fact]
+	public void TryMap_rejects_train_group_not_in_filter()
+	{
+		Assert.False(HuntTrainMessageMapper.TryMap(
+			ValidMessage(huntKind: "Endwalker"),
+			huntAlertsIntegration: true,
+			rankFilter: null,
+			worldBlacklist: null,
+			out _,
+			trainGroupFilter: [HuntAlertsFilter.TrainGroups.Dawntrail],
+			expansionVersion: HuntAlertsFilter.ExVersionEndwalker));
+	}
+
+	[Fact]
+	public void TryMap_accepts_dawntrail_via_exVersion()
+	{
+		Assert.True(HuntTrainMessageMapper.TryMap(
+			ValidMessage(huntKind: "Endwalker"),
+			huntAlertsIntegration: true,
+			rankFilter: [HuntMarkRank.A],
+			worldBlacklist: null,
+			out _,
+			trainGroupFilter: [HuntAlertsFilter.TrainGroups.Dawntrail],
+			expansionVersion: HuntAlertsFilter.ExVersionDawntrail));
+	}
+
+	[Fact]
+	public void TryMap_accepts_dawntrail_via_huntKind_when_exVersion_missing()
+	{
+		Assert.True(HuntTrainMessageMapper.TryMap(
+			ValidMessage(huntKind: "DT"),
+			huntAlertsIntegration: true,
+			rankFilter: [HuntMarkRank.A],
+			worldBlacklist: null,
+			out _,
+			trainGroupFilter: [HuntAlertsFilter.TrainGroups.Dawntrail],
+			expansionVersion: null));
 	}
 
 	[Fact]

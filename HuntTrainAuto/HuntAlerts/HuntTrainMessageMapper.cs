@@ -66,7 +66,9 @@ public static class HuntTrainMessageMapper
 		int offsetX = 0,
 		int offsetY = 0,
 		DateTimeOffset? timestamp = null,
-		float mapCoordFudge = DefaultMapCoordFudge)
+		float mapCoordFudge = DefaultMapCoordFudge,
+		IReadOnlyList<string>? trainGroupFilter = null,
+		uint? expansionVersion = null)
 	{
 		flag = null!;
 		if (message == null)
@@ -80,7 +82,10 @@ public static class HuntTrainMessageMapper
 			    rankFilter,
 			    worldBlacklist,
 			    rank,
-			    message.huntWorld))
+			    message.huntWorld,
+			    trainGroupFilter: trainGroupFilter,
+			    huntKind: message.huntKind,
+			    exVersion: expansionVersion))
 			return false;
 
 		if (message.startTerritoryTypeId == 0)

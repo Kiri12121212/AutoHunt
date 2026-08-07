@@ -134,4 +134,11 @@ public sealed class Configuration : IPluginConfiguration
 	/// Otherwise only listed <see cref="HuntMarkRank.A"/> / <see cref="HuntMarkRank.S"/>.
 	/// </summary>
 	public List<HuntMarkRank> HuntAlertsRankFilter { get; set; } = [];
+
+	/// <summary>
+	/// Optional HuntAlerts expansion / train-group gate (HuntAlerts <c>EnabledTrainGroups</c> names).
+	/// Empty = all expansions. Otherwise only listed groups (Dawntrail, Endwalker, …).
+	/// Resolved from start-territory <c>ExVersion</c> when known, else <c>huntKind</c>.
+	/// </summary>
+	public List<string> HuntAlertsTrainGroupFilter { get; set; } = [];
 }
