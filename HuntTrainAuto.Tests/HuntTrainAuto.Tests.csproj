@@ -35,5 +35,7 @@
 		<Compile Include="..\HuntTrainAuto\TeleportThrottle.cs" Link="TeleportThrottle.cs" />
 		<Compile Include="..\HuntTrainAuto\TeleportGate.cs" Link="TeleportGate.cs" />
 		<Compile Include="..\HuntTrainAuto\TeleportPlan.cs" Link="TeleportPlan.cs" />
+		<Compile Include="..\HuntTrainAuto\InstanceChangeDecision.cs" Link="InstanceChangeDecision.cs" />
+		<Compile Include="..\HuntTrainAuto\InstanceChangeSession.cs" Link="InstanceChangeSession.cs" />
 	</ItemGroup>
 </Project>

@@ -2,6 +2,7 @@
 using System;
 using System.Numerics;
 using Dalamud.Game.ClientState.Conditions;
+using Dalamud.Game.ClientState.Objects;
 using Dalamud.Game.Command;
 using Dalamud.Interface.Windowing;
 using Dalamud.Plugin;
@@ -27,6 +28,7 @@ public sealed class Plugin : IDalamudPlugin
 	private readonly ChatMessageHandler chatMessageHandler;
 	private readonly MapManager mapManager;
 	private readonly TeleportPlan teleportPlan = new();
+	private readonly InstanceChangeRunner instanceChange;
 
 	private long teleportNextAllowedMs;
 	private bool isMoving;
@@ -48,6 +50,7 @@ public sealed class Plugin : IDalamudPlugin
 		ICommandManager commandManager,
 		IClientState clientState,
 		IObjectTable objectTable,
+		ITargetManager targetManager,
 		IDataManager dataManager,
 		IChatGui chatGui,
 		IGameGui gameGui,
@@ -76,6 +79,13 @@ public sealed class Plugin : IDalamudPlugin
 
 		TeleporterIpc = new TeleporterIpc(pluginInterface);
 		LifestreamIpc = new LifestreamIpc(pluginInterface);
+		instanceChange = new InstanceChangeRunner(
+			LifestreamIpc,
+			clientState,
+			objectTable,
+			targetManager,
+			condition,
+			pluginLog);
 		mapManager = new MapManager(dataManager, msg => pluginLog.Warning(msg));
 
 		chatMessageHandler = new ChatMessageHandler(chatGui, gameGui, Config);
@@ -106,6 +116,8 @@ public sealed class Plugin : IDalamudPlugin
 	private void OnHuntFlagReceived(HuntFlag flag)
 	{
 		_ = flag;
+		// New flag (skip or new plan) invalidates any in-flight instance change / automove.
+		instanceChange.Clear();
 		if (!teleportPlan.TryAdoptFromIntent(chatMessageHandler.TeleportIntent))
 			return;
 
@@ -140,6 +152,7 @@ public sealed class Plugin : IDalamudPlugin
 		if (HuntingTerritory.IsHuntingTerritory(territoryId, GetIntendedUseRowId))
 			return;
 
+		instanceChange.Clear();
 		ConductorList.Clear(Config.Conductors);
 		pluginInterface.SavePluginConfig(Config);
 	}
@@ -201,6 +214,8 @@ public sealed class Plugin : IDalamudPlugin
 			pluginLog.Debug("TeleportPlan cleared (between areas)");
 			teleportPlan.Clear();
 		}
+
+		instanceChange.Tick();
 	}
 
 	private void TryExecuteTeleport(uint aetheryteId)
@@ -221,13 +236,11 @@ public sealed class Plugin : IDalamudPlugin
 	}
 
 	/// <summary>
-	/// TODO(3.7): port <c>TaskChangeInstanceAfterTeleport</c> via Lifestream.
-	/// Stub only — do not change instance here.
+	/// Enqueue post-TP instance switch (HTA <c>TaskChangeInstanceAfterTeleport</c>).
+	/// Survives <see cref="TeleportPlan"/> clear; advanced on Framework ticks.
 	/// </summary>
 	private void EnqueueChangeInstanceAfterTeleport(int instance, uint territoryId)
-	{
-		pluginLog.Debug($"[3.7 stub] Would enqueue instance change to {instance} (territory {territoryId})");
-	}
+		=> instanceChange.Enqueue(instance, territoryId);
 
 	private TeleportPlayerSnapshot? TryGetPlayerSnapshot(HuntFlag flag)
 	{
@@ -302,6 +315,7 @@ public sealed class Plugin : IDalamudPlugin
 		framework.Update -= OnFrameworkUpdate;
 		clientState.TerritoryChanged -= OnTerritoryChanged;
 		chatMessageHandler.HuntFlagReceived -= OnHuntFlagReceived;
+		instanceChange.Clear();
 		chatMessageHandler.Dispose();
 		LifestreamIpc.Dispose();
 		TeleporterIpc.Dispose();

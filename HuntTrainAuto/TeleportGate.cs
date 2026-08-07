@@ -58,8 +58,8 @@ public static class TeleportGate
 		=> betweenAreas || betweenAreas51;
 
 	/// <summary>
-	/// Whether to enqueue instance change after teleport (stubbed in 3.6; implemented in 3.7).
+	/// Whether to enqueue instance change after teleport (see <see cref="InstanceChangeDecision.ShouldEnqueue"/>).
 	/// </summary>
 	public static bool ShouldEnqueueInstanceChange(int instance)
-		=> instance > 0;
+		=> InstanceChangeDecision.ShouldEnqueue(instance);
 }
