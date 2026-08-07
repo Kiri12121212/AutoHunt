@@ -56,6 +56,14 @@ public sealed class Configuration : IPluginConfiguration
 	/// </summary>
 	public int Mount { get; set; } = 0;
 
+	/// <summary>
+	/// Hunt-flag area arrival radius (yalms). When player distance to
+	/// <see cref="HuntFlag.WorldPos"/> ≤ this, stop vnavmesh path (ready for unmount).
+	/// Larger than AD path tolerance (0.25) — flags mark an area, not a point.
+	/// Auto-unmount (<c>AutoUnmountAtFlag</c> / TaskUnmount) lands in 4.6.
+	/// </summary>
+	public float FlagArrivalTolerance { get; set; } = FlagArrival.DefaultTolerance;
+
 	public float PartyFollowDistance { get; set; } = 3f;
 	public bool FollowConductorFirst { get; set; } = true;
 }

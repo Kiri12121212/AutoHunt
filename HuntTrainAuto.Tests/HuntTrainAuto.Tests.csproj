@@ -41,5 +41,6 @@
 		<Compile Include="..\HuntTrainAuto\MountSession.cs" Link="MountSession.cs" />
 		<Compile Include="..\HuntTrainAuto\MovementDecision.cs" Link="MovementDecision.cs" />
 		<Compile Include="..\HuntTrainAuto\FlagWorldPosition.cs" Link="FlagWorldPosition.cs" />
+		<Compile Include="..\HuntTrainAuto\FlagArrival.cs" Link="FlagArrival.cs" />
 	</ItemGroup>
 </Project>
