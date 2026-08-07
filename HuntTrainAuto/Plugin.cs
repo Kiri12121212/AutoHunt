@@ -27,6 +27,7 @@ public sealed class Plugin : IDalamudPlugin
 	private readonly ConfigWindow configWindow;
 	private readonly IChatOutput chat;
 	private readonly Chat2Ipc chat2Ipc;
+	private readonly ContextMenuService contextMenu;
 	private readonly HuntAlertsIpc huntAlertsIpc;
 	private readonly ChatMessageHandler chatMessageHandler;
 	private readonly MapManager mapManager;
@@ -228,7 +229,8 @@ public sealed class Plugin : IDalamudPlugin
 		ICondition condition,
 		IPartyList partyList,
 		IPluginLog pluginLog,
-		INotificationManager notificationManager)
+		INotificationManager notificationManager,
+		IContextMenu contextMenuService)
 	{
 		this.pluginInterface = pluginInterface;
 		this.clientState = clientState;
@@ -290,6 +292,13 @@ public sealed class Plugin : IDalamudPlugin
 		chat = new GameChat();
 		chat2Ipc = new Chat2Ipc(
 			pluginInterface,
+			Config,
+			() => pluginInterface.SavePluginConfig(Config),
+			() => configWindow.IsOpen = true);
+		contextMenu = new ContextMenuService(
+			contextMenuService,
+			dataManager,
+			pluginLog,
 			Config,
 			() => pluginInterface.SavePluginConfig(Config),
 			() => configWindow.IsOpen = true);
@@ -1401,6 +1410,7 @@ public sealed class Plugin : IDalamudPlugin
 		LifestreamIpc.Dispose();
 		TeleporterIpc.Dispose();
 		chat2Ipc.Dispose();
+		contextMenu.Dispose();
 		pluginInterface.UiBuilder.Draw -= Draw;
 		pluginInterface.UiBuilder.OpenMainUi -= ToggleUi;
 		pluginInterface.UiBuilder.OpenConfigUi -= ToggleUi;

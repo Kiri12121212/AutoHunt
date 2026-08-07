@@ -209,7 +209,7 @@ public sealed class ConfigWindow : Window, IDisposable
 		}
 
 		var contextMenu = config.ContextMenu;
-		if (ImGui.Checkbox("Context menu", ref contextMenu))
+		if (ImGui.Checkbox("Context menu (Add as conductor)", ref contextMenu))
 		{
 			config.ContextMenu = contextMenu;
 			saveConfig();

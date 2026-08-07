@@ -22,6 +22,7 @@
 		<Compile Include="..\HuntTrainAuto\Chat\ChatCommands.cs" Link="Chat\ChatCommands.cs" />
 		<Compile Include="..\HuntTrainAuto\Chat\ChatSender.cs" Link="Chat\ChatSender.cs" />
 		<Compile Include="..\HuntTrainAuto\Chat\ChatSuppress.cs" Link="Chat\ChatSuppress.cs" />
+		<Compile Include="..\HuntTrainAuto\Chat\ContextMenuDecision.cs" Link="Chat\ContextMenuDecision.cs" />
 		<Compile Include="..\HuntTrainAuto\Map\HuntingTerritory.cs" Link="Map\HuntingTerritory.cs" />
 		<Compile Include="..\HuntTrainAuto\Map\MapOpenDedupe.cs" Link="Map\MapOpenDedupe.cs" />
 		<Compile Include="..\HuntTrainAuto\Map\MapCoordinates.cs" Link="Map\MapCoordinates.cs" />

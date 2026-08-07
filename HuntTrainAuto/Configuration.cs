@@ -12,6 +12,9 @@ public sealed class Configuration : IPluginConfiguration
 	public bool Enabled { get; set; } = true;
 	public List<string> Conductors { get; set; } = [];
 	public bool SuppressChatOtherPlayers { get; set; } = true;
+	/// <summary>
+	/// Native <c>IContextMenu</c> + ChatTwo IPC: "Add as conductor" / "[HTA] Set as conductor".
+	/// </summary>
 	public bool ContextMenu { get; set; } = true;
 	public bool AutoOpenMap { get; set; } = true;
 	public bool NoDuplicateFlags { get; set; } = true;
