@@ -29,6 +29,7 @@ public sealed class Plugin : IDalamudPlugin
 	private readonly MapManager mapManager;
 	private readonly TeleportPlan teleportPlan = new();
 	private readonly InstanceChangeRunner instanceChange;
+	private readonly MountRunner mount;
 
 	private long teleportNextAllowedMs;
 	private bool isMoving;
@@ -86,6 +87,13 @@ public sealed class Plugin : IDalamudPlugin
 			targetManager,
 			condition,
 			pluginLog);
+		mount = new MountRunner(
+			LifestreamIpc,
+			objectTable,
+			condition,
+			dataManager,
+			pluginLog,
+			() => instanceChange.IsActive);
 		mapManager = new MapManager(dataManager, msg => pluginLog.Warning(msg));
 
 		chatMessageHandler = new ChatMessageHandler(chatGui, gameGui, Config);
@@ -116,10 +124,17 @@ public sealed class Plugin : IDalamudPlugin
 	private void OnHuntFlagReceived(HuntFlag flag)
 	{
 		_ = flag;
-		// New flag (skip or new plan) invalidates any in-flight instance change / automove.
+		// New flag (skip or new plan) invalidates any in-flight instance change / automove / mount.
 		instanceChange.Clear();
+		mount.Clear();
 		if (!teleportPlan.TryAdoptFromIntent(chatMessageHandler.TeleportIntent))
+		{
+			// Same-zone close enough: no TP — still mount before later nav (HTA mount-on-ready).
+			if (chatMessageHandler.TeleportIntent.LatestDecision is
+				{ Action: TeleportAction.Skip, SkipReason: TeleportSkipReason.AlreadyClose })
+				mount.EnqueueIfEnabled(Config.UseMount);
 			return;
+		}
 
 		ApplyDelayTeleport();
 		pluginLog.Information("Engaging autoteleport");
@@ -145,6 +160,8 @@ public sealed class Plugin : IDalamudPlugin
 			if (TeleportGate.ShouldEnqueueInstanceChange(plan.Instance) && territoryId == plan.Territory)
 				EnqueueChangeInstanceAfterTeleport(plan.Instance, plan.Territory);
 
+			// HTA: TaskMount.EnqueueIfEnabled after TeleportTo clear (waits for instance idle).
+			mount.EnqueueIfEnabled(Config.UseMount);
 			pluginLog.Debug("TeleportPlan cleared (territory changed)");
 			teleportPlan.Clear();
 		}
@@ -153,6 +170,7 @@ public sealed class Plugin : IDalamudPlugin
 			return;
 
 		instanceChange.Clear();
+		mount.Clear();
 		ConductorList.Clear(Config.Conductors);
 		pluginInterface.SavePluginConfig(Config);
 	}
@@ -211,11 +229,13 @@ public sealed class Plugin : IDalamudPlugin
 			if (TeleportGate.ShouldEnqueueInstanceChange(betweenPlan.Instance))
 				EnqueueChangeInstanceAfterTeleport(betweenPlan.Instance, betweenPlan.Territory);
 
+			mount.EnqueueIfEnabled(Config.UseMount);
 			pluginLog.Debug("TeleportPlan cleared (between areas)");
 			teleportPlan.Clear();
 		}
 
 		instanceChange.Tick();
+		mount.Tick(Config.Mount);
 	}
 
 	private void TryExecuteTeleport(uint aetheryteId)
@@ -316,6 +336,7 @@ public sealed class Plugin : IDalamudPlugin
 		clientState.TerritoryChanged -= OnTerritoryChanged;
 		chatMessageHandler.HuntFlagReceived -= OnHuntFlagReceived;
 		instanceChange.Clear();
+		mount.Clear();
 		chatMessageHandler.Dispose();
 		LifestreamIpc.Dispose();
 		TeleporterIpc.Dispose();

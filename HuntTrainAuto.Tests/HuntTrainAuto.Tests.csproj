@@ -37,5 +37,7 @@
 		<Compile Include="..\HuntTrainAuto\TeleportPlan.cs" Link="TeleportPlan.cs" />
 		<Compile Include="..\HuntTrainAuto\InstanceChangeDecision.cs" Link="InstanceChangeDecision.cs" />
 		<Compile Include="..\HuntTrainAuto\InstanceChangeSession.cs" Link="InstanceChangeSession.cs" />
+		<Compile Include="..\HuntTrainAuto\MountDecision.cs" Link="MountDecision.cs" />
+		<Compile Include="..\HuntTrainAuto\MountSession.cs" Link="MountSession.cs" />
 	</ItemGroup>
 </Project>

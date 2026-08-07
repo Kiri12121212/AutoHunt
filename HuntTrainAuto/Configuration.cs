@@ -47,7 +47,13 @@ public sealed class Configuration : IPluginConfiguration
 	/// <summary>HTA distance-compensation hack for named aetherytes. Default false (HTA parity).</summary>
 	public bool DistanceCompensationHack { get; set; } = false;
 
+	/// <summary>HTA <c>UseMount</c>: enqueue auto-mount after TP / instance settle.</summary>
 	public bool UseMount { get; set; } = true;
+
+	/// <summary>
+	/// HTA <c>Mount</c> RowId: <c>0</c> = random (GeneralAction 9), <c>-1</c> = never mount,
+	/// other = specific mount (falls back if locked).
+	/// </summary>
 	public int Mount { get; set; } = 0;
 
 	public float PartyFollowDistance { get; set; } = 3f;

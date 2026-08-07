@@ -27,6 +27,9 @@ public sealed class LifestreamIpc : IDisposable
 	/// <summary>IPC: <c>Lifestream.CanChangeInstance</c> — <c>Func&lt;bool&gt;</c>.</summary>
 	private const string CanChangeInstanceChannel = "Lifestream.CanChangeInstance";
 
+	/// <summary>IPC: <c>Lifestream.IsBusy</c> — <c>Func&lt;bool&gt;</c>.</summary>
+	private const string IsBusyChannel = "Lifestream.IsBusy";
+
 	/// <summary>
 	/// Probe args that should never resolve to a real aetheryte.
 	/// A successful InvokeFunc only proves the CallGate provider exists.
@@ -39,6 +42,7 @@ public sealed class LifestreamIpc : IDisposable
 	private readonly ICallGateSubscriber<int> getCurrentInstance;
 	private readonly ICallGateSubscriber<int> getNumberOfInstances;
 	private readonly ICallGateSubscriber<bool> canChangeInstance;
+	private readonly ICallGateSubscriber<bool> isBusy;
 
 	public LifestreamIpc(IDalamudPluginInterface pluginInterface)
 	{
@@ -47,6 +51,7 @@ public sealed class LifestreamIpc : IDisposable
 		getCurrentInstance = pluginInterface.GetIpcSubscriber<int>(GetCurrentInstanceChannel);
 		getNumberOfInstances = pluginInterface.GetIpcSubscriber<int>(GetNumberOfInstancesChannel);
 		canChangeInstance = pluginInterface.GetIpcSubscriber<bool>(CanChangeInstanceChannel);
+		isBusy = pluginInterface.GetIpcSubscriber<bool>(IsBusyChannel);
 	}
 
 	/// <summary>
@@ -144,6 +149,23 @@ public sealed class LifestreamIpc : IDisposable
 		try
 		{
 			return canChangeInstance.InvokeFunc();
+		}
+		catch
+		{
+			return false;
+		}
+	}
+
+	/// <summary>
+	/// Whether Lifestream is mid-task (<c>Lifestream.IsBusy</c>).
+	/// Soft-fails (returns false = not busy) when Lifestream is absent or IPC throws,
+	/// so mount/wait gates are not stuck forever without the plugin.
+	/// </summary>
+	public bool IsBusy()
+	{
+		try
+		{
+			return isBusy.InvokeFunc();
 		}
 		catch
 		{
