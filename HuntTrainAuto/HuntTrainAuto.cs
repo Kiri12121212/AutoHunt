@@ -18,6 +18,9 @@ public sealed class Plugin : IDalamudPlugin
 	private readonly Chat2Ipc chat2Ipc;
 	private readonly ChatMessageHandler chatMessageHandler;
 
+	/// <summary>Teleporter IPC; execution owned by phase 3.6 Framework loop.</summary>
+	public TeleporterIpc TeleporterIpc { get; }
+
 	public Configuration Config { get; }
 
 	public Plugin(
@@ -42,6 +45,8 @@ public sealed class Plugin : IDalamudPlugin
 			Config,
 			() => pluginInterface.SavePluginConfig(Config),
 			() => configWindow.IsOpen = true);
+
+		TeleporterIpc = new TeleporterIpc(pluginInterface);
 
 		chatMessageHandler = new ChatMessageHandler(chatGui, gameGui, Config);
 
@@ -89,6 +94,7 @@ public sealed class Plugin : IDalamudPlugin
 	{
 		clientState.TerritoryChanged -= OnTerritoryChanged;
 		chatMessageHandler.Dispose();
+		TeleporterIpc.Dispose();
 		chat2Ipc.Dispose();
 		pluginInterface.UiBuilder.Draw -= Draw;
 		pluginInterface.UiBuilder.OpenConfigUi -= ToggleUi;
