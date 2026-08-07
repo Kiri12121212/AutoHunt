@@ -16,6 +16,7 @@ public sealed class Plugin : IDalamudPlugin
 	private readonly WindowSystem windowSystem;
 	private readonly ConfigWindow configWindow;
 	private readonly Chat2Ipc chat2Ipc;
+	private readonly ChatMessageHandler chatMessageHandler;
 
 	public Configuration Config { get; }
 
@@ -23,7 +24,8 @@ public sealed class Plugin : IDalamudPlugin
 		IDalamudPluginInterface pluginInterface,
 		ICommandManager commandManager,
 		IClientState clientState,
-		IDataManager dataManager)
+		IDataManager dataManager,
+		IChatGui chatGui)
 	{
 		this.pluginInterface = pluginInterface;
 		this.clientState = clientState;
@@ -39,6 +41,8 @@ public sealed class Plugin : IDalamudPlugin
 			Config,
 			() => pluginInterface.SavePluginConfig(Config),
 			() => configWindow.IsOpen = true);
+
+		chatMessageHandler = new ChatMessageHandler(chatGui);
 
 		pluginInterface.UiBuilder.Draw += Draw;
 		pluginInterface.UiBuilder.OpenConfigUi += ToggleUi;
@@ -83,6 +87,7 @@ public sealed class Plugin : IDalamudPlugin
 	public void Dispose()
 	{
 		clientState.TerritoryChanged -= OnTerritoryChanged;
+		chatMessageHandler.Dispose();
 		chat2Ipc.Dispose();
 		pluginInterface.UiBuilder.Draw -= Draw;
 		pluginInterface.UiBuilder.OpenConfigUi -= ToggleUi;
