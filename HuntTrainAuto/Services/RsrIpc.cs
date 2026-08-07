@@ -89,14 +89,15 @@ public sealed class RsrIpc : IRsrService
 	}
 
 	/// <inheritdoc />
-	public void RotationAuto()
+	public bool RotationAuto()
 		=> RotationAuto(RsrTargetingType.LowHP, RsrTargetHostileType.AllTargetsCanAttack);
 
 	/// <summary>
 	/// Same as <see cref="RotationAuto()"/> with explicit targeting / hostile defaults
 	/// for later config wiring (6.3+). Soft-fails silently.
 	/// </summary>
-	public void RotationAuto(RsrTargetingType targeting, RsrTargetHostileType hostileType)
+	/// <returns>True when <c>AutodutyChangeOperatingMode</c> succeeded.</returns>
+	public bool RotationAuto(RsrTargetingType targeting, RsrTargetHostileType hostileType)
 	{
 		foreach (var setting in RsrCommands.DefaultRotationAutoSettings(hostileType))
 			OtherCommand(RsrOtherCommandType.Settings, setting);
@@ -104,23 +105,27 @@ public sealed class RsrIpc : IRsrService
 		try
 		{
 			autodutyChangeOperatingMode.InvokeAction(RsrStateCommandType.AutoDuty, targeting);
+			return true;
 		}
 		catch
 		{
 			// RSR may be absent.
+			return false;
 		}
 	}
 
 	/// <inheritdoc />
-	public void RotationStop()
+	public bool RotationStop()
 	{
 		try
 		{
 			changeOperatingMode.InvokeAction(RsrStateCommandType.Off);
+			return true;
 		}
 		catch
 		{
 			// RSR may be absent.
+			return false;
 		}
 	}
 

@@ -13,7 +13,7 @@ namespace HuntTrainAuto.Combat;
 /// Thin Framework wiring for combat transition (TASKS 5.8–5.9 / brief 5.4).
 /// Builds <see cref="CombatEngageSnapshot"/> → <see cref="CombatDecision"/> →
 /// clear follow / update <see cref="CombatSession"/>. Soft-fails; never throws to Framework.
-/// Does not call RSR (Phase 6).
+/// RSR enable is owned by <see cref="RsrEnableHelper"/> (Phase 6.2).
 /// </summary>
 public sealed class CombatTransitionHelper
 {

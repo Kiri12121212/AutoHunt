@@ -36,6 +36,7 @@ public sealed class Plugin : IDalamudPlugin
 	private readonly EngageTargetHelper engage;
 	private readonly FollowHelper follow;
 	private readonly CombatTransitionHelper combat;
+	private readonly RsrEnableHelper rsrEnable;
 
 	private HuntFlag? activeHuntFlag;
 	private long teleportNextAllowedMs;
@@ -51,16 +52,16 @@ public sealed class Plugin : IDalamudPlugin
 	/// <summary>vnavmesh IPC; pathfind/move owned by phase 4B+.</summary>
 	public IVnavmeshService VNavmeshIpc { get; }
 
-	/// <summary>Rotation Solver Reborn IPC; engage/stop owned by phase 6.2+.</summary>
+	/// <summary>Rotation Solver Reborn IPC; enable gated by phase 6.2.</summary>
 	public IRsrService RsrIpc { get; }
 
 	/// <summary>
-	/// Combat/follow phase latch (TASKS 5.8–5.9). Phase 6 observes
-	/// <see cref="CombatSession.InCombatPhase"/> — no RSR calls here.
+	/// Combat/follow phase latch (TASKS 5.8–5.9). Phase 6.2 edge-triggers
+	/// RSR from <see cref="CombatSession.InCombatPhase"/>.
 	/// </summary>
 	public CombatSession CombatSession => combat.Session;
 
-	/// <summary>True while party-engage combat phase is active (Phase 6 signal).</summary>
+	/// <summary>True while party-engage combat phase is active (RSR enable signal).</summary>
 	public bool InCombatPhase => combat.InCombatPhase;
 
 	/// <summary>Active Framework teleport plan (HTA <c>TeleportTo</c>).</summary>
@@ -163,6 +164,7 @@ public sealed class Plugin : IDalamudPlugin
 			condition,
 			pluginLog,
 			() => Config.EngageRange);
+		rsrEnable = new RsrEnableHelper(RsrIpc, pluginLog);
 		mapManager = new MapManager(dataManager, msg => pluginLog.Warning(msg));
 
 		chatMessageHandler = new ChatMessageHandler(chatGui, gameGui, Config);
@@ -200,6 +202,7 @@ public sealed class Plugin : IDalamudPlugin
 		unmount.ClearAll();
 		engage.Clear();
 		combat.Clear();
+		rsrEnable.Clear();
 		if (!teleportPlan.TryAdoptFromIntent(chatMessageHandler.TeleportIntent))
 		{
 			// Same-zone close enough: no TP — still mount before later nav (HTA mount-on-ready).
@@ -249,6 +252,7 @@ public sealed class Plugin : IDalamudPlugin
 		unmount.ClearAll();
 		engage.Clear();
 		combat.Clear();
+		rsrEnable.Clear();
 		ConductorList.Clear(Config.Conductors);
 		pluginInterface.SavePluginConfig(Config);
 	}
@@ -319,6 +323,7 @@ public sealed class Plugin : IDalamudPlugin
 			unmount.ClearAll();
 			engage.Clear();
 			combat.Clear();
+			rsrEnable.Clear();
 			return;
 		}
 
@@ -338,6 +343,8 @@ public sealed class Plugin : IDalamudPlugin
 
 		// Death / combat-end / master-off cleanup (enter combat is owned by EngageTargetHelper).
 		combat.Tick(follow, pluginEnabled: true);
+		// RSR only after combat phase enter — not flag arrival / unmount / Following alone.
+		rsrEnable.Tick(combat.InCombatPhase);
 	}
 
 	private bool IsLocalPlayerDead()
@@ -482,6 +489,7 @@ public sealed class Plugin : IDalamudPlugin
 		engage.Clear();
 		follow.Clear();
 		combat.Clear();
+		rsrEnable.Clear();
 		chatMessageHandler.Dispose();
 		RsrIpc.Dispose();
 		VNavmeshIpc.Dispose();

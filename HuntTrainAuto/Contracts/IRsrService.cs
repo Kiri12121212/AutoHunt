@@ -24,10 +24,12 @@ public interface IRsrService : IDisposable
 	/// Defaults: HostileType AllTargetsCanAttack, FriendlyPartyNpcHealRaise3 true,
 	/// AutoOffAfterCombat false, targeting LowHP.
 	/// </summary>
-	void RotationAuto();
+	/// <returns>True when the AutoDuty CallGate invoke succeeded.</returns>
+	bool RotationAuto();
 
 	/// <summary>
 	/// Stop rotation (<c>ChangeOperatingMode(Off)</c>). Soft-fails silently.
 	/// </summary>
-	void RotationStop();
+	/// <returns>True when the Off CallGate invoke succeeded.</returns>
+	bool RotationStop();
 }
