@@ -4,21 +4,30 @@ using Dalamud.Plugin;
 using Dalamud.Plugin.Services;
 using HuntTrainAuto.Services;
 using HuntTrainAuto.Windows;
+using Lumina.Excel.Sheets;
 
 namespace HuntTrainAuto;
 
 public sealed class Plugin : IDalamudPlugin
 {
 	private readonly IDalamudPluginInterface pluginInterface;
+	private readonly IClientState clientState;
+	private readonly IDataManager dataManager;
 	private readonly WindowSystem windowSystem;
 	private readonly ConfigWindow configWindow;
 	private readonly Chat2Ipc chat2Ipc;
 
 	public Configuration Config { get; }
 
-	public Plugin(IDalamudPluginInterface pluginInterface, ICommandManager commandManager)
+	public Plugin(
+		IDalamudPluginInterface pluginInterface,
+		ICommandManager commandManager,
+		IClientState clientState,
+		IDataManager dataManager)
 	{
 		this.pluginInterface = pluginInterface;
+		this.clientState = clientState;
+		this.dataManager = dataManager;
 		Config = pluginInterface.GetPluginConfig() as Configuration ?? new Configuration();
 
 		windowSystem = new WindowSystem(typeof(Plugin).Assembly.GetName()?.Name ?? "HuntTrainAuto");
@@ -33,6 +42,7 @@ public sealed class Plugin : IDalamudPlugin
 
 		pluginInterface.UiBuilder.Draw += Draw;
 		pluginInterface.UiBuilder.OpenConfigUi += ToggleUi;
+		clientState.TerritoryChanged += OnTerritoryChanged;
 
 		commandManager.AddHandler("/hta", new CommandInfo(OnCommand)
 		{
@@ -50,6 +60,18 @@ public sealed class Plugin : IDalamudPlugin
 			() => configWindow.IsOpen = true,
 			() => pluginInterface.SavePluginConfig(Config));
 
+	private void OnTerritoryChanged(uint territoryId)
+	{
+		if (HuntingTerritory.IsHuntingTerritory(territoryId, GetIntendedUseRowId))
+			return;
+
+		ConductorList.Clear(Config.Conductors);
+		pluginInterface.SavePluginConfig(Config);
+	}
+
+	private uint? GetIntendedUseRowId(uint territoryId) =>
+		dataManager.GetExcelSheet<TerritoryType>()?.GetRowOrDefault(territoryId)?.TerritoryIntendedUse.RowId;
+
 	private void Draw() => windowSystem.Draw();
 
 	private void ToggleUi()
@@ -60,6 +82,7 @@ public sealed class Plugin : IDalamudPlugin
 
 	public void Dispose()
 	{
+		clientState.TerritoryChanged -= OnTerritoryChanged;
 		chat2Ipc.Dispose();
 		pluginInterface.UiBuilder.Draw -= Draw;
 		pluginInterface.UiBuilder.OpenConfigUi -= ToggleUi;
