@@ -32,14 +32,10 @@ public sealed class RsrIpc : IRsrService
 	/// </summary>
 	private const string OtherCommandChannel = RsrCommands.IpcPrefix + ".OtherCommand";
 
-	/// <summary>IPC: <c>RotationSolverReborn.AutorotationActive</c> — <c>Func&lt;bool&gt;</c>.</summary>
-	private const string AutorotationActiveChannel = RsrCommands.IpcPrefix + ".AutorotationActive";
-
 	private readonly IDalamudPluginInterface pluginInterface;
 	private readonly ICallGateSubscriber<RsrStateCommandType, object> changeOperatingMode;
 	private readonly ICallGateSubscriber<RsrStateCommandType, RsrTargetingType, object> autodutyChangeOperatingMode;
 	private readonly ICallGateSubscriber<RsrOtherCommandType, string, object> otherCommand;
-	private readonly ICallGateSubscriber<bool> autorotationActive;
 
 	public RsrIpc(IDalamudPluginInterface pluginInterface)
 	{
@@ -51,7 +47,6 @@ public sealed class RsrIpc : IRsrService
 				AutodutyChangeOperatingModeChannel);
 		otherCommand = pluginInterface.GetIpcSubscriber<RsrOtherCommandType, string, object>(
 			OtherCommandChannel);
-		autorotationActive = pluginInterface.GetIpcSubscriber<bool>(AutorotationActiveChannel);
 	}
 
 	/// <inheritdoc />
@@ -72,21 +67,7 @@ public sealed class RsrIpc : IRsrService
 	}
 
 	/// <inheritdoc />
-	public bool IsAvailable
-	{
-		get
-		{
-			try
-			{
-				_ = autorotationActive.InvokeFunc();
-				return true;
-			}
-			catch
-			{
-				return false;
-			}
-		}
-	}
+	public bool IsAvailable => IsEnabled;
 
 	/// <inheritdoc />
 	public bool RotationAuto(RsrTargetingType targeting, RsrTargetHostileType hostileType)

@@ -13,8 +13,10 @@ public interface IRsrService : IDisposable
 	bool IsEnabled { get; }
 
 	/// <summary>
-	/// True when the <c>RotationSolverReborn.AutorotationActive</c> CallGate is reachable.
-	/// Soft-fails: never throws.
+	/// True when RSR is usable for engage — same as <see cref="IsEnabled"/>
+	/// (AD <c>IsReady("RotationSolver")</c>). Soft-fails: never throws.
+	/// Do not probe <c>AutorotationActive</c>: that gate is RSR ≥ 7.5.5.24 only;
+	/// start/stop channels are Actions and unsafe to invoke as a presence check.
 	/// </summary>
 	bool IsAvailable { get; }
 
