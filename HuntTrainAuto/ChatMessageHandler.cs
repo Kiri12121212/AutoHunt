@@ -10,7 +10,7 @@ namespace HuntTrainAuto;
 
 /// <summary>
 /// Subscribes to <see cref="IChatGui.ChatMessage"/>. Sender match, map-link → <see cref="HuntFlag"/>,
-/// conductor highlight, and optional non-conductor suppress. Open-map remains for a later phase-2 task.
+/// optional auto-open map with AgentMap dedupe, conductor highlight, and optional non-conductor suppress.
 /// </summary>
 public sealed class ChatMessageHandler : IDisposable
 {
@@ -18,11 +18,13 @@ public sealed class ChatMessageHandler : IDisposable
 	public const ushort ConductorUiForeground = 578;
 
 	private readonly IChatGui chatGui;
+	private readonly IGameGui gameGui;
 	private readonly Configuration config;
 
-	public ChatMessageHandler(IChatGui chatGui, Configuration config)
+	public ChatMessageHandler(IChatGui chatGui, IGameGui gameGui, Configuration config)
 	{
 		this.chatGui = chatGui ?? throw new ArgumentNullException(nameof(chatGui));
+		this.gameGui = gameGui ?? throw new ArgumentNullException(nameof(gameGui));
 		this.config = config ?? throw new ArgumentNullException(nameof(config));
 		chatGui.ChatMessage += OnChatMessage;
 	}
@@ -102,8 +104,8 @@ public sealed class ChatMessageHandler : IDisposable
 	}
 
 	/// <summary>
-	/// First <see cref="MapLinkPayload"/> in a conductor message becomes <see cref="LatestHuntFlag"/>.
-	/// Does not open the map or dedupe AgentMap markers.
+	/// First <see cref="MapLinkPayload"/> in a conductor message becomes <see cref="LatestHuntFlag"/>;
+	/// when <see cref="Configuration.AutoOpenMap"/>, may call <see cref="IGameGui.OpenMapWithMapLink"/>.
 	/// </summary>
 	private void TryExtractHuntFlag(IHandleableChatMessage message)
 	{
@@ -121,8 +123,31 @@ public sealed class ChatMessageHandler : IDisposable
 
 			LatestHuntFlag = flag;
 			HuntFlagReceived?.Invoke(flag);
+
+			if (config.AutoOpenMap
+				&& MapOpenDedupe.IsPlausibleMapLink(flag.TerritoryTypeId, flag.MapId, flag.RawX, flag.RawY)
+				&& ShouldOpenForFreshLink(flag))
+			{
+				gameGui.OpenMapWithMapLink(mapLink);
+			}
+
 			return;
 		}
+	}
+
+	/// <summary>Dedupe against live AgentMap flag; acts on the fresh extract, not stale state alone.</summary>
+	private bool ShouldOpenForFreshLink(HuntFlag flag)
+	{
+		var hasFlag = AgentMapFlag.TryGet(out var territoryId, out var x, out var y);
+		return MapOpenDedupe.ShouldOpenMap(
+			config.NoDuplicateFlags,
+			hasFlag,
+			territoryId,
+			x,
+			y,
+			flag.TerritoryTypeId,
+			flag.RawX,
+			flag.RawY);
 	}
 
 	/// <summary>

@@ -25,7 +25,8 @@ public sealed class Plugin : IDalamudPlugin
 		ICommandManager commandManager,
 		IClientState clientState,
 		IDataManager dataManager,
-		IChatGui chatGui)
+		IChatGui chatGui,
+		IGameGui gameGui)
 	{
 		this.pluginInterface = pluginInterface;
 		this.clientState = clientState;
@@ -42,7 +43,7 @@ public sealed class Plugin : IDalamudPlugin
 			() => pluginInterface.SavePluginConfig(Config),
 			() => configWindow.IsOpen = true);
 
-		chatMessageHandler = new ChatMessageHandler(chatGui, Config);
+		chatMessageHandler = new ChatMessageHandler(chatGui, gameGui, Config);
 
 		pluginInterface.UiBuilder.Draw += Draw;
 		pluginInterface.UiBuilder.OpenConfigUi += ToggleUi;
