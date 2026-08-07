@@ -33,6 +33,16 @@ public static class MapCoordinates
 		return (float)(((world + offset) * num + 1024.0) / 2048.0 * 41.0 / num + 1.0);
 	}
 
+	/// <summary>
+	/// Map coordinate → world X/Z (inverse of <see cref="ConvertWorldToMapCoordinate"/>).
+	/// Pure; no Dalamud. Flag navigation still projects via PointOnFloor.
+	/// </summary>
+	public static float ConvertMapCoordinateToWorld(float mapCoord, float scale, int offset = 0)
+	{
+		var num = scale / 100f;
+		return (float)((((mapCoord - 1.0) * num / 41.0 * 2048.0) - 1024.0) / num) - offset;
+	}
+
 	/// <summary>Euclidean map distance between two map-coordinate points.</summary>
 	public static float MapDistance(float x1, float y1, float x2, float y2)
 	{

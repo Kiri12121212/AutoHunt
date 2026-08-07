@@ -76,6 +76,18 @@ public sealed class MapCoordinatesTests
 		Assert.NotEqual(without, with);
 	}
 
+	[Theory]
+	[InlineData(0f, 100f, 0)]
+	[InlineData(50f, 100f, -50)]
+	[InlineData(12.5f, 95f, 42)]
+	[InlineData(-20f, 200f, 100)]
+	public void ConvertMapToWorld_roundtrips_ConvertWorld(float world, float scale, int offset)
+	{
+		var map = MapCoordinates.ConvertWorldToMapCoordinate(world, scale, offset);
+		var back = MapCoordinates.ConvertMapCoordinateToWorld(map, scale, offset);
+		Assert.Equal(world, back, precision: 3);
+	}
+
 	[Fact]
 	public void MapDistance_same_point_is_zero()
 	{
