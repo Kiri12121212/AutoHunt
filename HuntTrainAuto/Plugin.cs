@@ -355,6 +355,7 @@ public sealed class Plugin : IDalamudPlugin
 		chatMessageHandler.HuntFlagReceived += OnHuntFlagReceived;
 
 		pluginInterface.UiBuilder.Draw += Draw;
+		pluginInterface.UiBuilder.OpenMainUi += ToggleUi;
 		pluginInterface.UiBuilder.OpenConfigUi += ToggleUi;
 		clientState.TerritoryChanged += OnTerritoryChanged;
 		framework.Update += OnFrameworkUpdate;
@@ -1401,6 +1402,7 @@ public sealed class Plugin : IDalamudPlugin
 		TeleporterIpc.Dispose();
 		chat2Ipc.Dispose();
 		pluginInterface.UiBuilder.Draw -= Draw;
+		pluginInterface.UiBuilder.OpenMainUi -= ToggleUi;
 		pluginInterface.UiBuilder.OpenConfigUi -= ToggleUi;
 		windowSystem.RemoveAllWindows();
 		configWindow.Dispose();
