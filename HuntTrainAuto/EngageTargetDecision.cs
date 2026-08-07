@@ -1,7 +1,7 @@
 #nullable enable
 using System;
 using System.Collections.Generic;
-using System.Numerics;
+
 namespace HuntTrainAuto;
 
 /// <summary>How an engage target was chosen (no player-follow).</summary>
@@ -10,6 +10,8 @@ public enum EngageTargetKind
 	None,
 	/// <summary>Conductor is in combat — join their BattleNpc target.</summary>
 	ConductorFight,
+	/// <summary>Party ally is in combat — join their BattleNpc target.</summary>
+	PartyFight,
 	/// <summary>Nearest living NotoriousMonster Rank A within scan range.</summary>
 	NearbyARank,
 }
@@ -33,6 +35,9 @@ public readonly struct EngageMobCandidate
 	/// <summary>True when this mob is the conductor's current target and conductor is in combat.</summary>
 	public bool IsConductorFightTarget { get; init; }
 
+	/// <summary>True when this mob is a party ally's current target and that ally is in combat.</summary>
+	public bool IsPartyFightTarget { get; init; }
+
 	/// <summary>True when NameId/BaseId matches NotoriousMonster Rank A.</summary>
 	public bool IsARank { get; init; }
 
@@ -44,9 +49,10 @@ public readonly struct EngageMobCandidate
 
 /// <summary>
 /// Pure engage-target priority (A-train):
-/// 1) Conductor fight target (join their pull — no player follow),
-/// 2) Nearest A-rank in scan range,
-/// else none. S-ranks never selected via the A-rank path.
+/// 1) Conductor fight target,
+/// 2) Party ally fight target (nearest mob),
+/// 3) Nearest A-rank in scan range,
+/// else none. No player follow. S-ranks never selected via the A-rank path.
 /// </summary>
 public static class EngageTargetDecision
 {
@@ -68,8 +74,7 @@ public static class EngageTargetDecision
 	}
 
 	/// <summary>
-	/// Pick engage mob. Conductor fight wins over nearby A-rank.
-	/// Among A-ranks, nearest living within <paramref name="scanRange"/> wins.
+	/// Pick engage mob. Conductor &gt; party fight &gt; nearby A-rank.
 	/// </summary>
 	public static EngageTargetPick Resolve(
 		IReadOnlyList<EngageMobCandidate> candidates,
@@ -79,6 +84,8 @@ public static class EngageTargetDecision
 
 		var bestConductor = -1;
 		var bestConductorDist = float.PositiveInfinity;
+		var bestParty = -1;
+		var bestPartyDist = float.PositiveInfinity;
 		var bestA = -1;
 		var bestADist = float.PositiveInfinity;
 
@@ -92,6 +99,12 @@ public static class EngageTargetDecision
 			{
 				bestConductor = c.Index;
 				bestConductorDist = c.Distance;
+			}
+
+			if (c.IsPartyFightTarget && c.Distance < bestPartyDist)
+			{
+				bestParty = c.Index;
+				bestPartyDist = c.Distance;
 			}
 
 			if (c.IsARank
@@ -109,6 +122,15 @@ public static class EngageTargetDecision
 			{
 				Kind = EngageTargetKind.ConductorFight,
 				Index = bestConductor,
+			};
+		}
+
+		if (bestParty >= 0)
+		{
+			return new EngageTargetPick
+			{
+				Kind = EngageTargetKind.PartyFight,
+				Index = bestParty,
 			};
 		}
 

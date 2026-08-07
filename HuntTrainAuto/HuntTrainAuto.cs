@@ -136,6 +136,7 @@ public sealed class Plugin : IDalamudPlugin
 			pluginLog);
 		engage = new EngageTargetHelper(
 			objectTable,
+			partyList,
 			targetManager,
 			dataManager,
 			pluginLog,

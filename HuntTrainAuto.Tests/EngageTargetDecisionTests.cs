@@ -38,6 +38,45 @@ public sealed class EngageTargetDecisionTests
 	}
 
 	[Fact]
+	public void Resolve_prefers_conductor_over_party_fight()
+	{
+		var candidates = new List<EngageMobCandidate>
+		{
+			Mob(0, party: true, dist: 5f),
+			Mob(1, conductor: true, dist: 40f),
+		};
+		var pick = EngageTargetDecision.Resolve(candidates, 50f);
+		Assert.Equal(EngageTargetKind.ConductorFight, pick.Kind);
+		Assert.Equal(1, pick.Index);
+	}
+
+	[Fact]
+	public void Resolve_party_fight_before_a_rank()
+	{
+		var candidates = new List<EngageMobCandidate>
+		{
+			Mob(0, isA: true, dist: 5f),
+			Mob(1, party: true, dist: 20f),
+		};
+		var pick = EngageTargetDecision.Resolve(candidates, 50f);
+		Assert.Equal(EngageTargetKind.PartyFight, pick.Kind);
+		Assert.Equal(1, pick.Index);
+	}
+
+	[Fact]
+	public void Resolve_nearest_party_fight_mob()
+	{
+		var candidates = new List<EngageMobCandidate>
+		{
+			Mob(0, party: true, dist: 30f),
+			Mob(1, party: true, dist: 12f),
+		};
+		var pick = EngageTargetDecision.Resolve(candidates, 50f);
+		Assert.Equal(EngageTargetKind.PartyFight, pick.Kind);
+		Assert.Equal(1, pick.Index);
+	}
+
+	[Fact]
 	public void Resolve_nearest_a_rank_in_range()
 	{
 		var candidates = new List<EngageMobCandidate>
@@ -58,6 +97,7 @@ public sealed class EngageTargetDecisionTests
 		{
 			Mob(0, isA: true, dist: 5f, alive: false),
 			Mob(1, conductor: true, dist: 8f, alive: false),
+			Mob(2, party: true, dist: 6f, alive: false),
 		};
 		Assert.False(EngageTargetDecision.Resolve(candidates, 50f).Found);
 	}
@@ -99,6 +139,7 @@ public sealed class EngageTargetDecisionTests
 	private static EngageMobCandidate Mob(
 		int index,
 		bool conductor = false,
+		bool party = false,
 		bool isA = false,
 		float dist = 0f,
 		bool alive = true)
@@ -106,6 +147,7 @@ public sealed class EngageTargetDecisionTests
 		{
 			Index = index,
 			IsConductorFightTarget = conductor,
+			IsPartyFightTarget = party,
 			IsARank = isA,
 			Distance = dist,
 			IsAlive = alive,

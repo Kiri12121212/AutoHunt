@@ -12,12 +12,13 @@ using Lumina.Excel.Sheets;
 namespace HuntTrainAuto;
 
 /// <summary>
-/// After flag unmount: join conductor's fight, else engage nearest A-rank.
+/// After flag unmount: join conductor's fight, else a party ally's fight, else nearest A-rank.
 /// Does <b>not</b> follow players. Soft-fails; never throws to Framework.
 /// </summary>
 public sealed class EngageTargetHelper
 {
 	private readonly IObjectTable objectTable;
+	private readonly IPartyList partyList;
 	private readonly ITargetManager targetManager;
 	private readonly IDataManager dataManager;
 	private readonly IPluginLog pluginLog;
@@ -34,6 +35,7 @@ public sealed class EngageTargetHelper
 
 	public EngageTargetHelper(
 		IObjectTable objectTable,
+		IPartyList partyList,
 		ITargetManager targetManager,
 		IDataManager dataManager,
 		IPluginLog pluginLog,
@@ -42,6 +44,7 @@ public sealed class EngageTargetHelper
 		Func<float> getARankScanRange)
 	{
 		this.objectTable = objectTable;
+		this.partyList = partyList;
 		this.targetManager = targetManager;
 		this.dataManager = dataManager;
 		this.pluginLog = pluginLog;
@@ -198,6 +201,7 @@ public sealed class EngageTargetHelper
 		var playerPos = player.Position;
 		var aIds = aRankIds ?? [];
 		IGameObject? conductorFightTarget = null;
+		var partyFightTargets = new HashSet<uint>();
 
 		foreach (var obj in objectTable)
 		{
@@ -220,6 +224,8 @@ public sealed class EngageTargetHelper
 			}
 		}
 
+		CollectPartyFightTargetIds(player.EntityId, partyFightTargets);
+
 		foreach (var obj in objectTable)
 		{
 			if (obj is not IBattleNpc)
@@ -234,12 +240,14 @@ public sealed class EngageTargetHelper
 			var nameId = obj is ICharacter ch ? ch.NameId : 0u;
 			var baseId = obj.BaseId;
 			var isA = ARankHuntIndex.IsARank(aIds, nameId, baseId);
+			var entityId = TryEntityId(obj);
 			var isConductorPull = conductorFightTarget != null
-				&& TryEntityId(obj) is { } id
-				&& TryEntityId(conductorFightTarget) == id;
+				&& entityId != null
+				&& TryEntityId(conductorFightTarget) == entityId;
+			var isPartyPull = entityId != null && partyFightTargets.Contains(entityId.Value);
 
-			// Only track conductor-fight target and A-ranks (ignore S/B/trash).
-			if (!isConductorPull && !isA)
+			// Conductor/party fight targets and A-ranks only (ignore S/B/trash unless join fight).
+			if (!isConductorPull && !isPartyPull && !isA)
 				continue;
 
 			var index = candidateObjects.Count;
@@ -248,10 +256,56 @@ public sealed class EngageTargetHelper
 			{
 				Index = index,
 				IsConductorFightTarget = isConductorPull,
+				IsPartyFightTarget = isPartyPull,
 				IsARank = isA,
 				Distance = Vector3.Distance(playerPos, obj.Position),
 				IsAlive = true,
 			});
+		}
+	}
+
+	/// <summary>
+	/// Party members in combat → their living BattleNpc targets (EntityIds).
+	/// Same object-table limit as conductor: ally must be loaded nearby.
+	/// </summary>
+	private void CollectPartyFightTargetIds(uint localEntityId, HashSet<uint> into)
+	{
+		try
+		{
+			for (var i = 0; i < partyList.Length; i++)
+			{
+				var member = partyList[i];
+				if (member == null)
+					continue;
+
+				IGameObject? obj;
+				try
+				{
+					obj = member.GameObject;
+				}
+				catch
+				{
+					continue;
+				}
+
+				if (obj == null || !TryIsValid(obj))
+					continue;
+				if (TryEntityId(obj) == localEntityId)
+					continue;
+				if (obj is not ICharacter ally || !IsInCombat(ally))
+					continue;
+
+				if (TryGetLivingBattleNpc(obj.TargetObject, out var pull)
+					&& pull != null
+					&& TryEntityId(pull) is { } pullId)
+				{
+					into.Add(pullId);
+				}
+			}
+		}
+		catch
+		{
+			// soft-fail: empty party fight set
 		}
 	}
 
