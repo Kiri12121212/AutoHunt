@@ -27,6 +27,14 @@ public sealed class ConfigWindow : Window, IDisposable
 		var enabled = config.Enabled;
 		if (ImGui.Checkbox("Enabled", ref enabled))
 			config.Enabled = enabled;
+
+		var suppressChat = config.SuppressChatOtherPlayers;
+		if (ImGui.Checkbox("Suppress chat from other players", ref suppressChat))
+			config.SuppressChatOtherPlayers = suppressChat;
+
+		var contextMenu = config.ContextMenu;
+		if (ImGui.Checkbox("Context menu", ref contextMenu))
+			config.ContextMenu = contextMenu;
 	}
 
 	public void Dispose()
