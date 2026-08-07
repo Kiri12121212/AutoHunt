@@ -33,6 +33,10 @@ public sealed class Plugin : IDalamudPlugin
 	private readonly FlagWorldHelper flagWorld;
 	private readonly FlagArrivalHelper flagArrival;
 	private readonly UnmountRunner unmount;
+	private readonly MovementHelper movement;
+	private readonly EngageTargetHelper engage;
+	private readonly FollowHelper follow;
+	private readonly CombatTransitionHelper combat;
 
 	private HuntFlag? activeHuntFlag;
 	private long teleportNextAllowedMs;
@@ -47,6 +51,15 @@ public sealed class Plugin : IDalamudPlugin
 
 	/// <summary>vnavmesh IPC; pathfind/move owned by phase 4B+.</summary>
 	public VNavmeshIpc VNavmeshIpc { get; }
+
+	/// <summary>
+	/// Combat/follow phase latch (TASKS 5.8–5.9). Phase 6 observes
+	/// <see cref="CombatSession.InCombatPhase"/> — no RSR calls here.
+	/// </summary>
+	public CombatSession CombatSession => combat.Session;
+
+	/// <summary>True while party-engage combat phase is active (Phase 6 signal).</summary>
+	public bool InCombatPhase => combat.InCombatPhase;
 
 	/// <summary>Active Framework teleport plan (HTA <c>TeleportTo</c>).</summary>
 	public TeleportPlan TeleportPlan => teleportPlan;
@@ -64,6 +77,7 @@ public sealed class Plugin : IDalamudPlugin
 		IGameGui gameGui,
 		IFramework framework,
 		ICondition condition,
+		IPartyList partyList,
 		IPluginLog pluginLog)
 	{
 		this.pluginInterface = pluginInterface;
@@ -74,6 +88,8 @@ public sealed class Plugin : IDalamudPlugin
 		this.condition = condition;
 		this.pluginLog = pluginLog;
 		Config = pluginInterface.GetPluginConfig() as Configuration ?? new Configuration();
+		Config.EngageRange = CombatDecision.ClampEngageRange(Config.EngageRange);
+		Config.ARankScanRange = EngageTargetDecision.ClampARankScanRange(Config.ARankScanRange);
 
 		windowSystem = new WindowSystem(typeof(Plugin).Assembly.GetName()?.Name ?? "HuntTrainAuto");
 		configWindow = new ConfigWindow(Config, () => pluginInterface.SavePluginConfig(Config));
@@ -111,6 +127,34 @@ public sealed class Plugin : IDalamudPlugin
 			pluginLog,
 			() => teleportPlan.Active != null,
 			() => instanceChange.IsActive);
+		movement = new MovementHelper(
+			VNavmeshIpc,
+			objectTable,
+			dataManager,
+			condition,
+			clientState,
+			pluginLog);
+		engage = new EngageTargetHelper(
+			objectTable,
+			partyList,
+			targetManager,
+			dataManager,
+			pluginLog,
+			movement,
+			() => Config.EngageRange,
+			() => Config.ARankScanRange);
+		// Retained for CombatTransitionHelper Clear API only — party follow is disabled.
+		follow = new FollowHelper(
+			VNavmeshIpc,
+			objectTable,
+			pluginLog,
+			() => Config.PartyFollowDistance);
+		combat = new CombatTransitionHelper(
+			objectTable,
+			partyList,
+			condition,
+			pluginLog,
+			() => Config.EngageRange);
 		mapManager = new MapManager(dataManager, msg => pluginLog.Warning(msg));
 
 		chatMessageHandler = new ChatMessageHandler(chatGui, gameGui, Config);
@@ -146,6 +190,8 @@ public sealed class Plugin : IDalamudPlugin
 		mount.Clear();
 		flagArrival.Clear();
 		unmount.ClearAll();
+		engage.Clear();
+		combat.Clear();
 		if (!teleportPlan.TryAdoptFromIntent(chatMessageHandler.TeleportIntent))
 		{
 			// Same-zone close enough: no TP — still mount before later nav (HTA mount-on-ready).
@@ -193,6 +239,8 @@ public sealed class Plugin : IDalamudPlugin
 		activeHuntFlag = null;
 		flagArrival.Clear();
 		unmount.ClearAll();
+		engage.Clear();
+		combat.Clear();
 		ConductorList.Clear(Config.Conductors);
 		pluginInterface.SavePluginConfig(Config);
 	}
@@ -261,12 +309,42 @@ public sealed class Plugin : IDalamudPlugin
 		{
 			mount.Clear();
 			unmount.ClearAll();
+			engage.Clear();
+			combat.Clear();
 			return;
 		}
 
 		// Arrival/unmount before mount.Tick so AlreadyClose mount jobs are cleared before they remount.
 		TickFlagArrivalAndUnmount();
 		mount.Tick(Config.Mount);
+		// After unmount: join conductor fight or path to nearby A-rank (never follow players).
+		var playerDead = IsLocalPlayerDead();
+		if (unmount.ReadyForGroundFollow && !playerDead)
+		{
+			engage.Tick(
+				combat.Session,
+				Config.Conductors,
+				pluginEnabled: true,
+				playerDead: false);
+		}
+
+		// Death / combat-end / master-off cleanup (enter combat is owned by EngageTargetHelper).
+		combat.Tick(follow, pluginEnabled: true);
+	}
+
+	private bool IsLocalPlayerDead()
+	{
+		try
+		{
+			if (condition[ConditionFlag.Unconscious])
+				return true;
+			var player = objectTable.LocalPlayer;
+			return player is { CurrentHp: <= 0 };
+		}
+		catch
+		{
+			return false;
+		}
 	}
 
 	/// <summary>
@@ -393,6 +471,9 @@ public sealed class Plugin : IDalamudPlugin
 		activeHuntFlag = null;
 		flagArrival.Clear();
 		unmount.ClearAll();
+		engage.Clear();
+		follow.Clear();
+		combat.Clear();
 		chatMessageHandler.Dispose();
 		VNavmeshIpc.Dispose();
 		LifestreamIpc.Dispose();

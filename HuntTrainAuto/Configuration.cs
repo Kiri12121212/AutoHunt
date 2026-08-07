@@ -69,6 +69,25 @@ public sealed class Configuration : IPluginConfiguration
 	/// </summary>
 	public bool AutoUnmountAtFlag { get; set; } = true;
 
-	public float PartyFollowDistance { get; set; } = 3f;
+	/// <summary>
+	/// Party-stack follow distance (yalms). Default <see cref="FollowDecision.DefaultFollowDistance"/>.
+	/// Effective value is clamped to
+	/// [<see cref="FollowDecision.MinFollowDistance"/>, <see cref="FollowDecision.MaxFollowDistance"/>].
+	/// </summary>
+	public float PartyFollowDistance { get; set; } = FollowDecision.DefaultFollowDistance;
 	public bool FollowConductorFirst { get; set; } = true;
+
+	/// <summary>
+	/// Scan radius (yalms) for nearby A-rank NotoriousMonsters after unmount.
+	/// Conductor-fight join ignores this and uses the conductor's target.
+	/// </summary>
+	public float ARankScanRange { get; set; } = EngageTargetDecision.DefaultARankScanRange;
+
+	/// <summary>
+	/// Max distance (yalms) to engage target before entering combat phase.
+	/// Default <see cref="CombatDecision.DefaultEngageRange"/>.
+	/// Clamped to
+	/// [<see cref="CombatDecision.MinEngageRange"/>, <see cref="CombatDecision.MaxEngageRange"/>].
+	/// </summary>
+	public float EngageRange { get; set; } = CombatDecision.DefaultEngageRange;
 }

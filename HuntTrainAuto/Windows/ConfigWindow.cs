@@ -49,6 +49,32 @@ public sealed class ConfigWindow : Window, IDisposable
 		if (ImGui.Checkbox("Skip duplicate flags (same zone, ≤10)", ref noDuplicateFlags))
 			config.NoDuplicateFlags = noDuplicateFlags;
 
+		var aRankScan = config.ARankScanRange;
+		ImGui.SetNextItemWidth(200f);
+		if (ImGui.SliderFloat(
+			    "A-rank scan range (yalms)",
+			    ref aRankScan,
+			    EngageTargetDecision.MinARankScanRange,
+			    EngageTargetDecision.MaxARankScanRange,
+			    "%.0f"))
+		{
+			config.ARankScanRange = EngageTargetDecision.ClampARankScanRange(aRankScan);
+			saveConfig();
+		}
+
+		var engageRange = config.EngageRange;
+		ImGui.SetNextItemWidth(200f);
+		if (ImGui.SliderFloat(
+			    "Engage range (yalms)",
+			    ref engageRange,
+			    CombatDecision.MinEngageRange,
+			    CombatDecision.MaxEngageRange,
+			    "%.0f"))
+		{
+			config.EngageRange = CombatDecision.ClampEngageRange(engageRange);
+			saveConfig();
+		}
+
 		ImGui.Spacing();
 		ImGui.Separator();
 		ImGui.Spacing();
