@@ -41,6 +41,14 @@ public sealed class ConfigWindow : Window, IDisposable
 		if (ImGui.Checkbox("Context menu", ref contextMenu))
 			config.ContextMenu = contextMenu;
 
+		var autoOpenMap = config.AutoOpenMap;
+		if (ImGui.Checkbox("Auto-open map on conductor flag", ref autoOpenMap))
+			config.AutoOpenMap = autoOpenMap;
+
+		var noDuplicateFlags = config.NoDuplicateFlags;
+		if (ImGui.Checkbox("Skip duplicate flags (same zone, ≤10)", ref noDuplicateFlags))
+			config.NoDuplicateFlags = noDuplicateFlags;
+
 		ImGui.Spacing();
 		ImGui.Separator();
 		ImGui.Spacing();
