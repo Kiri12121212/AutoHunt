@@ -21,6 +21,7 @@ public sealed class FollowHelper
 
 	private IGameObject? followTarget;
 	private float followDistance;
+	private bool followDistanceOverride;
 	private bool enabled;
 	private long nextUpdateMs;
 
@@ -65,7 +66,8 @@ public sealed class FollowHelper
 
 	/// <summary>
 	/// AD <c>SetFollow</c>: non-null enables; null disables.
-	/// <paramref name="distance"/> ≤ 0 keeps current / default distance.
+	/// <paramref name="distance"/> ≤ 0 keeps config-backed distance (live-refreshed).
+	/// <paramref name="distance"/> &gt; 0 sets an override until Clear or another SetFollowDistance.
 	/// Target swap invalidates any active path for the previous target.
 	/// </summary>
 	public void SetFollow(IGameObject? gameObject, float distance = 0f)
@@ -75,12 +77,16 @@ public sealed class FollowHelper
 			InvalidatePathIfTargetChanged(gameObject);
 			followTarget = gameObject;
 			if (distance > 0f)
+			{
 				followDistance = FollowDecision.ResolveFollowDistance(distance, getDefaultFollowDistance());
+				followDistanceOverride = true;
+			}
 			Enabled = true;
 		}
 		else
 		{
 			followTarget = null;
+			followDistanceOverride = false;
 			Enabled = false;
 		}
 	}
@@ -95,9 +101,15 @@ public sealed class FollowHelper
 		followTarget = gameObject;
 	}
 
-	/// <summary>AD <c>SetFollowDistance</c>.</summary>
+	/// <summary>
+	/// AD <c>SetFollowDistance</c> — sticky override until Clear / SetFollow(null).
+	/// Config live-refresh is skipped while override is active.
+	/// </summary>
 	public void SetFollowDistance(float distance)
-		=> followDistance = FollowDecision.ResolveFollowDistance(distance, getDefaultFollowDistance());
+	{
+		followDistance = FollowDecision.ResolveFollowDistance(distance, getDefaultFollowDistance());
+		followDistanceOverride = true;
+	}
 
 	/// <summary>Disable follow and stop path (new flag / leave territory / dispose).</summary>
 	public void Clear() => Stop();
@@ -106,6 +118,7 @@ public sealed class FollowHelper
 	public void Stop()
 	{
 		followTarget = null;
+		followDistanceOverride = false;
 		Enabled = false;
 	}
 
@@ -148,6 +161,10 @@ public sealed class FollowHelper
 
 		if (!FollowDecision.TryFireUpdate(ref nextUpdateMs, now))
 			return;
+
+		// Live Config.PartyFollowDistance unless SetFollowDistance / SetFollow(distance>0) override.
+		if (!followDistanceOverride)
+			followDistance = FollowDecision.ClampFollowDistance(getDefaultFollowDistance());
 
 		var distance = FollowDecision.Distance(player!.Position, targetPos);
 		var decision = FollowDecision.DecideFollowTick(

@@ -77,6 +77,7 @@ public sealed class Plugin : IDalamudPlugin
 		this.condition = condition;
 		this.pluginLog = pluginLog;
 		Config = pluginInterface.GetPluginConfig() as Configuration ?? new Configuration();
+		Config.PartyFollowDistance = FollowDecision.ClampFollowDistance(Config.PartyFollowDistance);
 
 		windowSystem = new WindowSystem(typeof(Plugin).Assembly.GetName()?.Name ?? "HuntTrainAuto");
 		configWindow = new ConfigWindow(Config, () => pluginInterface.SavePluginConfig(Config));

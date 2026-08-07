@@ -10,7 +10,7 @@ public enum FollowTickKind
 	/// <summary>Soft-wait: missing player/target, throttle, plugin off, or vnavmesh absent.</summary>
 	Wait,
 
-	/// <summary>Within follow distance — no repath (AD does nothing when close).</summary>
+	/// <summary>Within follow distance — stop path, no repath (TASKS 5.6).</summary>
 	IdleWithinRange,
 
 	/// <summary>Distance ≥ follow distance — <c>Path.Stop</c> then <c>Path.MoveTo</c> (ground).</summary>
@@ -47,17 +47,42 @@ public static class FollowDecision
 	/// </summary>
 	public const float DefaultFollowDistance = 3f;
 
+	/// <summary>Minimum configurable / effective party follow distance (yalms).</summary>
+	public const float MinFollowDistance = 0.5f;
+
+	/// <summary>Maximum configurable / effective party follow distance (yalms).</summary>
+	public const float MaxFollowDistance = 15f;
+
 	/// <summary>Party-stack follow is always ground (<c>canFly: false</c>).</summary>
 	public const bool PreferCanFly = false;
 
 	/// <summary>
-	/// Resolve configured distance: ≤ 0 → <paramref name="defaultDistance"/> (clamped ≥ 0).
+	/// Clamp to [<see cref="MinFollowDistance"/>, <see cref="MaxFollowDistance"/>].
+	/// NaN / Infinity → <see cref="DefaultFollowDistance"/>.
+	/// </summary>
+	public static float ClampFollowDistance(float distance)
+	{
+		if (float.IsNaN(distance) || float.IsInfinity(distance))
+			return DefaultFollowDistance;
+		if (distance < MinFollowDistance)
+			return MinFollowDistance;
+		if (distance > MaxFollowDistance)
+			return MaxFollowDistance;
+		return distance;
+	}
+
+	/// <summary>
+	/// Resolve configured distance: ≤ 0 → <paramref name="defaultDistance"/>, then
+	/// <see cref="ClampFollowDistance"/>.
 	/// </summary>
 	public static float ResolveFollowDistance(float requested, float defaultDistance = DefaultFollowDistance)
 	{
+		float raw;
 		if (requested > 0f)
-			return requested;
-		return defaultDistance > 0f ? defaultDistance : DefaultFollowDistance;
+			raw = requested;
+		else
+			raw = defaultDistance > 0f ? defaultDistance : DefaultFollowDistance;
+		return ClampFollowDistance(raw);
 	}
 
 	/// <summary>AD: repath when distance to target ≥ follow distance.</summary>
@@ -148,7 +173,7 @@ public static class FollowDecision
 			return new FollowTickResult
 			{
 				Kind = FollowTickKind.IdleWithinRange,
-				StopPath = false,
+				StopPath = true,
 				MoveToTarget = false,
 			};
 		}

@@ -12,12 +12,38 @@ public sealed class FollowDecisionTests
 	[InlineData(5f, 3f, 5f)]
 	[InlineData(0f, 0f, FollowDecision.DefaultFollowDistance)]
 	[InlineData(0f, -2f, FollowDecision.DefaultFollowDistance)]
+	[InlineData(100f, 3f, FollowDecision.MaxFollowDistance)]
+	[InlineData(0.1f, 3f, FollowDecision.MinFollowDistance)]
 	public void ResolveFollowDistance(float requested, float defaultDistance, float expected)
 		=> Assert.Equal(expected, FollowDecision.ResolveFollowDistance(requested, defaultDistance));
 
 	[Fact]
 	public void DefaultFollowDistance_matches_config_default()
 		=> Assert.Equal(3f, FollowDecision.DefaultFollowDistance);
+
+	[Theory]
+	[InlineData(3f, 3f)]
+	[InlineData(0.5f, FollowDecision.MinFollowDistance)]
+	[InlineData(15f, FollowDecision.MaxFollowDistance)]
+	[InlineData(0.1f, FollowDecision.MinFollowDistance)]
+	[InlineData(0f, FollowDecision.MinFollowDistance)]
+	[InlineData(-5f, FollowDecision.MinFollowDistance)]
+	[InlineData(20f, FollowDecision.MaxFollowDistance)]
+	[InlineData(float.NaN, FollowDecision.DefaultFollowDistance)]
+	[InlineData(float.PositiveInfinity, FollowDecision.DefaultFollowDistance)]
+	[InlineData(float.NegativeInfinity, FollowDecision.DefaultFollowDistance)]
+	public void ClampFollowDistance(float input, float expected)
+		=> Assert.Equal(expected, FollowDecision.ClampFollowDistance(input));
+
+	[Fact]
+	public void FollowDistance_bounds_are_documented()
+	{
+		Assert.Equal(0.5f, FollowDecision.MinFollowDistance);
+		Assert.Equal(15f, FollowDecision.MaxFollowDistance);
+		Assert.True(FollowDecision.MinFollowDistance > 0f);
+		Assert.True(FollowDecision.DefaultFollowDistance >= FollowDecision.MinFollowDistance);
+		Assert.True(FollowDecision.DefaultFollowDistance <= FollowDecision.MaxFollowDistance);
+	}
 
 	[Fact]
 	public void PreferCanFly_is_false()
@@ -127,7 +153,17 @@ public sealed class FollowDecisionTests
 	{
 		var r = Decide(distance: 2.5f, followDistance: 3f);
 		Assert.Equal(FollowTickKind.IdleWithinRange, r.Kind);
-		Assert.False(r.StopPath);
+		Assert.True(r.StopPath);
+		Assert.False(r.MoveToTarget);
+	}
+
+	[Fact]
+	public void DecideFollowTick_within_range_stops_path()
+	{
+		// TASKS 5.6 / 5.3: distance < follow distance → stop active path
+		var r = Decide(distance: 1f, followDistance: 3f);
+		Assert.Equal(FollowTickKind.IdleWithinRange, r.Kind);
+		Assert.True(r.StopPath);
 		Assert.False(r.MoveToTarget);
 	}
 

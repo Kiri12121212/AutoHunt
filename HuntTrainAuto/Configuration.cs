@@ -69,6 +69,11 @@ public sealed class Configuration : IPluginConfiguration
 	/// </summary>
 	public bool AutoUnmountAtFlag { get; set; } = true;
 
-	public float PartyFollowDistance { get; set; } = 3f;
+	/// <summary>
+	/// Party-stack follow distance (yalms). Default <see cref="FollowDecision.DefaultFollowDistance"/>.
+	/// Effective value is clamped to
+	/// [<see cref="FollowDecision.MinFollowDistance"/>, <see cref="FollowDecision.MaxFollowDistance"/>].
+	/// </summary>
+	public float PartyFollowDistance { get; set; } = FollowDecision.DefaultFollowDistance;
 	public bool FollowConductorFirst { get; set; } = true;
 }
