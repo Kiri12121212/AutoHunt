@@ -56,5 +56,11 @@
 		<Compile Include="..\HuntTrainAuto\Combat\RsrSettingsDecision.cs" Link="Combat\RsrSettingsDecision.cs" />
 		<Compile Include="..\HuntTrainAuto\Combat\RsrEnableDecision.cs" Link="Combat\RsrEnableDecision.cs" />
 		<Compile Include="..\HuntTrainAuto\Combat\RsrStopDecision.cs" Link="Combat\RsrStopDecision.cs" />
+		<Compile Include="..\HuntTrainAuto\State\HuntTrainTransition.cs" Link="State\HuntTrainTransition.cs" />
+		<Compile Include="..\HuntTrainAuto\State\HuntTrainController.cs" Link="State\HuntTrainController.cs" />
+		<Compile Include="..\HuntTrainAuto\State\HuntTrainObserve.cs" Link="State\HuntTrainObserve.cs" />
+		<Compile Include="..\HuntTrainAuto\State\TerritoryCleanupDecision.cs" Link="State\TerritoryCleanupDecision.cs" />
+		<Compile Include="..\HuntTrainAuto\State\FlagRestartDecision.cs" Link="State\FlagRestartDecision.cs" />
+		<Compile Include="..\HuntTrainAuto\Windows\DependencyAvailability.cs" Link="Windows\DependencyAvailability.cs" />
 	</ItemGroup>
 </Project>

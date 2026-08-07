@@ -1,0 +1,136 @@
+#nullable enable
+
+namespace HuntTrainAuto.State;
+
+/// <summary>
+/// Territory-change cleanup mode (TASKS 7.3).
+/// Distinguishes intentional TP arrival into hunting territory from leave / non-hunting.
+/// </summary>
+public enum TerritoryCleanupKind
+{
+	/// <summary>
+	/// Still in a hunting territory with no active TP plan — no territory-driven abort.
+	/// </summary>
+	StayHuntingNoop = 0,
+
+	/// <summary>
+	/// Active teleport plan cleared into a hunting territory: instance-change + mount handoff.
+	/// Clears engage/combat/RSR/follow/path latches; does not reset the train controller or clear conductors/flag.
+	/// </summary>
+	TpArrivalHandoff,
+
+	/// <summary>
+	/// Arrived in a non-hunting territory (left hunt zone or TP landed wrong): full pipeline abort.
+	/// </summary>
+	LeaveHuntingFull,
+}
+
+/// <summary>
+/// Flags describing which pipeline pieces Plugin should touch for a territory change.
+/// Pure data — no IPC / Dalamud. Soft-fail wiring lives in Plugin.
+/// </summary>
+public readonly struct TerritoryCleanupPlan
+{
+	public required TerritoryCleanupKind Kind { get; init; }
+
+	/// <summary>Clear <c>TeleportPlan</c> remnants.</summary>
+	public bool ClearTeleportPlan { get; init; }
+
+	/// <summary>
+	/// Enqueue instance change when plan instance needs it and territory matches the plan
+	/// (caller still applies <c>TeleportGate</c> + territory equality).
+	/// </summary>
+	public bool EnqueueInstanceChangeIfNeeded { get; init; }
+
+	/// <summary>Enqueue mount after TP arrival (HTA <c>TaskMount.EnqueueIfEnabled</c>).</summary>
+	public bool EnqueueMount { get; init; }
+
+	public bool ClearInstanceChange { get; init; }
+	public bool ClearMount { get; init; }
+	public bool ClearActiveHuntFlag { get; init; }
+	public bool ClearFlagArrival { get; init; }
+	public bool ClearUnmount { get; init; }
+	public bool ClearEngage { get; init; }
+	public bool ClearCombat { get; init; }
+	public bool ClearRsr { get; init; }
+	public bool ClearFollow { get; init; }
+
+	/// <summary>
+	/// Soft-stop vnavmesh path. Prefer this over forcing dismount mid-zone-load —
+	/// jobs are cleared; mount state is left to the game during load screens.
+	/// </summary>
+	public bool StopNavPath { get; init; }
+
+	public bool ClearConductors { get; init; }
+	public bool ResetTrainController { get; init; }
+	public bool SaveConfig { get; init; }
+}
+
+/// <summary>
+/// Pure leave-vs-TP-arrival decisions for <c>OnTerritoryChanged</c> (TASKS 7.3).
+/// No Dalamud types. Soft-fail: never throws.
+/// </summary>
+public static class TerritoryCleanupDecision
+{
+	/// <summary>
+	/// Decide cleanup for the new territory.
+	/// <paramref name="teleportPlanActive"/> is the plan state <b>before</b> any clear.
+	/// <paramref name="isHuntingTerritory"/> is the destination (new) territory.
+	/// </summary>
+	public static TerritoryCleanupPlan Decide(bool teleportPlanActive, bool isHuntingTerritory)
+	{
+		if (teleportPlanActive && isHuntingTerritory)
+			return TpArrivalHandoff();
+
+		if (!isHuntingTerritory)
+			return LeaveHuntingFull();
+
+		return StayHuntingNoop();
+	}
+
+	public static TerritoryCleanupPlan StayHuntingNoop()
+		=> new()
+		{
+			Kind = TerritoryCleanupKind.StayHuntingNoop,
+		};
+
+	public static TerritoryCleanupPlan TpArrivalHandoff()
+		=> new()
+		{
+			Kind = TerritoryCleanupKind.TpArrivalHandoff,
+			ClearTeleportPlan = true,
+			EnqueueInstanceChangeIfNeeded = true,
+			EnqueueMount = true,
+			// Path may still be running from the previous zone; stop without aborting handoff.
+			StopNavPath = true,
+			ClearFollow = true,
+			ClearEngage = true,
+			ClearCombat = true,
+			ClearRsr = true,
+			ClearFlagArrival = true,
+			ClearUnmount = true,
+			// Mount / instance are the handoff — do not clear them after enqueue.
+			// Train stays in Teleport until Framework sees plan cleared → Mount.
+		};
+
+	public static TerritoryCleanupPlan LeaveHuntingFull()
+		=> new()
+		{
+			Kind = TerritoryCleanupKind.LeaveHuntingFull,
+			ClearTeleportPlan = true,
+			ClearInstanceChange = true,
+			ClearMount = true,
+			ClearActiveHuntFlag = true,
+			ClearFlagArrival = true,
+			ClearUnmount = true,
+			ClearEngage = true,
+			ClearCombat = true,
+			ClearRsr = true,
+			ClearFollow = true,
+			// Dismount-safe: stop path + clear jobs; do not force dismount mid-load.
+			StopNavPath = true,
+			ClearConductors = true,
+			ResetTrainController = true,
+			SaveConfig = true,
+		};
+}

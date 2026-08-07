@@ -1,3 +1,4 @@
+#nullable enable
 using System;
 using System.Numerics;
 using Dalamud.Bindings.ImGui;
@@ -7,18 +8,35 @@ namespace HuntTrainAuto.Windows;
 
 public sealed class ConfigWindow : Window, IDisposable
 {
+	private static readonly Vector4 AvailableColor = new(0.45f, 0.85f, 0.45f, 1f);
+	private static readonly Vector4 MissingColor = new(0.95f, 0.40f, 0.40f, 1f);
+
 	private readonly Configuration config;
 	private readonly Action saveConfig;
+	private readonly Func<bool> teleporterAvailable;
+	private readonly Func<bool> lifestreamAvailable;
+	private readonly Func<bool> vnavmeshAvailable;
+	private readonly Func<bool> rsrAvailable;
 	private string conductorInput = string.Empty;
 	private int selectedConductor;
 
-	public ConfigWindow(Configuration config, Action saveConfig) : base("HuntTrainAuto")
+	public ConfigWindow(
+		Configuration config,
+		Action saveConfig,
+		Func<bool> teleporterAvailable,
+		Func<bool> lifestreamAvailable,
+		Func<bool> vnavmeshAvailable,
+		Func<bool> rsrAvailable) : base("HuntTrainAuto")
 	{
 		this.config = config;
 		this.saveConfig = saveConfig;
+		this.teleporterAvailable = teleporterAvailable;
+		this.lifestreamAvailable = lifestreamAvailable;
+		this.vnavmeshAvailable = vnavmeshAvailable;
+		this.rsrAvailable = rsrAvailable;
 		SizeConstraints = new WindowSizeConstraints
 		{
-			MinimumSize = new Vector2(400, 280),
+			MinimumSize = new Vector2(400, 340),
 			MaximumSize = new Vector2(800, 600),
 		};
 	}
@@ -27,6 +45,8 @@ public sealed class ConfigWindow : Window, IDisposable
 	{
 		ImGui.TextWrapped("Vanilla Dalamud scaffold — no ECommons or NightmareUI.");
 		ImGui.Text($"Conductors: {config.Conductors.Count}");
+		ImGui.Spacing();
+		DrawDependencyIndicators();
 		ImGui.Spacing();
 
 		var enabled = config.Enabled;
@@ -121,6 +141,22 @@ public sealed class ConfigWindow : Window, IDisposable
 				saveConfig();
 			}
 		}
+	}
+
+	private void DrawDependencyIndicators()
+	{
+		ImGui.Text("Dependencies:");
+		DrawDependencyLine(DependencyAvailability.VnavmeshDisplayName, vnavmeshAvailable);
+		DrawDependencyLine(DependencyAvailability.RsrDisplayName, rsrAvailable);
+		DrawDependencyLine(DependencyAvailability.TeleporterDisplayName, teleporterAvailable);
+		DrawDependencyLine(DependencyAvailability.LifestreamDisplayName, lifestreamAvailable);
+	}
+
+	private static void DrawDependencyLine(string displayName, Func<bool> probe)
+	{
+		var available = DependencyAvailability.SafeIsAvailable(probe);
+		var color = available ? AvailableColor : MissingColor;
+		ImGui.TextColored(color, DependencyAvailability.FormatLine(displayName, available));
 	}
 
 	private void DrawRsrHostileCombo()
