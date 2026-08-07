@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: 'Tag to build and publish (e.g. v0.0.0.1)'
+        description: 'Tag to build and publish (e.g. v0.1.0)'
         required: true
         default: 'v0.1.0'
 
@@ -53,10 +53,19 @@ jobs:
             $libPath += [IO.Path]::DirectorySeparatorChar
           }
           Write-Host "DalamudLibPath=$libPath"
+          "DALAMUD_HOME=$libPath" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
           "DalamudLibPath=$libPath" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
 
       - name: Build
-        run: dotnet build HuntTrainAuto/HuntTrainAuto.csproj -c Release -p:Platform=x64 --no-incremental
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if (-not $env:DalamudLibPath) { throw "DalamudLibPath env is empty." }
+          if (-not (Test-Path (Join-Path $env:DalamudLibPath 'Dalamud.dll'))) {
+            throw "Dalamud.dll missing under $($env:DalamudLibPath)"
+          }
+          dotnet build HuntTrainAuto/HuntTrainAuto.csproj -c Release -p:Platform=x64 "-p:DalamudLibPath=$($env:DalamudLibPath)" --no-incremental
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Package as HuntTrainAuto.zip
         shell: pwsh
