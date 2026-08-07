@@ -108,4 +108,13 @@ public sealed class Configuration : IPluginConfiguration
 	/// Clamped via <see cref="RsrSettingsDecision.ClampTargetingType"/>.
 	/// </summary>
 	public RsrTargetingType RsrTargetingNonTank { get; set; } = RsrSettingsDecision.DefaultNonTankTargeting;
+
+	/// <summary>Dalamud toast when a conductor hunt flag is received (TASKS 9.1).</summary>
+	public bool EnableNotifications { get; set; } = true;
+
+	/// <summary>Optional UI sound cue on conductor flag (TASKS 9.1).</summary>
+	public bool EnableNotificationSound { get; set; } = false;
+
+	/// <summary>Record phase / follow / mount edges into the Debug tab ring buffer (TASKS 9.2).</summary>
+	public bool EnableDebugLogging { get; set; } = true;
 }

@@ -14,6 +14,7 @@ public static class ConfigTabs
 	public const int Follow = 3;
 	public const int Combat = 4;
 	public const int Integrations = 5;
+	public const int Debug = 6;
 
 	public static readonly string[] Labels =
 	[
@@ -23,6 +24,7 @@ public static class ConfigTabs
 		"Follow",
 		"Combat",
 		"Integrations",
+		"Debug",
 	];
 
 	public const string HuntAlertsDisplayName = "HuntAlerts";
