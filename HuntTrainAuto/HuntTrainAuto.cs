@@ -33,6 +33,7 @@ public sealed class Plugin : IDalamudPlugin
 	private readonly FlagWorldHelper flagWorld;
 	private readonly FlagArrivalHelper flagArrival;
 	private readonly UnmountRunner unmount;
+	private readonly FollowHelper follow;
 
 	private HuntFlag? activeHuntFlag;
 	private long teleportNextAllowedMs;
@@ -111,6 +112,11 @@ public sealed class Plugin : IDalamudPlugin
 			pluginLog,
 			() => teleportPlan.Active != null,
 			() => instanceChange.IsActive);
+		follow = new FollowHelper(
+			VNavmeshIpc,
+			objectTable,
+			pluginLog,
+			() => Config.PartyFollowDistance);
 		mapManager = new MapManager(dataManager, msg => pluginLog.Warning(msg));
 
 		chatMessageHandler = new ChatMessageHandler(chatGui, gameGui, Config);
@@ -146,6 +152,7 @@ public sealed class Plugin : IDalamudPlugin
 		mount.Clear();
 		flagArrival.Clear();
 		unmount.ClearAll();
+		follow.Clear();
 		if (!teleportPlan.TryAdoptFromIntent(chatMessageHandler.TeleportIntent))
 		{
 			// Same-zone close enough: no TP — still mount before later nav (HTA mount-on-ready).
@@ -193,6 +200,7 @@ public sealed class Plugin : IDalamudPlugin
 		activeHuntFlag = null;
 		flagArrival.Clear();
 		unmount.ClearAll();
+		follow.Clear();
 		ConductorList.Clear(Config.Conductors);
 		pluginInterface.SavePluginConfig(Config);
 	}
@@ -261,12 +269,15 @@ public sealed class Plugin : IDalamudPlugin
 		{
 			mount.Clear();
 			unmount.ClearAll();
+			follow.Clear();
 			return;
 		}
 
 		// Arrival/unmount before mount.Tick so AlreadyClose mount jobs are cleared before they remount.
 		TickFlagArrivalAndUnmount();
 		mount.Tick(Config.Mount);
+		// Follow target resolution is phase 5.2+; tick runs only after SetFollow enables.
+		follow.Tick(pluginEnabled: true);
 	}
 
 	/// <summary>
@@ -393,6 +404,7 @@ public sealed class Plugin : IDalamudPlugin
 		activeHuntFlag = null;
 		flagArrival.Clear();
 		unmount.ClearAll();
+		follow.Clear();
 		chatMessageHandler.Dispose();
 		VNavmeshIpc.Dispose();
 		LifestreamIpc.Dispose();
