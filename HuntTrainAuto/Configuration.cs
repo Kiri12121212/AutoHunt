@@ -90,4 +90,22 @@ public sealed class Configuration : IPluginConfiguration
 	/// [<see cref="CombatDecision.MinEngageRange"/>, <see cref="CombatDecision.MaxEngageRange"/>].
 	/// </summary>
 	public float EngageRange { get; set; } = CombatDecision.DefaultEngageRange;
+
+	/// <summary>
+	/// RSR <c>HostileType</c> setting applied on RotationAuto (AD default AllTargetsCanAttack).
+	/// Clamped via <see cref="RsrSettingsDecision.ClampHostileType"/>.
+	/// </summary>
+	public RsrTargetHostileType RsrHostileType { get; set; } = RsrSettingsDecision.DefaultHostileType;
+
+	/// <summary>
+	/// RSR targeting when local player is a tank (AD default HighHP).
+	/// Clamped via <see cref="RsrSettingsDecision.ClampTargetingType"/>.
+	/// </summary>
+	public RsrTargetingType RsrTargetingTank { get; set; } = RsrSettingsDecision.DefaultTankTargeting;
+
+	/// <summary>
+	/// RSR targeting when local player is not a tank (AD default LowHP).
+	/// Clamped via <see cref="RsrSettingsDecision.ClampTargetingType"/>.
+	/// </summary>
+	public RsrTargetingType RsrTargetingNonTank { get; set; } = RsrSettingsDecision.DefaultNonTankTargeting;
 }

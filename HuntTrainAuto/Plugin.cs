@@ -36,6 +36,7 @@ public sealed class Plugin : IDalamudPlugin
 	private readonly EngageTargetHelper engage;
 	private readonly FollowHelper follow;
 	private readonly CombatTransitionHelper combat;
+	private readonly RsrEnableHelper rsrEnable;
 
 	private HuntFlag? activeHuntFlag;
 	private long teleportNextAllowedMs;
@@ -51,13 +52,16 @@ public sealed class Plugin : IDalamudPlugin
 	/// <summary>vnavmesh IPC; pathfind/move owned by phase 4B+.</summary>
 	public IVnavmeshService VNavmeshIpc { get; }
 
+	/// <summary>Rotation Solver Reborn IPC; enable gated by phase 6.2.</summary>
+	public IRsrService RsrIpc { get; }
+
 	/// <summary>
-	/// Combat/follow phase latch (TASKS 5.8–5.9). Phase 6 observes
-	/// <see cref="CombatSession.InCombatPhase"/> — no RSR calls here.
+	/// Combat/follow phase latch (TASKS 5.8–5.9). Phase 6.2 edge-triggers
+	/// RSR from <see cref="CombatSession.InCombatPhase"/>.
 	/// </summary>
 	public CombatSession CombatSession => combat.Session;
 
-	/// <summary>True while party-engage combat phase is active (Phase 6 signal).</summary>
+	/// <summary>True while party-engage combat phase is active (RSR enable signal).</summary>
 	public bool InCombatPhase => combat.InCombatPhase;
 
 	/// <summary>Active Framework teleport plan (HTA <c>TeleportTo</c>).</summary>
@@ -89,6 +93,13 @@ public sealed class Plugin : IDalamudPlugin
 		Config = pluginInterface.GetPluginConfig() as Configuration ?? new Configuration();
 		Config.EngageRange = CombatDecision.ClampEngageRange(Config.EngageRange);
 		Config.ARankScanRange = EngageTargetDecision.ClampARankScanRange(Config.ARankScanRange);
+		Config.RsrHostileType = RsrSettingsDecision.ClampHostileType(Config.RsrHostileType);
+		Config.RsrTargetingTank = RsrSettingsDecision.ClampTargetingType(
+			Config.RsrTargetingTank,
+			RsrSettingsDecision.DefaultTankTargeting);
+		Config.RsrTargetingNonTank = RsrSettingsDecision.ClampTargetingType(
+			Config.RsrTargetingNonTank,
+			RsrSettingsDecision.DefaultNonTankTargeting);
 
 		windowSystem = new WindowSystem(typeof(Plugin).Assembly.GetName()?.Name ?? "HuntTrainAuto");
 		configWindow = new ConfigWindow(Config, () => pluginInterface.SavePluginConfig(Config));
@@ -104,6 +115,7 @@ public sealed class Plugin : IDalamudPlugin
 		TeleporterIpc = new TeleporterIpc(pluginInterface);
 		LifestreamIpc = new LifestreamIpc(pluginInterface);
 		VNavmeshIpc = new VNavmeshIpc(pluginInterface);
+		RsrIpc = new RsrIpc(pluginInterface);
 		instanceChange = new InstanceChangeRunner(
 			LifestreamIpc,
 			chat,
@@ -159,6 +171,7 @@ public sealed class Plugin : IDalamudPlugin
 			condition,
 			pluginLog,
 			() => Config.EngageRange);
+		rsrEnable = new RsrEnableHelper(RsrIpc, pluginLog, ResolveRsrRotationSettings);
 		mapManager = new MapManager(dataManager, msg => pluginLog.Warning(msg));
 
 		chatMessageHandler = new ChatMessageHandler(chatGui, gameGui, Config);
@@ -189,6 +202,7 @@ public sealed class Plugin : IDalamudPlugin
 	private void OnHuntFlagReceived(HuntFlag flag)
 	{
 		// New flag (skip or new plan) invalidates any in-flight instance change / automove / mount / unmount.
+		// RSR stop: RsrStopTrigger.FlagChange → ImmediateClear.
 		activeHuntFlag = flag;
 		instanceChange.Clear();
 		mount.Clear();
@@ -196,6 +210,7 @@ public sealed class Plugin : IDalamudPlugin
 		unmount.ClearAll();
 		engage.Clear();
 		combat.Clear();
+		rsrEnable.Clear();
 		if (!teleportPlan.TryAdoptFromIntent(chatMessageHandler.TeleportIntent))
 		{
 			// Same-zone close enough: no TP — still mount before later nav (HTA mount-on-ready).
@@ -238,6 +253,7 @@ public sealed class Plugin : IDalamudPlugin
 		if (HuntingTerritory.IsHuntingTerritory(territoryId, GetIntendedUseRowId))
 			return;
 
+		// RSR stop: RsrStopTrigger.TerritoryLeave → ImmediateClear.
 		instanceChange.Clear();
 		mount.Clear();
 		activeHuntFlag = null;
@@ -245,6 +261,7 @@ public sealed class Plugin : IDalamudPlugin
 		unmount.ClearAll();
 		engage.Clear();
 		combat.Clear();
+		rsrEnable.Clear();
 		ConductorList.Clear(Config.Conductors);
 		pluginInterface.SavePluginConfig(Config);
 	}
@@ -311,10 +328,12 @@ public sealed class Plugin : IDalamudPlugin
 		instanceChange.Tick();
 		if (!Config.Enabled)
 		{
+			// RSR stop: RsrStopTrigger.MasterOff → ImmediateClear (Tick skipped below).
 			mount.Clear();
 			unmount.ClearAll();
 			engage.Clear();
 			combat.Clear();
+			rsrEnable.Clear();
 			return;
 		}
 
@@ -332,8 +351,11 @@ public sealed class Plugin : IDalamudPlugin
 				playerDead: false);
 		}
 
-		// Death / combat-end / master-off cleanup (enter combat is owned by EngageTargetHelper).
+		// Death / mob-dead / combat-end → CombatDecision Idle (RsrStopPath.CombatPhaseTick).
+		// Enter combat is owned by EngageTargetHelper.
 		combat.Tick(follow, pluginEnabled: true);
+		// RSR start only in combat phase; Stop on phase exit (death / combat end) via DecideTick.
+		rsrEnable.Tick(combat.InCombatPhase);
 	}
 
 	private bool IsLocalPlayerDead()
@@ -349,6 +371,31 @@ public sealed class Plugin : IDalamudPlugin
 		{
 			return false;
 		}
+	}
+
+	/// <summary>
+	/// Resolve RSR targeting / HostileType from config + local ClassJob.Role (tank = 1).
+	/// Soft-fails to non-tank defaults when the player/job is unavailable.
+	/// </summary>
+	private (RsrTargetingType Targeting, RsrTargetHostileType Hostile) ResolveRsrRotationSettings()
+	{
+		var isTank = false;
+		try
+		{
+			var player = objectTable.LocalPlayer;
+			if (player != null && player.ClassJob.ValueNullable is { } job)
+				isTank = RsrSettingsDecision.IsTankRole(job.Role);
+		}
+		catch
+		{
+			// Soft-fail: treat as non-tank.
+		}
+
+		return RsrSettingsDecision.Resolve(
+			isTank,
+			Config.RsrHostileType,
+			Config.RsrTargetingTank,
+			Config.RsrTargetingNonTank);
 	}
 
 	/// <summary>
@@ -470,6 +517,7 @@ public sealed class Plugin : IDalamudPlugin
 		framework.Update -= OnFrameworkUpdate;
 		clientState.TerritoryChanged -= OnTerritoryChanged;
 		chatMessageHandler.HuntFlagReceived -= OnHuntFlagReceived;
+		// RSR stop: RsrStopTrigger.Dispose → ImmediateClear.
 		instanceChange.Clear();
 		mount.Clear();
 		activeHuntFlag = null;
@@ -478,7 +526,9 @@ public sealed class Plugin : IDalamudPlugin
 		engage.Clear();
 		follow.Clear();
 		combat.Clear();
+		rsrEnable.Clear();
 		chatMessageHandler.Dispose();
+		RsrIpc.Dispose();
 		VNavmeshIpc.Dispose();
 		LifestreamIpc.Dispose();
 		TeleporterIpc.Dispose();

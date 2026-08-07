@@ -4,7 +4,7 @@ namespace HuntTrainAuto.Domain;
 
 /// <summary>
 /// Local combat/follow phase latch (TASKS 5.8–5.9).
-/// Phase 6 reads <see cref="InCombatPhase"/> / <see cref="Phase"/> — no RSR calls here.
+/// Phase 6.2 reads <see cref="InCombatPhase"/> / <see cref="Phase"/> — no RSR calls here.
 /// </summary>
 public sealed class CombatSession
 {
