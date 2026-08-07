@@ -5,5 +5,6 @@ global using HuntTrainAuto.Domain;
 global using HuntTrainAuto.Map;
 global using HuntTrainAuto.Movement;
 global using HuntTrainAuto.Services;
+global using HuntTrainAuto.State;
 global using HuntTrainAuto.Teleport;
 global using HuntTrainAuto.Windows;

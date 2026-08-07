@@ -37,6 +37,7 @@ public sealed class Plugin : IDalamudPlugin
 	private readonly FollowHelper follow;
 	private readonly CombatTransitionHelper combat;
 	private readonly RsrEnableHelper rsrEnable;
+	private readonly HuntTrainController train = new();
 
 	private HuntFlag? activeHuntFlag;
 	private long teleportNextAllowedMs;
@@ -63,6 +64,15 @@ public sealed class Plugin : IDalamudPlugin
 
 	/// <summary>True while party-engage combat phase is active (RSR enable signal).</summary>
 	public bool InCombatPhase => combat.InCombatPhase;
+
+	/// <summary>
+	/// Train pipeline state machine (TASKS 7.1). Framework driver that advances phases is 7.2;
+	/// this holds phase only and resets on master-off / hard clear / dispose.
+	/// </summary>
+	public HuntTrainController Train => train;
+
+	/// <summary>Current <see cref="HuntTrainController.Phase"/>.</summary>
+	public HuntTrainPhase TrainPhase => train.Phase;
 
 	/// <summary>Active Framework teleport plan (HTA <c>TeleportTo</c>).</summary>
 	public TeleportPlan TeleportPlan => teleportPlan;
@@ -263,6 +273,7 @@ public sealed class Plugin : IDalamudPlugin
 		combat.Clear();
 		rsrEnable.Clear();
 		ConductorList.Clear(Config.Conductors);
+		train.Reset();
 		pluginInterface.SavePluginConfig(Config);
 	}
 
@@ -334,6 +345,7 @@ public sealed class Plugin : IDalamudPlugin
 			engage.Clear();
 			combat.Clear();
 			rsrEnable.Clear();
+			train.Reset();
 			return;
 		}
 
@@ -527,6 +539,7 @@ public sealed class Plugin : IDalamudPlugin
 		follow.Clear();
 		combat.Clear();
 		rsrEnable.Clear();
+		train.Reset();
 		chatMessageHandler.Dispose();
 		RsrIpc.Dispose();
 		VNavmeshIpc.Dispose();
