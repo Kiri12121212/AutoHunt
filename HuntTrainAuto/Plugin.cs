@@ -209,8 +209,13 @@ public sealed class Plugin : IDalamudPlugin
 			Config,
 			() => pluginInterface.SavePluginConfig(Config),
 			() => configWindow.IsOpen = true);
-		// Thin IPC hook only (TASKS 10.2) — mapping / pipeline land in 10.3+.
-		huntAlertsIpc = new HuntAlertsIpc(pluginInterface, Config);
+		// MapManager before HuntAlerts IPC so train messages resolve SizeFactor/offsets.
+		mapManager = new MapManager(dataManager, msg => pluginLog.Warning(msg));
+		// HuntAlerts → HuntFlag mapping (TASKS 10.3); pipeline intake lands in 10.4/10.5.
+		huntAlertsIpc = new HuntAlertsIpc(
+			pluginInterface,
+			Config,
+			territoryTypeId => mapManager.GetMapParams(mapId: 0, territoryTypeId));
 		instanceChange = new InstanceChangeRunner(
 			LifestreamIpc,
 			chat,
@@ -267,7 +272,6 @@ public sealed class Plugin : IDalamudPlugin
 			pluginLog,
 			() => Config.EngageRange);
 		rsrEnable = new RsrEnableHelper(RsrIpc, pluginLog, ResolveRsrRotationSettings);
-		mapManager = new MapManager(dataManager, msg => pluginLog.Warning(msg));
 
 		chatMessageHandler = new ChatMessageHandler(chatGui, gameGui, Config);
 		chatMessageHandler.TryGetPlayerSnapshot = TryGetPlayerSnapshot;

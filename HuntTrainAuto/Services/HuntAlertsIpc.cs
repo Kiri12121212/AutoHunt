@@ -5,7 +5,9 @@ using System.Linq;
 using Dalamud.Plugin;
 using Dalamud.Plugin.Ipc;
 using HuntTrainAuto.Contracts;
+using HuntTrainAuto.Domain;
 using HuntTrainAuto.HuntAlerts;
+using HuntTrainAuto.Map;
 
 namespace HuntTrainAuto.Services;
 
@@ -13,24 +15,31 @@ namespace HuntTrainAuto.Services;
 /// Soft-fail subscriber for HuntAlerts
 /// <c>HuntAlerts.OnHuntTrainMessageReceived</c> (HTA <c>SonarMonitor</c> pattern
 /// via Dalamud CallGate — no ECommons EzIPC attributes).
-/// Receiving an event is a no-op / thin hook until TASKS 10.3 mapping.
+/// Maps accepted messages to <see cref="HuntFlag"/> (TASKS 10.3); pipeline intake is later.
 /// </summary>
 public sealed class HuntAlertsIpc : IHuntAlertsService
 {
 	private readonly Configuration config;
 	private readonly IDalamudPluginInterface pluginInterface;
-	private readonly Action<HuntTrainMessage>? onMessage;
+	private readonly Func<uint, MapCoordParams?>? resolveMapParams;
+	private readonly Action<HuntFlag>? onFlag;
 	private readonly ICallGateSubscriber<HuntTrainMessage, object> onHuntTrain;
 	private bool subscribed;
 
+	/// <param name="resolveMapParams">
+	/// Territory → sheet map params (<c>MapManager.GetMapParams(0, territory)</c>).
+	/// Null or a null return soft-falls to mapper defaults (scale 100, zero offsets).
+	/// </param>
 	public HuntAlertsIpc(
 		IDalamudPluginInterface pluginInterface,
 		Configuration config,
-		Action<HuntTrainMessage>? onMessage = null)
+		Func<uint, MapCoordParams?>? resolveMapParams = null,
+		Action<HuntFlag>? onFlag = null)
 	{
 		this.pluginInterface = pluginInterface;
 		this.config = config;
-		this.onMessage = onMessage;
+		this.resolveMapParams = resolveMapParams;
+		this.onFlag = onFlag;
 
 		onHuntTrain = pluginInterface.GetIpcSubscriber<HuntTrainMessage, object>(
 			HuntAlertsAvailability.OnHuntTrainMessageReceivedChannel);
@@ -75,7 +84,36 @@ public sealed class HuntAlertsIpc : IHuntAlertsService
 				    out var accepted))
 				return;
 
-			onMessage?.Invoke(accepted);
+			MapCoordParams? resolved = null;
+			try
+			{
+				resolved = resolveMapParams?.Invoke(accepted.startTerritoryTypeId);
+			}
+			catch
+			{
+				// Soft-fail: sheets / Excel access must not drop the IPC callback.
+			}
+
+			HuntTrainMessageMapper.UnpackMapParams(
+				resolved,
+				out var mapId,
+				out var sizeFactor,
+				out var offsetX,
+				out var offsetY);
+
+			if (!HuntTrainMessageMapper.TryMap(
+				    accepted,
+				    config.HuntAlertsIntegration,
+				    config.HuntAlertsRankFilter,
+				    config.HuntAlertsWorldBlacklist,
+				    out var flag,
+				    mapId,
+				    sizeFactor,
+				    offsetX,
+				    offsetY))
+				return;
+
+			onFlag?.Invoke(flag);
 		}
 		catch
 		{

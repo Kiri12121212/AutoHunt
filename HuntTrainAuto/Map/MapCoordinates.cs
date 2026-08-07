@@ -43,6 +43,18 @@ public static class MapCoordinates
 		return (float)((((mapCoord - 1.0) * num / 41.0 * 2048.0) - 1024.0) / num) - offset;
 	}
 
+	/// <summary>
+	/// Human-readable map coordinate → raw position (Dalamud <c>MapLinkPayload</c> inverse).
+	/// <paramref name="offset"/> is Lumina <c>Map.OffsetX</c> / <c>OffsetY</c>.
+	/// </summary>
+	public static int ConvertMapCoordinateToRawPosition(float mapCoord, float scale, int offset = 0)
+	{
+		var trueScale = scale / 100f;
+		var num2 = (float)((((mapCoord - 1.0) * trueScale / 41.0 * 2048.0) - 1024.0) / trueScale);
+		num2 *= 1000f;
+		return (int)num2 - (offset * 1000);
+	}
+
 	/// <summary>Euclidean map distance between two map-coordinate points.</summary>
 	public static float MapDistance(float x1, float y1, float x2, float y2)
 	{

@@ -7,8 +7,9 @@ namespace HuntTrainAuto.Map;
 /// <summary>
 /// Map sheet params for marker/world → map conversion.
 /// Prefers a specific map row when the caller has a <c>MapId</c>.
+/// <see cref="MapId"/> is the resolved Lumina <c>Map</c> row id (0 only when unresolved).
 /// </summary>
-public readonly record struct MapCoordParams(float SizeFactor, int OffsetX, int OffsetY);
+public readonly record struct MapCoordParams(uint MapId, float SizeFactor, int OffsetX, int OffsetY);
 
 /// <summary>
 /// Picks <c>Map.SizeFactor</c> (and offsets) for marker→map conversion.
@@ -53,7 +54,7 @@ public static class MapSizeFactor
 		MapCoordParams? byTerritory = null;
 		foreach (var map in maps)
 		{
-			var p = new MapCoordParams(map.SizeFactor, map.OffsetX, map.OffsetY);
+			var p = new MapCoordParams(map.RowId, map.SizeFactor, map.OffsetX, map.OffsetY);
 			if (mapId != 0 && map.RowId == mapId)
 				return p;
 
