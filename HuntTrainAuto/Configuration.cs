@@ -32,6 +32,15 @@ public sealed class Configuration : IPluginConfiguration
 	/// </summary>
 	public bool AutoSwitchInstanceToOne { get; set; } = false;
 
+	/// <summary>HTA <c>TeleportDelayEnabled</c>: random pre-delay before first TP attempt.</summary>
+	public bool TeleportDelayEnabled { get; set; } = false;
+
+	/// <summary>HTA <c>TeleportDelayMin</c> (ms).</summary>
+	public int TeleportDelayMin { get; set; } = 200;
+
+	/// <summary>HTA <c>TeleportDelayMax</c> (ms).</summary>
+	public int TeleportDelayMax { get; set; } = 700;
+
 	/// <summary>Aetheryte RowIds excluded from nearest-aetheryte selection (HTA default included 148; we start empty).</summary>
 	public List<uint> AetheryteBlacklist { get; set; } = [];
 

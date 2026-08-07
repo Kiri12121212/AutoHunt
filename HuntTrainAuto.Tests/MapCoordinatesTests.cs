@@ -53,4 +53,32 @@ public sealed class MapCoordinatesTests
 		var expected = (float)((raw / 1000f * num + 1024.0) / 2048.0 * 41.0 / num + 1.0);
 		Assert.Equal(expected, MapCoordinates.ConvertMapMarkerToMapCoordinate(pos, scale));
 	}
+
+	[Theory]
+	[InlineData(0f, 100f, 0)]
+	[InlineData(0f, 100f, 100)]
+	[InlineData(50f, 100f, -50)]
+	[InlineData(12.5f, 95f, 42)]
+	public void ConvertWorld_matches_saintcoinach_3d(float world, float scale, int offset)
+	{
+		var num = scale / 100f;
+		var expected = (float)(((world + offset) * num + 1024.0) / 2048.0 * 41.0 / num + 1.0);
+		Assert.Equal(expected, MapCoordinates.ConvertWorldToMapCoordinate(world, scale, offset));
+	}
+
+	[Fact]
+	public void ConvertWorld_with_offset_differs_from_zero_offset()
+	{
+		const float world = 100f;
+		const float scale = 100f;
+		var without = MapCoordinates.ConvertWorldToMapCoordinate(world, scale, offset: 0);
+		var with = MapCoordinates.ConvertWorldToMapCoordinate(world, scale, offset: 200);
+		Assert.NotEqual(without, with);
+	}
+
+	[Fact]
+	public void MapDistance_same_point_is_zero()
+	{
+		Assert.Equal(0f, MapCoordinates.MapDistance(12.3f, 4.5f, 12.3f, 4.5f));
+	}
 }

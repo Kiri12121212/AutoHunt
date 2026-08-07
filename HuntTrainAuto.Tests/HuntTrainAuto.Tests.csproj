@@ -32,5 +32,8 @@
 		<Compile Include="..\HuntTrainAuto\ArrivalData.cs" Link="ArrivalData.cs" />
 		<Compile Include="..\HuntTrainAuto\TeleportDecision.cs" Link="TeleportDecision.cs" />
 		<Compile Include="..\HuntTrainAuto\TeleportIntent.cs" Link="TeleportIntent.cs" />
+		<Compile Include="..\HuntTrainAuto\TeleportThrottle.cs" Link="TeleportThrottle.cs" />
+		<Compile Include="..\HuntTrainAuto\TeleportGate.cs" Link="TeleportGate.cs" />
+		<Compile Include="..\HuntTrainAuto\TeleportPlan.cs" Link="TeleportPlan.cs" />
 	</ItemGroup>
 </Project>

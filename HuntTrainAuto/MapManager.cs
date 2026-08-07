@@ -22,6 +22,25 @@ public sealed class MapManager
 	}
 
 	/// <summary>
+	/// <c>Map.SizeFactor</c> for <paramref name="mapId"/> / territory (null when sheet/map missing).
+	/// </summary>
+	public float? GetSizeFactor(uint mapId, uint territoryTypeId)
+		=> GetMapParams(mapId, territoryTypeId)?.SizeFactor;
+
+	/// <summary>
+	/// Size factor + <c>OffsetX</c>/<c>OffsetY</c> for world↔map conversion
+	/// (null when sheet/map missing).
+	/// </summary>
+	public MapCoordParams? GetMapParams(uint mapId, uint territoryTypeId)
+	{
+		var mapSheet = dataManager.GetExcelSheet<Map>();
+		if (mapSheet == null)
+			return null;
+
+		return MapSizeFactor.ResolveParams(mapId, territoryTypeId, EnumerateMapParams(mapSheet));
+	}
+
+	/// <summary>
 	/// Nearest aetheryte on <paramref name="territoryTypeId"/> to map-link coords
 	/// (same units as <c>MapLinkPayload.XCoord</c> / <c>YCoord</c>).
 	/// Uses <paramref name="mapId"/> for <c>SizeFactor</c> when present; else first map for the territory.
@@ -42,11 +61,11 @@ public sealed class MapManager
 		if (aetheryteSheet == null || mapSheet == null || markerSheet == null)
 			return null;
 
-		var scale = MapSizeFactor.Resolve(mapId, territoryTypeId, EnumerateMapScales(mapSheet));
-		if (scale == null)
+		var mapParams = MapSizeFactor.ResolveParams(mapId, territoryTypeId, EnumerateMapParams(mapSheet));
+		if (mapParams == null)
 			return null;
 
-		var sizeFactor = scale.Value;
+		var sizeFactor = mapParams.Value.SizeFactor;
 		var candidates = new List<NearestAetheryte.Candidate>();
 
 		foreach (var aetheryte in aetheryteSheet)
@@ -92,10 +111,10 @@ public sealed class MapManager
 		return NearestAetheryte.Select(xCoord, yCoord, candidates, blacklist);
 	}
 
-	private static IEnumerable<(uint RowId, uint TerritoryTypeId, float SizeFactor)> EnumerateMapScales(
+	private static IEnumerable<(uint RowId, uint TerritoryTypeId, float SizeFactor, int OffsetX, int OffsetY)> EnumerateMapParams(
 		Lumina.Excel.ExcelSheet<Map> mapSheet)
 	{
 		foreach (var map in mapSheet)
-			yield return (map.RowId, map.TerritoryType.RowId, map.SizeFactor);
+			yield return (map.RowId, map.TerritoryType.RowId, map.SizeFactor, map.OffsetX, map.OffsetY);
 	}
 }

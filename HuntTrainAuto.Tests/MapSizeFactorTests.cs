@@ -64,4 +64,36 @@ public sealed class MapSizeFactorTests
 
 		Assert.Equal(200f, MapSizeFactor.Resolve(mapId: 30, territoryTypeId: 100, maps));
 	}
+
+	[Fact]
+	public void ResolveParams_prefers_mapId_and_returns_offsets()
+	{
+		var maps = new[]
+		{
+			(RowId: 1u, TerritoryTypeId: 100u, SizeFactor: 100f, OffsetX: 10, OffsetY: 20),
+			(RowId: 2u, TerritoryTypeId: 100u, SizeFactor: 200f, OffsetX: 30, OffsetY: 40),
+		};
+
+		var p = MapSizeFactor.ResolveParams(mapId: 2, territoryTypeId: 100, maps);
+		Assert.NotNull(p);
+		Assert.Equal(200f, p.Value.SizeFactor);
+		Assert.Equal(30, p.Value.OffsetX);
+		Assert.Equal(40, p.Value.OffsetY);
+	}
+
+	[Fact]
+	public void ResolveParams_falls_back_to_first_territory()
+	{
+		var maps = new[]
+		{
+			(RowId: 1u, TerritoryTypeId: 100u, SizeFactor: 95f, OffsetX: 1, OffsetY: 2),
+			(RowId: 2u, TerritoryTypeId: 100u, SizeFactor: 200f, OffsetX: 3, OffsetY: 4),
+		};
+
+		var p = MapSizeFactor.ResolveParams(mapId: 0, territoryTypeId: 100, maps);
+		Assert.NotNull(p);
+		Assert.Equal(95f, p.Value.SizeFactor);
+		Assert.Equal(1, p.Value.OffsetX);
+		Assert.Equal(2, p.Value.OffsetY);
+	}
 }
