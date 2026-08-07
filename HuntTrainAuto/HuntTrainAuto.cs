@@ -257,6 +257,13 @@ public sealed class Plugin : IDalamudPlugin
 		}
 
 		instanceChange.Tick();
+		if (!Config.Enabled)
+		{
+			mount.Clear();
+			unmount.ClearAll();
+			return;
+		}
+
 		// Arrival/unmount before mount.Tick so AlreadyClose mount jobs are cleared before they remount.
 		TickFlagArrivalAndUnmount();
 		mount.Tick(Config.Mount);
