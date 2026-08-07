@@ -51,5 +51,7 @@
 		<Compile Include="..\HuntTrainAuto\Combat\FollowTargetDecision.cs" Link="Combat\FollowTargetDecision.cs" />
 		<Compile Include="..\HuntTrainAuto\Combat\CombatDecision.cs" Link="Combat\CombatDecision.cs" />
 		<Compile Include="..\HuntTrainAuto\Combat\EngageTargetDecision.cs" Link="Combat\EngageTargetDecision.cs" />
+		<Compile Include="..\HuntTrainAuto\Combat\RsrEnums.cs" Link="Combat\RsrEnums.cs" />
+		<Compile Include="..\HuntTrainAuto\Combat\RsrCommands.cs" Link="Combat\RsrCommands.cs" />
 	</ItemGroup>
 </Project>

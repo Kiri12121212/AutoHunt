@@ -51,6 +51,9 @@ public sealed class Plugin : IDalamudPlugin
 	/// <summary>vnavmesh IPC; pathfind/move owned by phase 4B+.</summary>
 	public IVnavmeshService VNavmeshIpc { get; }
 
+	/// <summary>Rotation Solver Reborn IPC; engage/stop owned by phase 6.2+.</summary>
+	public IRsrService RsrIpc { get; }
+
 	/// <summary>
 	/// Combat/follow phase latch (TASKS 5.8–5.9). Phase 6 observes
 	/// <see cref="CombatSession.InCombatPhase"/> — no RSR calls here.
@@ -104,6 +107,7 @@ public sealed class Plugin : IDalamudPlugin
 		TeleporterIpc = new TeleporterIpc(pluginInterface);
 		LifestreamIpc = new LifestreamIpc(pluginInterface);
 		VNavmeshIpc = new VNavmeshIpc(pluginInterface);
+		RsrIpc = new RsrIpc(pluginInterface);
 		instanceChange = new InstanceChangeRunner(
 			LifestreamIpc,
 			chat,
@@ -479,6 +483,7 @@ public sealed class Plugin : IDalamudPlugin
 		follow.Clear();
 		combat.Clear();
 		chatMessageHandler.Dispose();
+		RsrIpc.Dispose();
 		VNavmeshIpc.Dispose();
 		LifestreamIpc.Dispose();
 		TeleporterIpc.Dispose();
