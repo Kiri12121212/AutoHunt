@@ -10,7 +10,7 @@ namespace HuntTrainAuto;
 
 /// <summary>
 /// Subscribes to <see cref="IChatGui.ChatMessage"/>. Sender match, map-link → <see cref="HuntFlag"/>,
-/// and conductor highlight are wired here; suppress / open-map remain for later phase-2 tasks.
+/// conductor highlight, and optional non-conductor suppress. Open-map remains for a later phase-2 task.
 /// </summary>
 public sealed class ChatMessageHandler : IDisposable
 {
@@ -28,8 +28,7 @@ public sealed class ChatMessageHandler : IDisposable
 	}
 
 	/// <summary>
-	/// Result of the most recent chat message evaluation. Later tasks (suppress)
-	/// can read this without re-decoding. Highlight and map-link work must run in the same callback pass.
+	/// Result of the most recent chat message evaluation. Highlight and map-link work must run in the same callback pass.
 	/// </summary>
 	public bool IsConductorMessage { get; private set; }
 
@@ -50,19 +49,26 @@ public sealed class ChatMessageHandler : IDisposable
 		if (!config.Enabled)
 			return;
 
-		if (!TryDecodeSender(message.Sender, out var senderName))
-			return;
+		var isConductorMessage = TryDecodeSender(message.Sender, out var senderName)
+			&& ChatSender.IsConductor(config.Conductors, senderName);
+		var isMapLink = ContainsMapLink(message.Message);
 
-		if (!ChatSender.IsConductor(config.Conductors, senderName))
-			return;
+		if (isConductorMessage)
+		{
+			IsConductorMessage = true;
+			ConductorSenderName = senderName;
+			TryExtractHuntFlag(message);
+			message.Message = HighlightConductorMessage(message.Message);
+		}
 
-		IsConductorMessage = true;
-		ConductorSenderName = senderName;
-
-		TryExtractHuntFlag(message);
-		message.Message = HighlightConductorMessage(message.Message);
-
-		// Stub for phase-2 follow-ups (suppress, open map).
+		if (ChatSuppress.ShouldSuppress(
+			config.SuppressChatOtherPlayers,
+			isMapLink,
+			isConductorMessage,
+			config.Conductors.Count))
+		{
+			message.PreventOriginal();
+		}
 	}
 
 	/// <summary>
@@ -79,6 +85,20 @@ public sealed class ChatMessageHandler : IDisposable
 			builder.Add(payload);
 		builder.AddUiForegroundOff();
 		return builder.Build();
+	}
+
+	/// <summary>True when the message contains any <see cref="MapLinkPayload"/> (HTA <c>isMapLink</c>).</summary>
+	internal static bool ContainsMapLink(SeString message)
+	{
+		ArgumentNullException.ThrowIfNull(message);
+
+		foreach (var payload in message.Payloads)
+		{
+			if (payload is MapLinkPayload)
+				return true;
+		}
+
+		return false;
 	}
 
 	/// <summary>

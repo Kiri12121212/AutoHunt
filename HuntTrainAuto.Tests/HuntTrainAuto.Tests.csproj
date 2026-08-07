@@ -23,5 +23,6 @@
 		<Compile Include="..\HuntTrainAuto\ChatSender.cs" Link="ChatSender.cs" />
 		<Compile Include="..\HuntTrainAuto\HuntingTerritory.cs" Link="HuntingTerritory.cs" />
 		<Compile Include="..\HuntTrainAuto\HuntFlag.cs" Link="HuntFlag.cs" />
+		<Compile Include="..\HuntTrainAuto\ChatSuppress.cs" Link="ChatSuppress.cs" />
 	</ItemGroup>
 </Project>
