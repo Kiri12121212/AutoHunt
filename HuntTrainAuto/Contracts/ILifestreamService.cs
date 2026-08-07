@@ -21,6 +21,12 @@ public interface ILifestreamService : IDisposable
 	bool IsBusy();
 
 	/// <summary>
+	/// Abort the current Lifestream task / follow path (<c>Lifestream.Abort</c>).
+	/// Soft-fails when Lifestream is absent.
+	/// </summary>
+	void Abort();
+
+	/// <summary>
 	/// Whether <paramref name="world"/> is a same-data-center visit target
 	/// (<c>Lifestream.CanVisitSameDC</c>).
 	/// </summary>

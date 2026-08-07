@@ -31,6 +31,9 @@ public sealed class LifestreamIpc : ILifestreamService
 	/// <summary>IPC: <c>Lifestream.IsBusy</c> — <c>Func&lt;bool&gt;</c>.</summary>
 	private const string IsBusyChannel = "Lifestream.IsBusy";
 
+	/// <summary>IPC: <c>Lifestream.Abort</c> — <c>Action</c>.</summary>
+	private const string AbortChannel = "Lifestream.Abort";
+
 	/// <summary>IPC: <c>Lifestream.CanVisitSameDC</c> — <c>Func&lt;string, bool&gt;</c>.</summary>
 	private const string CanVisitSameDcChannel = "Lifestream.CanVisitSameDC";
 
@@ -56,6 +59,7 @@ public sealed class LifestreamIpc : ILifestreamService
 	private readonly ICallGateSubscriber<int> getNumberOfInstances;
 	private readonly ICallGateSubscriber<bool> canChangeInstance;
 	private readonly ICallGateSubscriber<bool> isBusy;
+	private readonly ICallGateSubscriber<object?> abort;
 	private readonly ICallGateSubscriber<string, bool> canVisitSameDc;
 	private readonly ICallGateSubscriber<string, bool> canVisitCrossDc;
 	private readonly ICallGateSubscriber<string, bool> changeWorld;
@@ -68,6 +72,7 @@ public sealed class LifestreamIpc : ILifestreamService
 		getNumberOfInstances = pluginInterface.GetIpcSubscriber<int>(GetNumberOfInstancesChannel);
 		canChangeInstance = pluginInterface.GetIpcSubscriber<bool>(CanChangeInstanceChannel);
 		isBusy = pluginInterface.GetIpcSubscriber<bool>(IsBusyChannel);
+		abort = pluginInterface.GetIpcSubscriber<object?>(AbortChannel);
 		canVisitSameDc = pluginInterface.GetIpcSubscriber<string, bool>(CanVisitSameDcChannel);
 		canVisitCrossDc = pluginInterface.GetIpcSubscriber<string, bool>(CanVisitCrossDcChannel);
 		changeWorld = pluginInterface.GetIpcSubscriber<string, bool>(ChangeWorldChannel);
@@ -189,6 +194,22 @@ public sealed class LifestreamIpc : ILifestreamService
 		catch
 		{
 			return false;
+		}
+	}
+
+	/// <summary>
+	/// Abort the current Lifestream task / follow path (<c>Lifestream.Abort</c>).
+	/// Soft-fails silently when Lifestream is absent or IPC throws.
+	/// </summary>
+	public void Abort()
+	{
+		try
+		{
+			abort.InvokeAction();
+		}
+		catch
+		{
+			// Lifestream may be absent.
 		}
 	}
 

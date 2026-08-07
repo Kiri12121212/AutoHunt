@@ -102,7 +102,7 @@ public sealed class HuntAlertsWorldVisitDecisionTests
 	}
 
 	[Fact]
-	public void Decide_no_op_when_lifestream_busy()
+	public void Decide_busy_mid_visit_when_lifestream_busy()
 	{
 		var result = HuntAlertsWorldVisitDecision.Decide(
 			huntAlertsIntegration: true,
@@ -113,7 +113,24 @@ public sealed class HuntAlertsWorldVisitDecisionTests
 			canVisitSameDc: true,
 			canVisitCrossDc: false);
 
-		Assert.Equal(HuntAlertsWorldVisitAction.NoOp, result.Action);
+		Assert.Equal(HuntAlertsWorldVisitAction.BusyMidVisit, result.Action);
+		Assert.Equal("Cerberus", result.World);
+	}
+
+	[Fact]
+	public void Decide_busy_mid_visit_keeps_world_even_when_not_whitelisted()
+	{
+		var result = HuntAlertsWorldVisitDecision.Decide(
+			huntAlertsIntegration: true,
+			lifestreamAvailable: true,
+			lifestreamBusy: true,
+			currentWorldName: "Phoenix",
+			arrivalWorld: "FakeWorld",
+			canVisitSameDc: false,
+			canVisitCrossDc: false);
+
+		Assert.Equal(HuntAlertsWorldVisitAction.BusyMidVisit, result.Action);
+		Assert.Equal("FakeWorld", result.World);
 	}
 
 	[Fact]
@@ -143,6 +160,43 @@ public sealed class HuntAlertsWorldVisitDecisionTests
 			lifestreamAvailable: true,
 			lifestreamBusy: false,
 			currentWorldName: current,
+			arrivalWorld: "Cerberus",
+			canVisitSameDc: true,
+			canVisitCrossDc: false);
+
+		Assert.Equal(HuntAlertsWorldVisitAction.UnknownCurrentWorld, result.Action);
+		Assert.Equal("Cerberus", result.World);
+	}
+
+	[Theory]
+	[InlineData(null)]
+	[InlineData("")]
+	[InlineData("   ")]
+	public void Decide_busy_unknown_current_prefers_BusyMidVisit(string? current)
+	{
+		// Mid-visit + unreadable current must not become UnknownCurrentWorld →
+		// EnterPipeline / AbortVisitThenEnter; intake compares against pending.
+		var result = HuntAlertsWorldVisitDecision.Decide(
+			huntAlertsIntegration: true,
+			lifestreamAvailable: true,
+			lifestreamBusy: true,
+			currentWorldName: current,
+			arrivalWorld: "Cerberus",
+			canVisitSameDc: true,
+			canVisitCrossDc: false);
+
+		Assert.Equal(HuntAlertsWorldVisitAction.BusyMidVisit, result.Action);
+		Assert.Equal("Cerberus", result.World);
+	}
+
+	[Fact]
+	public void Decide_busy_unknown_current_without_lifestream_is_UnknownCurrentWorld()
+	{
+		var result = HuntAlertsWorldVisitDecision.Decide(
+			huntAlertsIntegration: true,
+			lifestreamAvailable: false,
+			lifestreamBusy: true,
+			currentWorldName: null,
 			arrivalWorld: "Cerberus",
 			canVisitSameDc: true,
 			canVisitCrossDc: false);

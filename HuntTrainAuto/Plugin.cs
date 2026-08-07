@@ -1,6 +1,8 @@
 #nullable enable
 using System;
+using System.Collections.Concurrent;
 using System.Numerics;
+using System.Threading;
 using Dalamud.Game.ClientState.Conditions;
 using Dalamud.Game.ClientState.Objects;
 using Dalamud.Game.Command;
@@ -45,6 +47,68 @@ public sealed class Plugin : IDalamudPlugin
 	private readonly HuntNotificator notificator;
 
 	private HuntFlag? activeHuntFlag;
+	/// <summary>
+	/// Cross-world HuntAlerts hand-off (TASKS 10.5): single-slot stash while Lifestream
+	/// <c>ChangeWorld</c> runs; flushed into <see cref="OnHuntFlagReceived"/> once on hunt world.
+	/// A newer <see cref="HuntAlertsWorldVisitAction.RequestWorldVisit"/> replaces prior
+	/// pending (newest wins); different-world replace soft-fails <c>Abort</c> before the new
+	/// <c>ChangeWorld</c>. If that <c>ChangeWorld</c> fails after Abort,
+	/// <see cref="HuntAlertsWorldVisitAction.DeferReplaceFailed"/> still Stores the incoming
+	/// flag for its world (never silent-drop). Framework then soft-retries
+	/// <c>ChangeWorld(pending)</c> each tick while not busy and not yet on that world
+	/// (see <see cref="HuntAlertsPipelineIntake.ShouldRetryPendingChangeWorld"/>).
+	/// <see cref="HuntAlertsWorldVisitAction.BusyMidVisit"/>
+	/// while pending: same world → refresh flag only (keep pending world); different world →
+	/// skip (avoids flush waiting for a world Lifestream is not visiting). Also used when
+	/// same-world pending replace <c>ChangeWorld</c> fails without Abort (World set → refresh).
+	/// After any <see cref="HuntAlertsWorldVisit.TryHandle"/> that called
+	/// <c>ChangeWorld</c> (<see cref="HuntAlertsWorldVisitDecisionResult.AttemptedChangeWorld"/>),
+	/// <see cref="skipHaPendingChangeWorldRetryThisTick"/> blocks same-tick soft-retry
+	/// (including failed same-pending remap to BusyMidVisit).
+	/// EnterPipeline while pending: same world → replace stash; different world →
+	/// <c>Lifestream.Abort</c> then clear + enter (see <see cref="ApplyEnterPipeline"/>).
+	/// Conductor chat clears this stash + Aborts Lifestream + clears
+	/// <see cref="huntAlertsFlagQueue"/> and suppresses HA Drain for the remainder of the
+	/// Framework tick (conductor-wins — IPC enqueued after Clear must not override adopt).
+	/// Framework HA drain Accept does not Clear the queue during handle (flags enqueued
+	/// later that tick must survive). Drain itself is newest-wins for the batch — see
+	/// <see cref="HuntAlertsFlagQueue.Drain"/>.
+	/// IPC enqueues onto <see cref="huntAlertsFlagQueue"/>; Framework drains before flush so
+	/// Abort / ChangeWorld / Store / Take share one tick thread. Slot swaps remain atomic —
+	/// see <see cref="HuntAlertsPendingDeferSlot"/>.
+	/// </summary>
+	private HuntAlertsPendingDefer? pendingHuntAlerts;
+
+	/// <summary>
+	/// HuntAlerts CallGate → Framework marshal (TASKS 10.5). Drain in
+	/// <see cref="OnFrameworkUpdate"/> before pending soft-retry /
+	/// <see cref="TryFlushPendingHuntAlerts"/> — batch dequeue then handle only the newest
+	/// flag (avoids same-tick Accept then RequestWorldVisit → active hunt + conflicting
+	/// pending). Cleared with pending on chat adopt / master-off / dispose — not on
+	/// Framework HA drain Accept (see
+	/// <see cref="HuntAlertsFlagQueue.ClearQueueOnFrameworkDrainAccept"/>).
+	/// After chat Clear, <see cref="suppressHaDrainThisTick"/> skips Drain until the next
+	/// Framework update starts (conductor-wins).
+	/// </summary>
+	private readonly ConcurrentQueue<HuntFlag> huntAlertsFlagQueue = new();
+
+	/// <summary>
+	/// Conductor-wins: after chat Clear, skip HA <see cref="HuntAlertsFlagQueue.Drain"/>
+	/// for the rest of this Framework tick. Consumed at the start of the next update via
+	/// <see cref="HuntAlertsFlagQueue.BeginFrameworkTick"/>.
+	/// </summary>
+	private bool suppressHaDrainThisTick;
+
+	/// <summary>
+	/// After Drain/Process attempted <c>ChangeWorld</c> this tick
+	/// (<see cref="HuntAlertsWorldVisitDecisionResult.AttemptedChangeWorld"/> — success
+	/// or fail, including BusyMidVisit refresh after same-pending fail), skip
+	/// <see cref="TryRetryPendingHuntAlertsChangeWorld"/> for the rest of this tick —
+	/// Lifestream may still report not-busy, and a second ChangeWorld would duplicate.
+	/// Cleared at <see cref="HuntAlertsFlagQueue.BeginFrameworkTick"/>.
+	/// </summary>
+	private bool skipHaPendingChangeWorldRetryThisTick;
+
 	private long teleportNextAllowedMs;
 	private bool isMoving;
 	private Vector3 lastPosition;
@@ -211,8 +275,7 @@ public sealed class Plugin : IDalamudPlugin
 			() => configWindow.IsOpen = true);
 		// MapManager before HuntAlerts IPC so train messages resolve SizeFactor/offsets.
 		mapManager = new MapManager(dataManager, msg => pluginLog.Warning(msg));
-		// HuntAlerts → HuntFlag mapping + cross-world Lifestream (TASKS 10.3/10.4);
-		// same-world TP/nav intake is 10.5.
+		// HuntAlerts → HuntFlag → world-visit / TP-nav intake (TASKS 10.3–10.5).
 		huntAlertsIpc = new HuntAlertsIpc(
 			pluginInterface,
 			Config,
@@ -301,29 +364,302 @@ public sealed class Plugin : IDalamudPlugin
 			() => pluginInterface.SavePluginConfig(Config));
 
 	/// <summary>
-	/// HuntAlerts mapped-flag hook (TASKS 10.4): cross-world → Lifestream <c>ChangeWorld</c>.
-	/// Same-world is left for controller intake (10.5).
+	/// HuntAlerts mapped-flag IPC hook (TASKS 10.4–10.5): enqueue for Framework drain
+	/// so pending-slot mutations share the update tick with flush (no IPC/Update race).
 	/// </summary>
 	private void OnHuntAlertsFlag(HuntFlag flag)
+		=> HuntAlertsFlagQueue.Enqueue(huntAlertsFlagQueue, flag);
+
+	/// <summary>
+	/// HuntAlerts mapped-flag processing on Framework tick: cross-world → Lifestream
+	/// <c>ChangeWorld</c> (defer TP); same-world / unknown-current (no pending) →
+	/// <see cref="ApplyEnterPipeline"/>. Unknown + occupied pending refreshes/skips
+	/// like BusyMidVisit (never Abort while current world is unreadable).
+	/// ApplyEnterPipeline respects pending visit: same world keeps defer,
+	/// different world aborts Lifestream then enters.
+	/// </summary>
+	private void ProcessHuntAlertsFlag(HuntFlag flag)
 	{
 		try
 		{
+			var pending = Volatile.Read(ref pendingHuntAlerts);
 			var decision = HuntAlertsWorldVisit.TryHandle(
 				flag,
 				Config.HuntAlertsIntegration,
 				LifestreamIpc,
-				TryGetCurrentWorldName());
+				TryGetCurrentWorldName(),
+				hasPendingDefer: pending != null,
+				pendingDeferWorld: pending?.World);
+
+			// Any ChangeWorld attempt this Process (success or fail) — block same-tick
+			// pending soft-retry (BusyMidVisit refresh after same-pending fail included).
+			if (decision.AttemptedChangeWorld)
+				skipHaPendingChangeWorldRetryThisTick = true;
 
 			if (decision.Action == HuntAlertsWorldVisitAction.RequestWorldVisit)
 				pluginLog.Information($"HuntAlerts cross-world visit: {decision.World}");
 			else if (decision.Action == HuntAlertsWorldVisitAction.CannotVisit)
 				pluginLog.Information($"HuntAlerts cannot visit world: {decision.World}");
+			else if (decision.Action == HuntAlertsWorldVisitAction.DeferReplaceFailed)
+			{
+				// Abort ran; ChangeWorld (+ not-busy retry) failed — do not drop incoming.
+				// Intake → DeferUntilOnWorld: soft-clear prior via Store of new world.
+				pluginLog.Information(
+					$"HuntAlerts defer replace: ChangeWorld failed after Abort → retain pending for {decision.World}");
+			}
+
+			switch (HuntAlertsPipelineIntake.Decide(
+				        decision.Action,
+				        hasPendingDefer: pending != null,
+				        pendingWorld: pending?.World,
+				        newHuntWorld: decision.World))
+			{
+				case HuntAlertsPipelineIntakeKind.EnterPipeline:
+					ApplyEnterPipeline(flag, decision.World);
+					break;
+				case HuntAlertsPipelineIntakeKind.DeferUntilOnWorld:
+					// Do not start same-world TP until on the hunt world.
+					// RequestWorldVisit: single slot, newer defer replaces prior (newest wins).
+					// Store after successful ChangeWorld (RequestWorldVisit), or after
+					// DeferReplaceFailed (Abort + failed ChangeWorld — retain incoming).
+					// Different-world replace: Abort already ran in TryHandle before ChangeWorld.
+					// BusyMidVisit / UnknownCurrentWorld same-world: refresh flag only —
+					// pending world stays the in-flight Lifestream destination
+					// (ChangeWorld was not re-issued; unknown must not AbortVisitThenEnter).
+					if (decision.Action is HuntAlertsWorldVisitAction.BusyMidVisit
+					    or HuntAlertsWorldVisitAction.UnknownCurrentWorld)
+					{
+						if (HuntAlertsPipelineIntake.DeferredStashReplacesPrior(pending != null))
+							pluginLog.Information(
+								$"HuntAlerts {decision.Action} → refresh pending flag (keep world {pending?.World})");
+						HuntAlertsPendingDeferSlot.RefreshFlagKeepWorld(ref pendingHuntAlerts, flag);
+						break;
+					}
+
+					if (string.IsNullOrEmpty(decision.World))
+						break;
+
+					if (HuntAlertsPipelineIntake.DeferredStashReplacesPrior(pending != null))
+						pluginLog.Information(
+							$"HuntAlerts defer replace (newest wins): discarding prior pending for {pending?.World}");
+					HuntAlertsPendingDeferSlot.Store(ref pendingHuntAlerts, flag, decision.World);
+					break;
+				default:
+					break;
+			}
 		}
 		catch (Exception ex)
 		{
-			pluginLog.Debug($"OnHuntAlertsFlag soft-fail: {ex.Message}");
+			pluginLog.Debug($"ProcessHuntAlertsFlag soft-fail: {ex.Message}");
 		}
 	}
+
+	/// <summary>
+	/// EnterPipeline with optional pending cross-world defer (TASKS 10.5).
+	/// Same pending world → replace stash, stay deferred. Different world → soft-fail
+	/// <c>Lifestream.Abort</c>, clear pending, then accept so train/world stay aligned.
+	/// Accept uses <c>clearPendingDefer: false</c> (HA Framework drain — do not Clear the
+	/// IPC queue mid-batch; pending already cleared here when entering).
+	/// </summary>
+	private void ApplyEnterPipeline(HuntFlag flag, string? newHuntWorld)
+	{
+		var pending = Volatile.Read(ref pendingHuntAlerts);
+		var disposition = HuntAlertsPipelineIntake.DecideEnterWithPending(
+			pending != null,
+			pending?.World,
+			newHuntWorld);
+
+		switch (disposition)
+		{
+			case HuntAlertsEnterWithPendingKind.ReplacePendingKeepDefer:
+				var keepWorld = newHuntWorld ?? pending?.World;
+				if (string.IsNullOrEmpty(keepWorld))
+				{
+					ClearPendingHuntAlerts();
+					AcceptHuntAlertsFlag(
+						flag,
+						clearPendingDefer: HuntAlertsFlagQueue.ClearQueueOnFrameworkDrainAccept);
+					return;
+				}
+
+				if (HuntAlertsPipelineIntake.DeferredStashReplacesPrior(pending != null))
+					pluginLog.Information(
+						$"HuntAlerts EnterPipeline → keep defer (same pending world): replacing pending for {pending?.World}");
+				HuntAlertsPendingDeferSlot.Store(ref pendingHuntAlerts, flag, keepWorld);
+				return;
+			case HuntAlertsEnterWithPendingKind.AbortVisitThenEnter:
+				// Near-dup suppress check *before* Abort/clear: if Accept would no-op,
+				// keep the pending visit instead of aborting for nothing.
+				var pipelineActive = FlagRestartDecision.IsPipelineActive(
+					train.Phase,
+					HasInFlightPipelineWork());
+				if (!HuntAlertsFlagDedupe.ShouldProceedAbortVisitThenEnter(
+					    activeHuntFlag,
+					    flag,
+					    pipelineActive))
+				{
+					pluginLog.Information(
+						"HuntAlerts AbortVisitThenEnter skipped (near-dup suppress); pending visit kept");
+					return;
+				}
+
+				try
+				{
+					LifestreamIpc.Abort();
+				}
+				catch (Exception ex)
+				{
+					pluginLog.Debug($"HuntAlerts Lifestream.Abort soft-fail: {ex.Message}");
+				}
+
+				pluginLog.Information(
+					$"HuntAlerts abort pending Lifestream visit ({pending?.World}) before EnterPipeline");
+				ClearPendingHuntAlerts();
+				AcceptHuntAlertsFlag(
+					flag,
+					clearPendingDefer: HuntAlertsFlagQueue.ClearQueueOnFrameworkDrainAccept);
+				return;
+			default:
+				ClearPendingHuntAlerts();
+				AcceptHuntAlertsFlag(
+					flag,
+					clearPendingDefer: HuntAlertsFlagQueue.ClearQueueOnFrameworkDrainAccept);
+				return;
+		}
+	}
+
+	/// <summary>
+	/// Strip untrusted IPC Arrival, recompute nearest aetheryte like chat
+	/// (<see cref="TeleportDecision.Evaluate"/>), then shared restart intake.
+	/// Pass <paramref name="forceAccept"/> for deferred flush after world visit so
+	/// near-dup vs <see cref="activeHuntFlag"/> cannot skip Arrival trust + recompute.
+	/// Pass <paramref name="clearPendingDefer"/> false for Framework HA drain Accept and
+	/// flush (already took the slot) so mid-batch IPC flags / a newer defer survive —
+	/// <see cref="AdoptHuntFlag"/> must not Clear <see cref="huntAlertsFlagQueue"/> then.
+	/// When true (chat only via <see cref="OnHuntFlagReceived"/>), also clears the queue.
+	/// </summary>
+	private void AcceptHuntAlertsFlag(
+		HuntFlag flag,
+		bool forceAccept = false,
+		bool clearPendingDefer = true)
+	{
+		var pipelineActive = FlagRestartDecision.IsPipelineActive(
+			train.Phase,
+			HasInFlightPipelineWork());
+
+		if (HuntAlertsFlagDedupe.ShouldSuppress(
+			    activeHuntFlag,
+			    flag,
+			    pipelineActive,
+			    forceAccept: forceAccept))
+			return;
+
+		var instanceHint = HuntAlertsArrivalTrust.ClearUntrustedArrival(flag);
+		PrepareTeleportIntent(flag, instanceHint);
+		AdoptHuntFlag(flag, clearPendingDefer);
+	}
+
+	/// <summary>
+	/// Chat-path teleport decision into <see cref="ChatMessageHandler.TeleportIntent"/>.
+	/// Soft-fails like <c>ChatMessageHandler.TryEvaluateTeleportDecision</c>.
+	/// </summary>
+	private void PrepareTeleportIntent(HuntFlag flag, int targetInstanceHint = 0)
+	{
+		try
+		{
+			var snapshot = TryGetPlayerSnapshot(flag);
+			if (snapshot is { } s && targetInstanceHint > 0)
+				snapshot = s with { TargetInstance = targetInstanceHint };
+
+			var decision = TeleportDecision.Evaluate(
+				Config.Enabled,
+				Config.AutoTeleport,
+				Config.AutoTeleportAetheryteDistanceDiff,
+				Config.AutoSwitchInstanceToOne,
+				flag,
+				snapshot);
+			chatMessageHandler.TeleportIntent.Set(decision);
+		}
+		catch
+		{
+			chatMessageHandler.TeleportIntent.Set(new TeleportDecisionResult
+			{
+				Action = TeleportAction.Skip,
+				SkipReason = TeleportSkipReason.PlayerStateUnavailable,
+			});
+		}
+	}
+
+	/// <summary>
+	/// Soft-retry <c>ChangeWorld</c> for a Stored pending when Lifestream is idle and the
+	/// player is not yet on that world (e.g. after <c>DeferReplaceFailed</c>). Soft-fails.
+	/// </summary>
+	private void TryRetryPendingHuntAlertsChangeWorld()
+	{
+		try
+		{
+			var pending = Volatile.Read(ref pendingHuntAlerts);
+			if (pending == null)
+				return;
+
+			var busy = false;
+			try
+			{
+				busy = LifestreamIpc.IsBusy();
+			}
+			catch
+			{
+				busy = false;
+			}
+
+			if (!HuntAlertsPipelineIntake.ShouldRetryPendingChangeWorld(
+				    hasPendingDefer: true,
+				    pendingWorld: pending.World,
+				    currentWorldName: TryGetCurrentWorldName(),
+				    lifestreamBusy: busy,
+				    visitJustQueuedThisTick: skipHaPendingChangeWorldRetryThisTick))
+				return;
+
+			_ = LifestreamIpc.ChangeWorld(pending.World);
+		}
+		catch (Exception ex)
+		{
+			pluginLog.Debug($"TryRetryPendingHuntAlertsChangeWorld soft-fail: {ex.Message}");
+		}
+	}
+
+	private void TryFlushPendingHuntAlerts()
+	{
+		HuntAlertsPendingDefer? taken = null;
+		var accepted = false;
+		try
+		{
+			// Atomic take: newer Store between read and clear is left in the slot.
+			taken = HuntAlertsPendingDeferSlot.TryTakeForFlush(
+				ref pendingHuntAlerts,
+				TryGetCurrentWorldName());
+			if (taken == null)
+				return;
+
+			// Force-accept: deferred hand-off must not be blocked by near-dup vs activeHuntFlag.
+			// clearPendingDefer: false — slot already taken; do not orphan a newer defer.
+			AcceptHuntAlertsFlag(taken.Flag, forceAccept: true, clearPendingDefer: false);
+			accepted = true;
+		}
+		catch (Exception ex)
+		{
+			pluginLog.Debug($"TryFlushPendingHuntAlerts soft-fail: {ex.Message}");
+		}
+		finally
+		{
+			// Take cleared the slot before Accept; restore on failure so the flag is not lost.
+			if (taken != null && !accepted)
+				HuntAlertsPendingDeferSlot.TryRestoreIfEmpty(ref pendingHuntAlerts, taken);
+		}
+	}
+
+	private void ClearPendingHuntAlerts()
+		=> HuntAlertsPendingDeferSlot.Clear(ref pendingHuntAlerts);
 
 	private string? TryGetCurrentWorldName()
 	{
@@ -343,7 +679,44 @@ public sealed class Plugin : IDalamudPlugin
 	}
 
 	private void OnHuntFlagReceived(HuntFlag flag)
+		=> AdoptHuntFlag(flag, clearPendingDefer: true);
+
+	/// <summary>
+	/// Shared adopt path for chat + HuntAlerts. Flush and Framework HA drain Accept pass
+	/// <paramref name="clearPendingDefer"/> false (no mid-batch queue Clear; flush already
+	/// took the slot; do not Abort a visit just queued for pending —
+	/// <c>AbortVisitThenEnter</c> Aborts on its own path). When true (chat): Abort + empties
+	/// pending + <see cref="huntAlertsFlagQueue"/> and suppresses HA Drain for the rest of
+	/// this Framework tick so IPC enqueued after Clear cannot override (conductor-wins).
+	/// </summary>
+	private void AdoptHuntFlag(HuntFlag flag, bool clearPendingDefer)
 	{
+		// Conductor chat wins concurrent HuntAlerts (TASKS 10.5): clear pending stash +
+		// IPC queue + soft-fail Abort any in-flight Lifestream visit so a later forceAccept
+		// flush / queued ChangeWorld+Store cannot override this adopt.
+		// Framework HA drain + flush pass clearPendingDefer: false — never Clear / Abort
+		// (would cancel a visit just queued for pending, or drop later flags and break
+		// newest-wins); flush already took the slot so a newer defer is preserved.
+		if (HuntAlertsFlagQueue.ShouldAbortLifestreamOnAdopt(clearPendingDefer))
+		{
+			try
+			{
+				LifestreamIpc.Abort();
+			}
+			catch (Exception ex)
+			{
+				pluginLog.Debug($"OnHuntFlagReceived Lifestream.Abort soft-fail: {ex.Message}");
+			}
+		}
+
+		if (clearPendingDefer)
+		{
+			ClearPendingHuntAlerts();
+			HuntAlertsFlagQueue.Clear(huntAlertsFlagQueue);
+			// Conductor-wins: Drain later this tick must not process post-Clear IPC.
+			suppressHaDrainThisTick = HuntAlertsFlagQueue.SuppressDrainAfterChatClear;
+		}
+
 		// New flag: abort mid-pipeline if needed, then restart (TASKS 7.4).
 		// Snapshot pipeline before clears / adopt so Start* is not applied while non-Idle.
 		var pipelineActive = FlagRestartDecision.IsPipelineActive(
@@ -618,6 +991,8 @@ public sealed class Plugin : IDalamudPlugin
 		if (!Config.Enabled)
 		{
 			// RSR stop: RsrStopTrigger.MasterOff → ImmediateClear (Tick skipped below).
+			ClearPendingHuntAlerts();
+			HuntAlertsFlagQueue.Clear(huntAlertsFlagQueue);
 			mount.Clear();
 			unmount.ClearAll();
 			engage.Clear();
@@ -627,6 +1002,19 @@ public sealed class Plugin : IDalamudPlugin
 			ObserveDebugSignals();
 			return;
 		}
+
+		// Cross-world HuntAlerts: drain IPC queue, soft-retry pending ChangeWorld if needed,
+		// then enter TP/nav once on hunt world. Newest-wins drain before flush so
+		// Abort/ChangeWorld/Store and Take share this tick. After chat Clear, skip Drain
+		// for the remainder of that tick (conductor-wins); consume suppress here.
+		// Begin also clears skipHaPendingChangeWorldRetryThisTick (set when Process
+		// successfully queued ChangeWorld — soft-retry must not duplicate same tick).
+		if (HuntAlertsFlagQueue.BeginFrameworkTick(
+			    ref suppressHaDrainThisTick,
+			    ref skipHaPendingChangeWorldRetryThisTick))
+			HuntAlertsFlagQueue.Drain(huntAlertsFlagQueue, ProcessHuntAlertsFlag);
+		TryRetryPendingHuntAlertsChangeWorld();
+		TryFlushPendingHuntAlerts();
 
 		// Navigate: path toward flag world pos (existing MovementHelper).
 		if (train.Phase == HuntTrainPhase.Navigate)
@@ -904,6 +1292,8 @@ public sealed class Plugin : IDalamudPlugin
 		clientState.TerritoryChanged -= OnTerritoryChanged;
 		chatMessageHandler.HuntFlagReceived -= OnHuntFlagReceived;
 		// RSR stop: RsrStopTrigger.Dispose → ImmediateClear.
+		ClearPendingHuntAlerts();
+		HuntAlertsFlagQueue.Clear(huntAlertsFlagQueue);
 		instanceChange.Clear();
 		mount.Clear();
 		activeHuntFlag = null;

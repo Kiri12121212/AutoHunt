@@ -71,6 +71,11 @@
 		<Compile Include="..\HuntTrainAuto\HuntAlerts\HuntTrainMessageMapper.cs" Link="HuntAlerts\HuntTrainMessageMapper.cs" />
 		<Compile Include="..\HuntTrainAuto\HuntAlerts\HuntAlertsWorldVisitDecision.cs" Link="HuntAlerts\HuntAlertsWorldVisitDecision.cs" />
 		<Compile Include="..\HuntTrainAuto\HuntAlerts\HuntAlertsWorldVisit.cs" Link="HuntAlerts\HuntAlertsWorldVisit.cs" />
+		<Compile Include="..\HuntTrainAuto\HuntAlerts\HuntAlertsPipelineIntake.cs" Link="HuntAlerts\HuntAlertsPipelineIntake.cs" />
+		<Compile Include="..\HuntTrainAuto\HuntAlerts\HuntAlertsPendingDefer.cs" Link="HuntAlerts\HuntAlertsPendingDefer.cs" />
+		<Compile Include="..\HuntTrainAuto\HuntAlerts\HuntAlertsFlagQueue.cs" Link="HuntAlerts\HuntAlertsFlagQueue.cs" />
+		<Compile Include="..\HuntTrainAuto\HuntAlerts\HuntAlertsArrivalTrust.cs" Link="HuntAlerts\HuntAlertsArrivalTrust.cs" />
+		<Compile Include="..\HuntTrainAuto\HuntAlerts\HuntAlertsFlagDedupe.cs" Link="HuntAlerts\HuntAlertsFlagDedupe.cs" />
 		<Compile Include="..\HuntTrainAuto\Contracts\ILifestreamService.cs" Link="Contracts\ILifestreamService.cs" />
 		<Compile Include="..\HuntTrainAuto\Logging\DebugEvent.cs" Link="Logging\DebugEvent.cs" />
 		<Compile Include="..\HuntTrainAuto\Logging\DebugEventLog.cs" Link="Logging\DebugEventLog.cs" />

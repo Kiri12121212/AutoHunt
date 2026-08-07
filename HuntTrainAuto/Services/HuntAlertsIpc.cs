@@ -16,7 +16,7 @@ namespace HuntTrainAuto.Services;
 /// <c>HuntAlerts.OnHuntTrainMessageReceived</c> (HTA <c>SonarMonitor</c> pattern
 /// via Dalamud CallGate — no ECommons EzIPC attributes).
 /// Maps accepted messages to <see cref="HuntFlag"/> (TASKS 10.3); optional
-/// <paramref name="onFlag"/> runs cross-world visit (10.4). Pipeline intake is 10.5.
+/// <paramref name="onFlag"/> runs world-visit + TP/nav intake (10.4–10.5).
 /// </summary>
 public sealed class HuntAlertsIpc : IHuntAlertsService
 {
