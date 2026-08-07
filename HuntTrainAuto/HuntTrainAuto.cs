@@ -33,8 +33,9 @@ public sealed class Plugin : IDalamudPlugin
 	private readonly FlagWorldHelper flagWorld;
 	private readonly FlagArrivalHelper flagArrival;
 	private readonly UnmountRunner unmount;
+	private readonly MovementHelper movement;
+	private readonly EngageTargetHelper engage;
 	private readonly FollowHelper follow;
-	private readonly FollowTargetResolver followTarget;
 	private readonly CombatTransitionHelper combat;
 
 	private HuntFlag? activeHuntFlag;
@@ -87,8 +88,8 @@ public sealed class Plugin : IDalamudPlugin
 		this.condition = condition;
 		this.pluginLog = pluginLog;
 		Config = pluginInterface.GetPluginConfig() as Configuration ?? new Configuration();
-		Config.PartyFollowDistance = FollowDecision.ClampFollowDistance(Config.PartyFollowDistance);
 		Config.EngageRange = CombatDecision.ClampEngageRange(Config.EngageRange);
+		Config.ARankScanRange = EngageTargetDecision.ClampARankScanRange(Config.ARankScanRange);
 
 		windowSystem = new WindowSystem(typeof(Plugin).Assembly.GetName()?.Name ?? "HuntTrainAuto");
 		configWindow = new ConfigWindow(Config, () => pluginInterface.SavePluginConfig(Config));
@@ -126,12 +127,27 @@ public sealed class Plugin : IDalamudPlugin
 			pluginLog,
 			() => teleportPlan.Active != null,
 			() => instanceChange.IsActive);
+		movement = new MovementHelper(
+			VNavmeshIpc,
+			objectTable,
+			dataManager,
+			condition,
+			clientState,
+			pluginLog);
+		engage = new EngageTargetHelper(
+			objectTable,
+			targetManager,
+			dataManager,
+			pluginLog,
+			movement,
+			() => Config.EngageRange,
+			() => Config.ARankScanRange);
+		// Retained for CombatTransitionHelper Clear API only — party follow is disabled.
 		follow = new FollowHelper(
 			VNavmeshIpc,
 			objectTable,
 			pluginLog,
 			() => Config.PartyFollowDistance);
-		followTarget = new FollowTargetResolver(objectTable, partyList, pluginLog);
 		combat = new CombatTransitionHelper(
 			objectTable,
 			partyList,
@@ -173,7 +189,7 @@ public sealed class Plugin : IDalamudPlugin
 		mount.Clear();
 		flagArrival.Clear();
 		unmount.ClearAll();
-		follow.Clear();
+		engage.Clear();
 		combat.Clear();
 		if (!teleportPlan.TryAdoptFromIntent(chatMessageHandler.TeleportIntent))
 		{
@@ -222,7 +238,7 @@ public sealed class Plugin : IDalamudPlugin
 		activeHuntFlag = null;
 		flagArrival.Clear();
 		unmount.ClearAll();
-		follow.Clear();
+		engage.Clear();
 		combat.Clear();
 		ConductorList.Clear(Config.Conductors);
 		pluginInterface.SavePluginConfig(Config);
@@ -292,7 +308,7 @@ public sealed class Plugin : IDalamudPlugin
 		{
 			mount.Clear();
 			unmount.ClearAll();
-			follow.Clear();
+			engage.Clear();
 			combat.Clear();
 			return;
 		}
@@ -300,19 +316,19 @@ public sealed class Plugin : IDalamudPlugin
 		// Arrival/unmount before mount.Tick so AlreadyClose mount jobs are cleared before they remount.
 		TickFlagArrivalAndUnmount();
 		mount.Tick(Config.Mount);
-		// After unmount: resolve follow (unless combat phase / dead), combat transition, then path.
+		// After unmount: join conductor fight or path to nearby A-rank (never follow players).
 		var playerDead = IsLocalPlayerDead();
-		if (unmount.ReadyForGroundFollow && combat.AllowsFollow && !playerDead)
+		if (unmount.ReadyForGroundFollow && !playerDead)
 		{
-			followTarget.ResolveAndApply(
-				follow,
+			engage.Tick(
+				combat.Session,
 				Config.Conductors,
-				Config.FollowConductorFirst);
+				pluginEnabled: true,
+				playerDead: false);
 		}
 
+		// Death / combat-end / master-off cleanup (enter combat is owned by EngageTargetHelper).
 		combat.Tick(follow, pluginEnabled: true);
-		// No follow pathing while dead or in combat phase (combat.Tick already Clear'd on enter).
-		follow.Tick(pluginEnabled: !playerDead && combat.AllowsFollow);
 	}
 
 	private bool IsLocalPlayerDead()
@@ -454,6 +470,7 @@ public sealed class Plugin : IDalamudPlugin
 		activeHuntFlag = null;
 		flagArrival.Clear();
 		unmount.ClearAll();
+		engage.Clear();
 		follow.Clear();
 		combat.Clear();
 		chatMessageHandler.Dispose();

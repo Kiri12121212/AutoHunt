@@ -49,16 +49,16 @@ public sealed class ConfigWindow : Window, IDisposable
 		if (ImGui.Checkbox("Skip duplicate flags (same zone, ≤10)", ref noDuplicateFlags))
 			config.NoDuplicateFlags = noDuplicateFlags;
 
-		var followDistance = config.PartyFollowDistance;
+		var aRankScan = config.ARankScanRange;
 		ImGui.SetNextItemWidth(200f);
 		if (ImGui.SliderFloat(
-			    "Party follow distance (yalms)",
-			    ref followDistance,
-			    FollowDecision.MinFollowDistance,
-			    FollowDecision.MaxFollowDistance,
-			    "%.1f"))
+			    "A-rank scan range (yalms)",
+			    ref aRankScan,
+			    EngageTargetDecision.MinARankScanRange,
+			    EngageTargetDecision.MaxARankScanRange,
+			    "%.0f"))
 		{
-			config.PartyFollowDistance = FollowDecision.ClampFollowDistance(followDistance);
+			config.ARankScanRange = EngageTargetDecision.ClampARankScanRange(aRankScan);
 			saveConfig();
 		}
 

@@ -78,9 +78,14 @@ public sealed class Configuration : IPluginConfiguration
 	public bool FollowConductorFirst { get; set; } = true;
 
 	/// <summary>
-	/// Max distance (yalms) to follow target / engaged pull / party-targeted BattleNpc
-	/// before entering combat phase (TASKS 5.8). Default
-	/// <see cref="CombatDecision.DefaultEngageRange"/>.
+	/// Scan radius (yalms) for nearby A-rank NotoriousMonsters after unmount.
+	/// Conductor-fight join ignores this and uses the conductor's target.
+	/// </summary>
+	public float ARankScanRange { get; set; } = EngageTargetDecision.DefaultARankScanRange;
+
+	/// <summary>
+	/// Max distance (yalms) to engage target before entering combat phase.
+	/// Default <see cref="CombatDecision.DefaultEngageRange"/>.
 	/// Clamped to
 	/// [<see cref="CombatDecision.MinEngageRange"/>, <see cref="CombatDecision.MaxEngageRange"/>].
 	/// </summary>
