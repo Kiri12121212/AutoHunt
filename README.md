@@ -37,6 +37,20 @@ dotnet build HuntTrainAuto.sln -c Release
 
 Copy `HuntTrainAuto/bin/Release/` to `%AppData%\XIVLauncher\installedPlugins\HuntTrainAuto\`.
 
+## Custom plugin repo
+
+Shared repo (DcNotify + HuntTrainAuto): [KiritsuguuEmiya/DalamudPlugins](https://github.com/KiritsuguuEmiya/DalamudPlugins).
+
+Dalamud → Settings → Experimental → Custom Plugin Repositories, add:
+
+```
+https://raw.githubusercontent.com/KiritsuguuEmiya/DalamudPlugins/main/pluginmaster.json
+```
+
+Download links point at GitHub Releases `latest/download/HuntTrainAuto.zip` — **placeholder until a release zip is published**; until then use the local copy path above.
+
+In-game QA: [docs/MANUAL_TEST.md](docs/MANUAL_TEST.md).
+
 ## Commands
 
 - `/hta` — toggle config window

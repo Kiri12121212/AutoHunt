@@ -4,7 +4,8 @@
 .kata-proposed
 AGENTS.md
 CLAUDE.md
-docs/
+docs/*
+!docs/MANUAL_TEST.md
 scripts/
 .cursor/
 .githooks/
