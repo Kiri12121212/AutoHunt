@@ -29,7 +29,7 @@ When a conductor posts a map flag:
 ## Dev setup
 
 ```powershell
-git clone https://github.com/KiritsuguuEmiya/AutoHunt.git
+git clone https://github.com/Kiri12121212/AutoHunt.git
 cd AutoHunt
 powershell -ExecutionPolicy Bypass -File tools/setup-git-hooks.ps1
 dotnet build HuntTrainAuto.sln -c Release
@@ -39,12 +39,12 @@ Copy `HuntTrainAuto/bin/Release/` to `%AppData%\XIVLauncher\installedPlugins\Hun
 
 ## Custom plugin repo
 
-Shared repo (DcNotify + HuntTrainAuto): [KiritsuguuEmiya/DalamudPlugins](https://github.com/KiritsuguuEmiya/DalamudPlugins).
+Shared repo (DcNotify + HuntTrainAuto): [Kiri12121212/DalamudPlugins](https://github.com/Kiri12121212/DalamudPlugins).
 
 Dalamud → Settings → Experimental → Custom Plugin Repositories, add:
 
 ```
-https://raw.githubusercontent.com/KiritsuguuEmiya/DalamudPlugins/main/pluginmaster.json
+https://raw.githubusercontent.com/Kiri12121212/DalamudPlugins/main/pluginmaster.json
 ```
 
 Download links point at GitHub Releases `latest/download/HuntTrainAuto.zip` — **placeholder until a release zip is published**; until then use the local copy path above.
