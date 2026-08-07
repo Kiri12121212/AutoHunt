@@ -41,6 +41,9 @@ public sealed class Plugin : IDalamudPlugin
 	/// <summary>Lifestream IPC; instance/fallback TP owned by phase 3.6–3.7.</summary>
 	public LifestreamIpc LifestreamIpc { get; }
 
+	/// <summary>vnavmesh IPC; pathfind/move owned by phase 4B+.</summary>
+	public VNavmeshIpc VNavmeshIpc { get; }
+
 	/// <summary>Active Framework teleport plan (HTA <c>TeleportTo</c>).</summary>
 	public TeleportPlan TeleportPlan => teleportPlan;
 
@@ -80,6 +83,7 @@ public sealed class Plugin : IDalamudPlugin
 
 		TeleporterIpc = new TeleporterIpc(pluginInterface);
 		LifestreamIpc = new LifestreamIpc(pluginInterface);
+		VNavmeshIpc = new VNavmeshIpc(pluginInterface);
 		instanceChange = new InstanceChangeRunner(
 			LifestreamIpc,
 			clientState,
@@ -338,6 +342,7 @@ public sealed class Plugin : IDalamudPlugin
 		instanceChange.Clear();
 		mount.Clear();
 		chatMessageHandler.Dispose();
+		VNavmeshIpc.Dispose();
 		LifestreamIpc.Dispose();
 		TeleporterIpc.Dispose();
 		chat2Ipc.Dispose();
