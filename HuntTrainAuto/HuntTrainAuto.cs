@@ -2,6 +2,7 @@ using Dalamud.Game.Command;
 using Dalamud.Interface.Windowing;
 using Dalamud.Plugin;
 using Dalamud.Plugin.Services;
+using HuntTrainAuto.Services;
 using HuntTrainAuto.Windows;
 
 namespace HuntTrainAuto;
@@ -11,6 +12,7 @@ public sealed class Plugin : IDalamudPlugin
 	private readonly IDalamudPluginInterface pluginInterface;
 	private readonly WindowSystem windowSystem;
 	private readonly ConfigWindow configWindow;
+	private readonly Chat2Ipc chat2Ipc;
 
 	public Configuration Config { get; }
 
@@ -22,6 +24,12 @@ public sealed class Plugin : IDalamudPlugin
 		windowSystem = new WindowSystem(typeof(Plugin).Assembly.GetName()?.Name ?? "HuntTrainAuto");
 		configWindow = new ConfigWindow(Config, () => pluginInterface.SavePluginConfig(Config));
 		windowSystem.AddWindow(configWindow);
+
+		chat2Ipc = new Chat2Ipc(
+			pluginInterface,
+			Config,
+			() => pluginInterface.SavePluginConfig(Config),
+			() => configWindow.IsOpen = true);
 
 		pluginInterface.UiBuilder.Draw += Draw;
 		pluginInterface.UiBuilder.OpenConfigUi += ToggleUi;
@@ -46,6 +54,7 @@ public sealed class Plugin : IDalamudPlugin
 
 	public void Dispose()
 	{
+		chat2Ipc.Dispose();
 		pluginInterface.UiBuilder.Draw -= Draw;
 		pluginInterface.UiBuilder.OpenConfigUi -= ToggleUi;
 		windowSystem.RemoveAllWindows();
