@@ -1,0 +1,80 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to build and publish (e.g. v0.0.0.1)'
+        required: true
+        default: 'v0.0.0.1'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && format('refs/tags/{0}', inputs.tag) || github.ref }}
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Restore Dalamud dev libraries
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $ProgressPreference = 'SilentlyContinue'
+          $dalamudHome = "$env:GITHUB_WORKSPACE/.dalamud"
+          New-Item -ItemType Directory -Force -Path $dalamudHome | Out-Null
+          $versionInfo = Invoke-RestMethod -Uri "https://kamori.goats.dev/Dalamud/Release/VersionInfo"
+          $zipPath = Join-Path $env:RUNNER_TEMP "dalamud.zip"
+          Invoke-WebRequest -Uri $versionInfo.downloadUrl -OutFile $zipPath -UseBasicParsing
+          Expand-Archive -Path $zipPath -DestinationPath $dalamudHome -Force
+          $devPath = Get-ChildItem -Path $dalamudHome -Recurse -Directory -Filter dev -ErrorAction SilentlyContinue |
+            Where-Object { Test-Path (Join-Path $_.FullName 'Dalamud.dll') } |
+            Select-Object -First 1
+          if ($devPath) {
+            $libPath = $devPath.FullName
+          } elseif (Test-Path (Join-Path $dalamudHome 'Dalamud.dll')) {
+            $libPath = $dalamudHome
+          } else {
+            $dll = Get-ChildItem -Path $dalamudHome -Recurse -Filter Dalamud.dll | Select-Object -First 1
+            if (-not $dll) { throw "Could not find Dalamud.dll in downloaded archive." }
+            $libPath = $dll.Directory.FullName
+          }
+          if (-not $libPath.EndsWith([IO.Path]::DirectorySeparatorChar) -and -not $libPath.EndsWith([IO.Path]::AltDirectorySeparatorChar)) {
+            $libPath += [IO.Path]::DirectorySeparatorChar
+          }
+          Write-Host "DalamudLibPath=$libPath"
+          "DalamudLibPath=$libPath" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+      - name: Build
+        run: dotnet build HuntTrainAuto/HuntTrainAuto.csproj -c Release -p:Platform=x64 --no-incremental
+
+      - name: Package as HuntTrainAuto.zip
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $src = Get-ChildItem -Path "HuntTrainAuto/bin" -Recurse -Filter "latest.zip" -ErrorAction SilentlyContinue |
+            Select-Object -First 1 -ExpandProperty FullName
+          if (-not $src) {
+            $src = Get-ChildItem -Path "HuntTrainAuto/bin" -Recurse -Filter "HuntTrainAuto.zip" -ErrorAction SilentlyContinue |
+              Select-Object -First 1 -ExpandProperty FullName
+          }
+          if (-not $src) { throw "Packaged zip not found under HuntTrainAuto/bin." }
+          Copy-Item -Path $src -Destination "HuntTrainAuto.zip" -Force
+          Write-Host "Packaged $($src) -> HuntTrainAuto.zip"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+          files: HuntTrainAuto.zip
+          generate_release_notes: true
