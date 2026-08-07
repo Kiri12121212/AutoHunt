@@ -11,6 +11,8 @@ public sealed class Configuration : IPluginConfiguration
 
 	public bool Enabled { get; set; } = true;
 	public List<string> Conductors { get; set; } = [];
+	public bool SuppressChatOtherPlayers { get; set; } = true;
+	public bool ContextMenu { get; set; } = true;
 
 	public bool UseMount { get; set; } = true;
 	public int Mount { get; set; } = 0;
