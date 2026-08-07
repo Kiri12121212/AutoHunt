@@ -9,8 +9,8 @@ using Dalamud.Plugin.Services;
 namespace HuntTrainAuto;
 
 /// <summary>
-/// Subscribes to <see cref="IChatGui.ChatMessage"/>. Sender decode/match is wired here;
-/// map-link / highlight / suppress / open-map remain for later phase-2 tasks.
+/// Subscribes to <see cref="IChatGui.ChatMessage"/>. Sender match + map-link → <see cref="HuntFlag"/>
+/// extraction are wired here; highlight / suppress / open-map remain for later phase-2 tasks.
 /// </summary>
 public sealed class ChatMessageHandler : IDisposable
 {
@@ -25,13 +25,19 @@ public sealed class ChatMessageHandler : IDisposable
 	}
 
 	/// <summary>
-	/// Result of the most recent chat message evaluation. Later tasks (map link, highlight,
-	/// suppress) can read this without re-decoding.
+	/// Result of the most recent chat message evaluation. Later tasks (highlight, suppress)
+	/// can read this without re-decoding. Map-link work must run in the same callback pass.
 	/// </summary>
 	public bool IsConductorMessage { get; private set; }
 
 	/// <summary>Decoded sender name when <see cref="IsConductorMessage"/> is true; otherwise null.</summary>
 	public string? ConductorSenderName { get; private set; }
+
+	/// <summary>Most recently extracted conductor map-link flag, if any.</summary>
+	public HuntFlag? LatestHuntFlag { get; private set; }
+
+	/// <summary>Raised when a conductor message yields a new <see cref="HuntFlag"/>.</summary>
+	public event Action<HuntFlag>? HuntFlagReceived;
 
 	private void OnChatMessage(IHandleableChatMessage message)
 	{
@@ -50,7 +56,33 @@ public sealed class ChatMessageHandler : IDisposable
 		IsConductorMessage = true;
 		ConductorSenderName = senderName;
 
-		// Stub for phase-2 follow-ups (MapLinkPayload, highlight/suppress, open map).
+		TryExtractHuntFlag(message);
+
+		// Stub for phase-2 follow-ups (highlight/suppress, open map).
+	}
+
+	/// <summary>
+	/// First <see cref="MapLinkPayload"/> in a conductor message becomes <see cref="LatestHuntFlag"/>.
+	/// Does not open the map or dedupe AgentMap markers.
+	/// </summary>
+	private void TryExtractHuntFlag(IHandleableChatMessage message)
+	{
+		foreach (var payload in message.Message.Payloads)
+		{
+			if (payload is not MapLinkPayload mapLink)
+				continue;
+
+			var flag = HuntFlag.FromMapLink(
+				mapLink.TerritoryType.RowId,
+				mapLink.Map.RowId,
+				mapLink.RawX,
+				mapLink.RawY,
+				mapLink.PlaceName);
+
+			LatestHuntFlag = flag;
+			HuntFlagReceived?.Invoke(flag);
+			return;
+		}
 	}
 
 	/// <summary>
