@@ -25,6 +25,7 @@ public sealed class Plugin : IDalamudPlugin
 	private readonly ConfigWindow configWindow;
 	private readonly IChatOutput chat;
 	private readonly Chat2Ipc chat2Ipc;
+	private readonly HuntAlertsIpc huntAlertsIpc;
 	private readonly ChatMessageHandler chatMessageHandler;
 	private readonly MapManager mapManager;
 	private readonly TeleportPlan teleportPlan = new();
@@ -208,6 +209,8 @@ public sealed class Plugin : IDalamudPlugin
 			Config,
 			() => pluginInterface.SavePluginConfig(Config),
 			() => configWindow.IsOpen = true);
+		// Thin IPC hook only (TASKS 10.2) — mapping / pipeline land in 10.3+.
+		huntAlertsIpc = new HuntAlertsIpc(pluginInterface, Config);
 		instanceChange = new InstanceChangeRunner(
 			LifestreamIpc,
 			chat,
@@ -864,6 +867,7 @@ public sealed class Plugin : IDalamudPlugin
 		rsrEnable.Clear();
 		train.Reset();
 		chatMessageHandler.Dispose();
+		huntAlertsIpc.Dispose();
 		RsrIpc.Dispose();
 		VNavmeshIpc.Dispose();
 		LifestreamIpc.Dispose();
