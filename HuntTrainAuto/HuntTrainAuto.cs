@@ -20,7 +20,7 @@ public sealed class Plugin : IDalamudPlugin
 		Config = pluginInterface.GetPluginConfig() as Configuration ?? new Configuration();
 
 		windowSystem = new WindowSystem(typeof(Plugin).Assembly.GetName()?.Name ?? "HuntTrainAuto");
-		configWindow = new ConfigWindow(Config);
+		configWindow = new ConfigWindow(Config, () => pluginInterface.SavePluginConfig(Config));
 		windowSystem.AddWindow(configWindow);
 
 		pluginInterface.UiBuilder.Draw += Draw;
