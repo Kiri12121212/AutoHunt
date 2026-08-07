@@ -1,0 +1,67 @@
+#nullable enable
+
+namespace HuntTrainAuto.State;
+
+/// <summary>
+/// Pure signal mapping for the Framework train driver (TASKS 7.2).
+/// Converts observable runner / flag state into <see cref="HuntTrainEvent"/> /
+/// <see cref="HuntTrainTickSnapshot"/> — no Dalamud types. Soft-fail: never throws.
+/// </summary>
+public static class HuntTrainObserve
+{
+	/// <summary>
+	/// Idle start event when a hunt flag is adopted.
+	/// Teleport plan active → <see cref="HuntTrainEvent.StartTeleport"/>;
+	/// already-close skip → Mount or Navigate by <paramref name="useMount"/>;
+	/// otherwise <see cref="HuntTrainEvent.None"/>.
+	/// </summary>
+	public static HuntTrainEvent DecideFlagStart(
+		bool pluginEnabled,
+		bool teleportPlanActive,
+		bool alreadyCloseSkip,
+		bool useMount)
+	{
+		if (!pluginEnabled)
+			return HuntTrainEvent.None;
+
+		if (teleportPlanActive)
+			return HuntTrainEvent.StartTeleport;
+
+		if (!alreadyCloseSkip)
+			return HuntTrainEvent.None;
+
+		return useMount ? HuntTrainEvent.StartMount : HuntTrainEvent.StartNavigate;
+	}
+
+	/// <summary>
+	/// Progress snapshot for <see cref="HuntTrainController.Tick"/>.
+	/// Idle start fields stay false — flag starts use <see cref="DecideFlagStart"/> + Apply.
+	/// </summary>
+	/// <param name="pluginEnabled">Master <c>Config.Enabled</c>.</param>
+	/// <param name="abort">Hard abort request.</param>
+	/// <param name="teleportPlanActive"><see cref="TeleportPlan.HasActive"/>.</param>
+	/// <param name="mountJobActive"><see cref="MountRunner.IsActive"/>.</param>
+	/// <param name="withinFlagArrival">Flag-area arrival this tick.</param>
+	/// <param name="readyForGroundFollow"><see cref="UnmountRunner.ReadyForGroundFollow"/>.</param>
+	/// <param name="inCombatPhase"><see cref="CombatSession.InCombatPhase"/>.</param>
+	public static HuntTrainTickSnapshot BuildProgressSnapshot(
+		bool pluginEnabled,
+		bool abort = false,
+		bool teleportPlanActive = false,
+		bool mountJobActive = false,
+		bool withinFlagArrival = false,
+		bool readyForGroundFollow = false,
+		bool inCombatPhase = false)
+		=> new()
+		{
+			PluginEnabled = pluginEnabled,
+			Abort = abort,
+			// Meaningful only while Teleport / Mount — Decide ignores otherwise.
+			TeleportComplete = !teleportPlanActive,
+			MountComplete = !mountJobActive,
+			WithinFlagArrival = withinFlagArrival,
+			ReadyForGroundFollow = readyForGroundFollow,
+			PartyEngaged = inCombatPhase,
+			CombatEnded = !inCombatPhase,
+		};
+}

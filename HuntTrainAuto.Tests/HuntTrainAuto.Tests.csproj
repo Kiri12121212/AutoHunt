@@ -58,5 +58,6 @@
 		<Compile Include="..\HuntTrainAuto\Combat\RsrStopDecision.cs" Link="Combat\RsrStopDecision.cs" />
 		<Compile Include="..\HuntTrainAuto\State\HuntTrainTransition.cs" Link="State\HuntTrainTransition.cs" />
 		<Compile Include="..\HuntTrainAuto\State\HuntTrainController.cs" Link="State\HuntTrainController.cs" />
+		<Compile Include="..\HuntTrainAuto\State\HuntTrainObserve.cs" Link="State\HuntTrainObserve.cs" />
 	</ItemGroup>
 </Project>

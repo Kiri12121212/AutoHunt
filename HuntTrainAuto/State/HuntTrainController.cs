@@ -4,7 +4,7 @@ namespace HuntTrainAuto.State;
 
 /// <summary>
 /// Mutable train pipeline state machine (TASKS 7.1).
-/// Framework driver that feeds signals lives in 7.2 — this type only holds phase + Apply/Tick/Reset.
+/// Framework driver feeds signals via <see cref="HuntTrainObserve"/> (7.2) — this type holds phase + Apply/Tick/Reset.
 /// </summary>
 public sealed class HuntTrainController
 {

@@ -66,8 +66,9 @@ public sealed class Plugin : IDalamudPlugin
 	public bool InCombatPhase => combat.InCombatPhase;
 
 	/// <summary>
-	/// Train pipeline state machine (TASKS 7.1). Framework driver that advances phases is 7.2;
-	/// this holds phase only and resets on master-off / hard clear / dispose.
+	/// Train pipeline state machine (TASKS 7.1–7.2).
+	/// Framework.Update fills progress signals via <see cref="HuntTrainObserve"/> and ticks phases;
+	/// resets on master-off / hard clear / dispose.
 	/// </summary>
 	public HuntTrainController Train => train;
 
@@ -213,6 +214,7 @@ public sealed class Plugin : IDalamudPlugin
 	{
 		// New flag (skip or new plan) invalidates any in-flight instance change / automove / mount / unmount.
 		// RSR stop: RsrStopTrigger.FlagChange → ImmediateClear.
+		// Abort/restart on new flag while mid-pipeline is TASKS 7.4 — not here.
 		activeHuntFlag = flag;
 		instanceChange.Clear();
 		mount.Clear();
@@ -221,17 +223,28 @@ public sealed class Plugin : IDalamudPlugin
 		engage.Clear();
 		combat.Clear();
 		rsrEnable.Clear();
-		if (!teleportPlan.TryAdoptFromIntent(chatMessageHandler.TeleportIntent))
+
+		var adopted = teleportPlan.TryAdoptFromIntent(chatMessageHandler.TeleportIntent);
+		var alreadyClose = chatMessageHandler.TeleportIntent.LatestDecision is
+			{ Action: TeleportAction.Skip, SkipReason: TeleportSkipReason.AlreadyClose };
+
+		if (adopted)
+		{
+			ApplyDelayTeleport();
+			pluginLog.Information("Engaging autoteleport");
+		}
+		else if (alreadyClose)
 		{
 			// Same-zone close enough: no TP — still mount before later nav (HTA mount-on-ready).
-			if (chatMessageHandler.TeleportIntent.LatestDecision is
-				{ Action: TeleportAction.Skip, SkipReason: TeleportSkipReason.AlreadyClose })
-				mount.EnqueueIfEnabled(Config.UseMount);
-			return;
+			mount.EnqueueIfEnabled(Config.UseMount);
 		}
 
-		ApplyDelayTeleport();
-		pluginLog.Information("Engaging autoteleport");
+		// Idle → Teleport / Mount / Navigate from observable flag intent (7.2).
+		train.Apply(HuntTrainObserve.DecideFlagStart(
+			Config.Enabled,
+			teleportPlan.HasActive,
+			alreadyClose,
+			Config.UseMount));
 	}
 
 	private void ApplyDelayTeleport()
@@ -349,8 +362,12 @@ public sealed class Plugin : IDalamudPlugin
 			return;
 		}
 
+		// Navigate: path toward flag world pos (existing MovementHelper).
+		if (train.Phase == HuntTrainPhase.Navigate)
+			TickNavigateToFlag();
+
 		// Arrival/unmount before mount.Tick so AlreadyClose mount jobs are cleared before they remount.
-		TickFlagArrivalAndUnmount();
+		var withinArrival = TickFlagArrivalAndUnmount();
 		mount.Tick(Config.Mount);
 		// After unmount: join conductor fight or path to nearby A-rank (never follow players).
 		var playerDead = IsLocalPlayerDead();
@@ -368,6 +385,16 @@ public sealed class Plugin : IDalamudPlugin
 		combat.Tick(follow, pluginEnabled: true);
 		// RSR start only in combat phase; Stop on phase exit (death / combat end) via DecideTick.
 		rsrEnable.Tick(combat.InCombatPhase);
+
+		// Advance HuntTrainController from live runner signals (one event per tick).
+		train.Tick(HuntTrainObserve.BuildProgressSnapshot(
+			pluginEnabled: true,
+			abort: false,
+			teleportPlanActive: teleportPlan.HasActive,
+			mountJobActive: mount.IsActive,
+			withinFlagArrival: withinArrival,
+			readyForGroundFollow: unmount.ReadyForGroundFollow,
+			inCombatPhase: combat.InCombatPhase));
 	}
 
 	private bool IsLocalPlayerDead()
@@ -411,25 +438,64 @@ public sealed class Plugin : IDalamudPlugin
 	}
 
 	/// <summary>
-	/// Resolve flag world pos (retry PointOnFloor), detect arrival, enqueue TaskUnmount.
-	/// Minimal phase-4 handoff — full nav/follow orchestrator is phase 5/7.
+	/// While <see cref="HuntTrainPhase.Navigate"/>: resolve flag world pos and path with MovementHelper.
+	/// Soft-fails when player/flag/world pos missing.
 	/// </summary>
-	private void TickFlagArrivalAndUnmount()
+	private void TickNavigateToFlag()
 	{
-		var flag = activeHuntFlag;
-		var player = objectTable.LocalPlayer;
-		if (flag == null || player == null)
-			return;
+		try
+		{
+			var flag = activeHuntFlag;
+			var player = objectTable.LocalPlayer;
+			if (flag == null || player == null)
+				return;
 
-		if (flag.WorldPos is null || flag.WorldPos == Vector3.Zero)
-			flagWorld.TryResolve(flag);
+			if (flag.WorldPos is null || flag.WorldPos == Vector3.Zero)
+				flagWorld.TryResolve(flag);
 
-		var arrival = flagArrival.Tick(player.Position, flag.WorldPos, Config.FlagArrivalTolerance);
-		// Already at flag (e.g. AlreadyClose skip): cancel pending mount so it cannot remount after unmount.
-		if (arrival.IsArrived)
-			mount.Clear();
-		unmount.EnqueueOnArrivalIfEnabled(Config.AutoUnmountAtFlag, arrival.IsArrived);
-		unmount.Tick(flagArrival.PathStoppedForArrival, arrival.IsArrived);
+			if (flag.WorldPos is not { } pos || pos == Vector3.Zero)
+				return;
+
+			movement.MovePreferFlyWhenMounted(
+				pos,
+				tolerance: MovementDecision.DefaultTolerance,
+				lastPointTolerance: Config.FlagArrivalTolerance);
+		}
+		catch (Exception ex)
+		{
+			pluginLog.Debug($"TickNavigateToFlag soft-fail: {ex.Message}");
+		}
+	}
+
+	/// <summary>
+	/// Resolve flag world pos (retry PointOnFloor), detect arrival, enqueue TaskUnmount.
+	/// Returns whether the player is within flag arrival tolerance this tick.
+	/// </summary>
+	private bool TickFlagArrivalAndUnmount()
+	{
+		try
+		{
+			var flag = activeHuntFlag;
+			var player = objectTable.LocalPlayer;
+			if (flag == null || player == null)
+				return false;
+
+			if (flag.WorldPos is null || flag.WorldPos == Vector3.Zero)
+				flagWorld.TryResolve(flag);
+
+			var arrival = flagArrival.Tick(player.Position, flag.WorldPos, Config.FlagArrivalTolerance);
+			// Already at flag (e.g. AlreadyClose skip): cancel pending mount so it cannot remount after unmount.
+			if (arrival.IsArrived)
+				mount.Clear();
+			unmount.EnqueueOnArrivalIfEnabled(Config.AutoUnmountAtFlag, arrival.IsArrived);
+			unmount.Tick(flagArrival.PathStoppedForArrival, arrival.IsArrived);
+			return arrival.IsArrived;
+		}
+		catch (Exception ex)
+		{
+			pluginLog.Debug($"TickFlagArrivalAndUnmount soft-fail: {ex.Message}");
+			return false;
+		}
 	}
 
 	private void TryExecuteTeleport(uint aetheryteId)
