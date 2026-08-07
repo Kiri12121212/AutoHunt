@@ -6,7 +6,8 @@ namespace HuntTrainAuto;
 
 /// <summary>
 /// Conductor map-link flag extracted from chat payloads.
-/// <see cref="WorldPos"/> is a phase-4 stub; <see cref="Arrival"/> is filled in phase 3.
+/// <see cref="WorldPos"/> is set via <see cref="FlagWorldPosition.Attach"/> /
+/// <see cref="FlagWorldHelper"/> (PointOnFloor); <see cref="Arrival"/> is filled in phase 3.
 /// </summary>
 public sealed class HuntFlag
 {
@@ -22,7 +23,9 @@ public sealed class HuntFlag
 
 	public DateTimeOffset Timestamp { get; init; }
 
-	/// <summary>Filled later via mesh / floor query (phase 4).</summary>
+	/// <summary>
+	/// Navmesh floor position for <see cref="MovementHelper.Move"/>; null until PointOnFloor succeeds.
+	/// </summary>
 	public Vector3? WorldPos { get; set; }
 
 	/// <summary>Teleport plan from nearest-aetheryte selection (phase 3).</summary>

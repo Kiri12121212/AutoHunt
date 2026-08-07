@@ -29,7 +29,12 @@ public sealed class Plugin : IDalamudPlugin
 	private readonly MapManager mapManager;
 	private readonly TeleportPlan teleportPlan = new();
 	private readonly InstanceChangeRunner instanceChange;
+	private readonly MountRunner mount;
+	private readonly FlagWorldHelper flagWorld;
+	private readonly FlagArrivalHelper flagArrival;
+	private readonly UnmountRunner unmount;
 
+	private HuntFlag? activeHuntFlag;
 	private long teleportNextAllowedMs;
 	private bool isMoving;
 	private Vector3 lastPosition;
@@ -39,6 +44,9 @@ public sealed class Plugin : IDalamudPlugin
 
 	/// <summary>Lifestream IPC; instance/fallback TP owned by phase 3.6–3.7.</summary>
 	public LifestreamIpc LifestreamIpc { get; }
+
+	/// <summary>vnavmesh IPC; pathfind/move owned by phase 4B+.</summary>
+	public VNavmeshIpc VNavmeshIpc { get; }
 
 	/// <summary>Active Framework teleport plan (HTA <c>TeleportTo</c>).</summary>
 	public TeleportPlan TeleportPlan => teleportPlan;
@@ -79,6 +87,7 @@ public sealed class Plugin : IDalamudPlugin
 
 		TeleporterIpc = new TeleporterIpc(pluginInterface);
 		LifestreamIpc = new LifestreamIpc(pluginInterface);
+		VNavmeshIpc = new VNavmeshIpc(pluginInterface);
 		instanceChange = new InstanceChangeRunner(
 			LifestreamIpc,
 			clientState,
@@ -86,6 +95,22 @@ public sealed class Plugin : IDalamudPlugin
 			targetManager,
 			condition,
 			pluginLog);
+		mount = new MountRunner(
+			LifestreamIpc,
+			objectTable,
+			condition,
+			dataManager,
+			pluginLog,
+			() => instanceChange.IsActive);
+		flagWorld = new FlagWorldHelper(VNavmeshIpc);
+		flagArrival = new FlagArrivalHelper(VNavmeshIpc);
+		unmount = new UnmountRunner(
+			VNavmeshIpc,
+			objectTable,
+			condition,
+			pluginLog,
+			() => teleportPlan.Active != null,
+			() => instanceChange.IsActive);
 		mapManager = new MapManager(dataManager, msg => pluginLog.Warning(msg));
 
 		chatMessageHandler = new ChatMessageHandler(chatGui, gameGui, Config);
@@ -115,11 +140,20 @@ public sealed class Plugin : IDalamudPlugin
 
 	private void OnHuntFlagReceived(HuntFlag flag)
 	{
-		_ = flag;
-		// New flag (skip or new plan) invalidates any in-flight instance change / automove.
+		// New flag (skip or new plan) invalidates any in-flight instance change / automove / mount / unmount.
+		activeHuntFlag = flag;
 		instanceChange.Clear();
+		mount.Clear();
+		flagArrival.Clear();
+		unmount.ClearAll();
 		if (!teleportPlan.TryAdoptFromIntent(chatMessageHandler.TeleportIntent))
+		{
+			// Same-zone close enough: no TP — still mount before later nav (HTA mount-on-ready).
+			if (chatMessageHandler.TeleportIntent.LatestDecision is
+				{ Action: TeleportAction.Skip, SkipReason: TeleportSkipReason.AlreadyClose })
+				mount.EnqueueIfEnabled(Config.UseMount);
 			return;
+		}
 
 		ApplyDelayTeleport();
 		pluginLog.Information("Engaging autoteleport");
@@ -145,6 +179,8 @@ public sealed class Plugin : IDalamudPlugin
 			if (TeleportGate.ShouldEnqueueInstanceChange(plan.Instance) && territoryId == plan.Territory)
 				EnqueueChangeInstanceAfterTeleport(plan.Instance, plan.Territory);
 
+			// HTA: TaskMount.EnqueueIfEnabled after TeleportTo clear (waits for instance idle).
+			mount.EnqueueIfEnabled(Config.UseMount);
 			pluginLog.Debug("TeleportPlan cleared (territory changed)");
 			teleportPlan.Clear();
 		}
@@ -153,6 +189,10 @@ public sealed class Plugin : IDalamudPlugin
 			return;
 
 		instanceChange.Clear();
+		mount.Clear();
+		activeHuntFlag = null;
+		flagArrival.Clear();
+		unmount.ClearAll();
 		ConductorList.Clear(Config.Conductors);
 		pluginInterface.SavePluginConfig(Config);
 	}
@@ -211,11 +251,44 @@ public sealed class Plugin : IDalamudPlugin
 			if (TeleportGate.ShouldEnqueueInstanceChange(betweenPlan.Instance))
 				EnqueueChangeInstanceAfterTeleport(betweenPlan.Instance, betweenPlan.Territory);
 
+			mount.EnqueueIfEnabled(Config.UseMount);
 			pluginLog.Debug("TeleportPlan cleared (between areas)");
 			teleportPlan.Clear();
 		}
 
 		instanceChange.Tick();
+		if (!Config.Enabled)
+		{
+			mount.Clear();
+			unmount.ClearAll();
+			return;
+		}
+
+		// Arrival/unmount before mount.Tick so AlreadyClose mount jobs are cleared before they remount.
+		TickFlagArrivalAndUnmount();
+		mount.Tick(Config.Mount);
+	}
+
+	/// <summary>
+	/// Resolve flag world pos (retry PointOnFloor), detect arrival, enqueue TaskUnmount.
+	/// Minimal phase-4 handoff — full nav/follow orchestrator is phase 5/7.
+	/// </summary>
+	private void TickFlagArrivalAndUnmount()
+	{
+		var flag = activeHuntFlag;
+		var player = objectTable.LocalPlayer;
+		if (flag == null || player == null)
+			return;
+
+		if (flag.WorldPos is null || flag.WorldPos == Vector3.Zero)
+			flagWorld.TryResolve(flag);
+
+		var arrival = flagArrival.Tick(player.Position, flag.WorldPos, Config.FlagArrivalTolerance);
+		// Already at flag (e.g. AlreadyClose skip): cancel pending mount so it cannot remount after unmount.
+		if (arrival.IsArrived)
+			mount.Clear();
+		unmount.EnqueueOnArrivalIfEnabled(Config.AutoUnmountAtFlag, arrival.IsArrived);
+		unmount.Tick(flagArrival.PathStoppedForArrival, arrival.IsArrived);
 	}
 
 	private void TryExecuteTeleport(uint aetheryteId)
@@ -316,7 +389,12 @@ public sealed class Plugin : IDalamudPlugin
 		clientState.TerritoryChanged -= OnTerritoryChanged;
 		chatMessageHandler.HuntFlagReceived -= OnHuntFlagReceived;
 		instanceChange.Clear();
+		mount.Clear();
+		activeHuntFlag = null;
+		flagArrival.Clear();
+		unmount.ClearAll();
 		chatMessageHandler.Dispose();
+		VNavmeshIpc.Dispose();
 		LifestreamIpc.Dispose();
 		TeleporterIpc.Dispose();
 		chat2Ipc.Dispose();
