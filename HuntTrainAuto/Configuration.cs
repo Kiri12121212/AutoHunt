@@ -76,4 +76,13 @@ public sealed class Configuration : IPluginConfiguration
 	/// </summary>
 	public float PartyFollowDistance { get; set; } = FollowDecision.DefaultFollowDistance;
 	public bool FollowConductorFirst { get; set; } = true;
+
+	/// <summary>
+	/// Max distance (yalms) to follow target / engaged pull / party-targeted BattleNpc
+	/// before entering combat phase (TASKS 5.8). Default
+	/// <see cref="CombatDecision.DefaultEngageRange"/>.
+	/// Clamped to
+	/// [<see cref="CombatDecision.MinEngageRange"/>, <see cref="CombatDecision.MaxEngageRange"/>].
+	/// </summary>
+	public float EngageRange { get; set; } = CombatDecision.DefaultEngageRange;
 }

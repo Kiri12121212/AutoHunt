@@ -62,6 +62,19 @@ public sealed class ConfigWindow : Window, IDisposable
 			saveConfig();
 		}
 
+		var engageRange = config.EngageRange;
+		ImGui.SetNextItemWidth(200f);
+		if (ImGui.SliderFloat(
+			    "Engage range (yalms)",
+			    ref engageRange,
+			    CombatDecision.MinEngageRange,
+			    CombatDecision.MaxEngageRange,
+			    "%.0f"))
+		{
+			config.EngageRange = CombatDecision.ClampEngageRange(engageRange);
+			saveConfig();
+		}
+
 		ImGui.Spacing();
 		ImGui.Separator();
 		ImGui.Spacing();

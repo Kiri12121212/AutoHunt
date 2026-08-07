@@ -46,5 +46,7 @@
 		<Compile Include="..\HuntTrainAuto\FlagArrival.cs" Link="FlagArrival.cs" />
 		<Compile Include="..\HuntTrainAuto\FollowDecision.cs" Link="FollowDecision.cs" />
 		<Compile Include="..\HuntTrainAuto\FollowTargetDecision.cs" Link="FollowTargetDecision.cs" />
+		<Compile Include="..\HuntTrainAuto\CombatDecision.cs" Link="CombatDecision.cs" />
+		<Compile Include="..\HuntTrainAuto\CombatSession.cs" Link="CombatSession.cs" />
 	</ItemGroup>
 </Project>

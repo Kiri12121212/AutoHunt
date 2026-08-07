@@ -35,6 +35,7 @@ public sealed class Plugin : IDalamudPlugin
 	private readonly UnmountRunner unmount;
 	private readonly FollowHelper follow;
 	private readonly FollowTargetResolver followTarget;
+	private readonly CombatTransitionHelper combat;
 
 	private HuntFlag? activeHuntFlag;
 	private long teleportNextAllowedMs;
@@ -49,6 +50,15 @@ public sealed class Plugin : IDalamudPlugin
 
 	/// <summary>vnavmesh IPC; pathfind/move owned by phase 4B+.</summary>
 	public VNavmeshIpc VNavmeshIpc { get; }
+
+	/// <summary>
+	/// Combat/follow phase latch (TASKS 5.8–5.9). Phase 6 observes
+	/// <see cref="CombatSession.InCombatPhase"/> — no RSR calls here.
+	/// </summary>
+	public CombatSession CombatSession => combat.Session;
+
+	/// <summary>True while party-engage combat phase is active (Phase 6 signal).</summary>
+	public bool InCombatPhase => combat.InCombatPhase;
 
 	/// <summary>Active Framework teleport plan (HTA <c>TeleportTo</c>).</summary>
 	public TeleportPlan TeleportPlan => teleportPlan;
@@ -78,6 +88,7 @@ public sealed class Plugin : IDalamudPlugin
 		this.pluginLog = pluginLog;
 		Config = pluginInterface.GetPluginConfig() as Configuration ?? new Configuration();
 		Config.PartyFollowDistance = FollowDecision.ClampFollowDistance(Config.PartyFollowDistance);
+		Config.EngageRange = CombatDecision.ClampEngageRange(Config.EngageRange);
 
 		windowSystem = new WindowSystem(typeof(Plugin).Assembly.GetName()?.Name ?? "HuntTrainAuto");
 		configWindow = new ConfigWindow(Config, () => pluginInterface.SavePluginConfig(Config));
@@ -121,6 +132,12 @@ public sealed class Plugin : IDalamudPlugin
 			pluginLog,
 			() => Config.PartyFollowDistance);
 		followTarget = new FollowTargetResolver(objectTable, partyList, pluginLog);
+		combat = new CombatTransitionHelper(
+			objectTable,
+			partyList,
+			condition,
+			pluginLog,
+			() => Config.EngageRange);
 		mapManager = new MapManager(dataManager, msg => pluginLog.Warning(msg));
 
 		chatMessageHandler = new ChatMessageHandler(chatGui, gameGui, Config);
@@ -157,6 +174,7 @@ public sealed class Plugin : IDalamudPlugin
 		flagArrival.Clear();
 		unmount.ClearAll();
 		follow.Clear();
+		combat.Clear();
 		if (!teleportPlan.TryAdoptFromIntent(chatMessageHandler.TeleportIntent))
 		{
 			// Same-zone close enough: no TP — still mount before later nav (HTA mount-on-ready).
@@ -205,6 +223,7 @@ public sealed class Plugin : IDalamudPlugin
 		flagArrival.Clear();
 		unmount.ClearAll();
 		follow.Clear();
+		combat.Clear();
 		ConductorList.Clear(Config.Conductors);
 		pluginInterface.SavePluginConfig(Config);
 	}
@@ -274,14 +293,16 @@ public sealed class Plugin : IDalamudPlugin
 			mount.Clear();
 			unmount.ClearAll();
 			follow.Clear();
+			combat.Clear();
 			return;
 		}
 
 		// Arrival/unmount before mount.Tick so AlreadyClose mount jobs are cleared before they remount.
 		TickFlagArrivalAndUnmount();
 		mount.Tick(Config.Mount);
-		// After unmount: resolve follow target (conductor > leader > in-combat ally), then tick path.
-		if (unmount.ReadyForGroundFollow)
+		// After unmount: resolve follow (unless combat phase / dead), combat transition, then path.
+		var playerDead = IsLocalPlayerDead();
+		if (unmount.ReadyForGroundFollow && combat.AllowsFollow && !playerDead)
 		{
 			followTarget.ResolveAndApply(
 				follow,
@@ -289,7 +310,24 @@ public sealed class Plugin : IDalamudPlugin
 				Config.FollowConductorFirst);
 		}
 
-		follow.Tick(pluginEnabled: true);
+		combat.Tick(follow, pluginEnabled: true);
+		// No follow pathing while dead or in combat phase (combat.Tick already Clear'd on enter).
+		follow.Tick(pluginEnabled: !playerDead && combat.AllowsFollow);
+	}
+
+	private bool IsLocalPlayerDead()
+	{
+		try
+		{
+			if (condition[ConditionFlag.Unconscious])
+				return true;
+			var player = objectTable.LocalPlayer;
+			return player is { CurrentHp: <= 0 };
+		}
+		catch
+		{
+			return false;
+		}
 	}
 
 	/// <summary>
@@ -417,6 +455,7 @@ public sealed class Plugin : IDalamudPlugin
 		flagArrival.Clear();
 		unmount.ClearAll();
 		follow.Clear();
+		combat.Clear();
 		chatMessageHandler.Dispose();
 		VNavmeshIpc.Dispose();
 		LifestreamIpc.Dispose();
