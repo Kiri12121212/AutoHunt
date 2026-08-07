@@ -10,6 +10,7 @@ public sealed class ConfigWindow : Window, IDisposable
 {
 	private static readonly Vector4 AvailableColor = new(0.45f, 0.85f, 0.45f, 1f);
 	private static readonly Vector4 MissingColor = new(0.95f, 0.40f, 0.40f, 1f);
+	private static readonly Vector4 PlaceholderColor = new(0.70f, 0.70f, 0.70f, 1f);
 
 	private readonly Configuration config;
 	private readonly Action saveConfig;
@@ -19,6 +20,7 @@ public sealed class ConfigWindow : Window, IDisposable
 	private readonly Func<bool> rsrAvailable;
 	private string conductorInput = string.Empty;
 	private int selectedConductor;
+	private int selectedTab;
 
 	public ConfigWindow(
 		Configuration config,
@@ -36,76 +38,71 @@ public sealed class ConfigWindow : Window, IDisposable
 		this.rsrAvailable = rsrAvailable;
 		SizeConstraints = new WindowSizeConstraints
 		{
-			MinimumSize = new Vector2(400, 340),
-			MaximumSize = new Vector2(800, 600),
+			MinimumSize = new Vector2(420, 420),
+			MaximumSize = new Vector2(900, 700),
 		};
 	}
 
 	public override void Draw()
 	{
-		ImGui.TextWrapped("Vanilla Dalamud scaffold — no ECommons or NightmareUI.");
-		ImGui.Text($"Conductors: {config.Conductors.Count}");
-		ImGui.Spacing();
-		DrawDependencyIndicators();
-		ImGui.Spacing();
-
-		var enabled = config.Enabled;
-		if (ImGui.Checkbox("Enabled", ref enabled))
-			config.Enabled = enabled;
-
-		var suppressChat = config.SuppressChatOtherPlayers;
-		if (ImGui.Checkbox("Suppress chat from other players", ref suppressChat))
-			config.SuppressChatOtherPlayers = suppressChat;
-
-		var contextMenu = config.ContextMenu;
-		if (ImGui.Checkbox("Context menu", ref contextMenu))
-			config.ContextMenu = contextMenu;
-
-		var autoOpenMap = config.AutoOpenMap;
-		if (ImGui.Checkbox("Auto-open map on conductor flag", ref autoOpenMap))
-			config.AutoOpenMap = autoOpenMap;
-
-		var noDuplicateFlags = config.NoDuplicateFlags;
-		if (ImGui.Checkbox("Skip duplicate flags (same zone, ≤10)", ref noDuplicateFlags))
-			config.NoDuplicateFlags = noDuplicateFlags;
-
-		var aRankScan = config.ARankScanRange;
-		ImGui.SetNextItemWidth(200f);
-		if (ImGui.SliderFloat(
-			    "A-rank scan range (yalms)",
-			    ref aRankScan,
-			    EngageTargetDecision.MinARankScanRange,
-			    EngageTargetDecision.MaxARankScanRange,
-			    "%.0f"))
-		{
-			config.ARankScanRange = EngageTargetDecision.ClampARankScanRange(aRankScan);
-			saveConfig();
-		}
-
-		var engageRange = config.EngageRange;
-		ImGui.SetNextItemWidth(200f);
-		if (ImGui.SliderFloat(
-			    "Engage range (yalms)",
-			    ref engageRange,
-			    CombatDecision.MinEngageRange,
-			    CombatDecision.MaxEngageRange,
-			    "%.0f"))
-		{
-			config.EngageRange = CombatDecision.ClampEngageRange(engageRange);
-			saveConfig();
-		}
-
-		ImGui.Spacing();
-		ImGui.Text("RSR (combat)");
-		DrawRsrHostileCombo();
-		DrawRsrTargetingCombo("Tank targeting", config.RsrTargetingTank, v => config.RsrTargetingTank = v);
-		DrawRsrTargetingCombo("Non-tank targeting", config.RsrTargetingNonTank, v => config.RsrTargetingNonTank = v);
-
+		DrawMasterAndConductors();
 		ImGui.Spacing();
 		ImGui.Separator();
 		ImGui.Spacing();
 
-		ImGui.Text("Current conductors:");
+		selectedTab = ConfigTabs.ClampSelected(selectedTab);
+		if (!ImGui.BeginTabBar("##htaConfigTabs"))
+			return;
+
+		if (ImGui.BeginTabItem(ConfigTabs.Labels[ConfigTabs.Settings]))
+		{
+			selectedTab = ConfigTabs.Settings;
+			DrawSettingsTab();
+			ImGui.EndTabItem();
+		}
+
+		if (ImGui.BeginTabItem(ConfigTabs.Labels[ConfigTabs.Mount]))
+		{
+			selectedTab = ConfigTabs.Mount;
+			DrawMountTab();
+			ImGui.EndTabItem();
+		}
+
+		if (ImGui.BeginTabItem(ConfigTabs.Labels[ConfigTabs.Follow]))
+		{
+			selectedTab = ConfigTabs.Follow;
+			DrawFollowTab();
+			ImGui.EndTabItem();
+		}
+
+		if (ImGui.BeginTabItem(ConfigTabs.Labels[ConfigTabs.Combat]))
+		{
+			selectedTab = ConfigTabs.Combat;
+			DrawCombatTab();
+			ImGui.EndTabItem();
+		}
+
+		if (ImGui.BeginTabItem(ConfigTabs.Labels[ConfigTabs.Integrations]))
+		{
+			selectedTab = ConfigTabs.Integrations;
+			DrawIntegrationsTab();
+			ImGui.EndTabItem();
+		}
+
+		ImGui.EndTabBar();
+	}
+
+	private void DrawMasterAndConductors()
+	{
+		var enabled = config.Enabled;
+		if (ImGui.Checkbox("Enabled", ref enabled))
+		{
+			config.Enabled = enabled;
+			saveConfig();
+		}
+
+		ImGui.Spacing();
+		ImGui.Text($"Conductors: {config.Conductors.Count}");
 		ImGui.SameLine();
 		if (ImGui.SmallButton("Clear"))
 		{
@@ -143,13 +140,213 @@ public sealed class ConfigWindow : Window, IDisposable
 		}
 	}
 
-	private void DrawDependencyIndicators()
+	private void DrawSettingsTab()
 	{
-		ImGui.Text("Dependencies:");
-		DrawDependencyLine(DependencyAvailability.VnavmeshDisplayName, vnavmeshAvailable);
-		DrawDependencyLine(DependencyAvailability.RsrDisplayName, rsrAvailable);
+		var autoTeleport = config.AutoTeleport;
+		if (ImGui.Checkbox("Auto-teleport on conductor flag", ref autoTeleport))
+		{
+			config.AutoTeleport = autoTeleport;
+			saveConfig();
+		}
+
+		var autoOpenMap = config.AutoOpenMap;
+		if (ImGui.Checkbox("Auto-open map on conductor flag", ref autoOpenMap))
+		{
+			config.AutoOpenMap = autoOpenMap;
+			saveConfig();
+		}
+
+		var suppressChat = config.SuppressChatOtherPlayers;
+		if (ImGui.Checkbox("Suppress chat from other players", ref suppressChat))
+		{
+			config.SuppressChatOtherPlayers = suppressChat;
+			saveConfig();
+		}
+
+		var contextMenu = config.ContextMenu;
+		if (ImGui.Checkbox("Context menu", ref contextMenu))
+		{
+			config.ContextMenu = contextMenu;
+			saveConfig();
+		}
+
+		var noDuplicateFlags = config.NoDuplicateFlags;
+		if (ImGui.Checkbox("Skip duplicate flags (same zone, ≤10)", ref noDuplicateFlags))
+		{
+			config.NoDuplicateFlags = noDuplicateFlags;
+			saveConfig();
+		}
+
+		var autoSwitchInstance = config.AutoSwitchInstanceToOne;
+		if (ImGui.Checkbox("Auto-switch instance to 1 after TP", ref autoSwitchInstance))
+		{
+			config.AutoSwitchInstanceToOne = autoSwitchInstance;
+			saveConfig();
+		}
+
+		var distanceHack = config.DistanceCompensationHack;
+		if (ImGui.Checkbox("Distance compensation hack", ref distanceHack))
+		{
+			config.DistanceCompensationHack = distanceHack;
+			saveConfig();
+		}
+
+		ImGui.Spacing();
+		var skipDist = config.AutoTeleportAetheryteDistanceDiff;
+		ImGui.SetNextItemWidth(200f);
+		if (ImGui.SliderFloat(
+			    "Same-zone TP skip distance (yalms)",
+			    ref skipDist,
+			    ConfigTabs.MinAutoTeleportSkipDistance,
+			    ConfigTabs.MaxAutoTeleportSkipDistance,
+			    "%.1f"))
+		{
+			config.AutoTeleportAetheryteDistanceDiff = ConfigTabs.ClampAutoTeleportSkipDistance(skipDist);
+			saveConfig();
+		}
+
+		ImGui.Spacing();
+		ImGui.Text("Teleport delay");
+		var delayEnabled = config.TeleportDelayEnabled;
+		if (ImGui.Checkbox("Random pre-delay before TP", ref delayEnabled))
+		{
+			config.TeleportDelayEnabled = delayEnabled;
+			saveConfig();
+		}
+
+		var delayMin = config.TeleportDelayMin;
+		ImGui.SetNextItemWidth(200f);
+		if (ImGui.SliderInt("TP delay min (ms)", ref delayMin, ConfigTabs.MinTeleportDelayMs, ConfigTabs.MaxTeleportDelayMs))
+		{
+			var (min, max) = ConfigTabs.ClampTeleportDelayRange(delayMin, config.TeleportDelayMax);
+			config.TeleportDelayMin = min;
+			config.TeleportDelayMax = max;
+			saveConfig();
+		}
+
+		var delayMax = config.TeleportDelayMax;
+		ImGui.SetNextItemWidth(200f);
+		if (ImGui.SliderInt("TP delay max (ms)", ref delayMax, ConfigTabs.MinTeleportDelayMs, ConfigTabs.MaxTeleportDelayMs))
+		{
+			var (min, max) = ConfigTabs.ClampTeleportDelayRange(config.TeleportDelayMin, delayMax);
+			config.TeleportDelayMin = min;
+			config.TeleportDelayMax = max;
+			saveConfig();
+		}
+	}
+
+	private void DrawMountTab()
+	{
+		var useMount = config.UseMount;
+		if (ImGui.Checkbox("Use mount (after TP / before nav)", ref useMount))
+		{
+			config.UseMount = useMount;
+			saveConfig();
+		}
+
+		ImGui.TextWrapped(
+			"Mount id: -1 = never, 0 = random, other = specific Mount RowId.");
+		var mount = config.Mount;
+		ImGui.SetNextItemWidth(200f);
+		if (ImGui.InputInt("Mount selection", ref mount))
+			config.Mount = ConfigTabs.ClampMountId(mount);
+		// Persist only when editing finishes — avoid saving partial multi-digit RowIds.
+		if (ImGui.IsItemDeactivatedAfterEdit())
+		{
+			config.Mount = ConfigTabs.ClampMountId(config.Mount);
+			saveConfig();
+		}
+
+		ImGui.TextDisabled(ConfigTabs.FormatMountSelection(config.Mount));
+
+		var autoUnmount = config.AutoUnmountAtFlag;
+		if (ImGui.Checkbox("Auto-unmount at flag", ref autoUnmount))
+		{
+			config.AutoUnmountAtFlag = autoUnmount;
+			saveConfig();
+		}
+
+		var arrival = config.FlagArrivalTolerance;
+		ImGui.SetNextItemWidth(200f);
+		if (ImGui.SliderFloat(
+			    "Flag arrival tolerance (yalms)",
+			    ref arrival,
+			    ConfigTabs.MinFlagArrivalTolerance,
+			    ConfigTabs.MaxFlagArrivalTolerance,
+			    "%.1f"))
+		{
+			config.FlagArrivalTolerance = ConfigTabs.ClampFlagArrivalTolerance(arrival);
+			saveConfig();
+		}
+	}
+
+	private void DrawFollowTab()
+	{
+		var followConductorFirst = config.FollowConductorFirst;
+		if (ImGui.Checkbox("Follow conductor first (else party leader)", ref followConductorFirst))
+		{
+			config.FollowConductorFirst = followConductorFirst;
+			saveConfig();
+		}
+
+		var followDistance = config.PartyFollowDistance;
+		ImGui.SetNextItemWidth(200f);
+		if (ImGui.SliderFloat(
+			    "Party follow distance (yalms)",
+			    ref followDistance,
+			    FollowDecision.MinFollowDistance,
+			    FollowDecision.MaxFollowDistance,
+			    "%.1f"))
+		{
+			config.PartyFollowDistance = FollowDecision.ClampFollowDistance(followDistance);
+			saveConfig();
+		}
+
+		var engageRange = config.EngageRange;
+		ImGui.SetNextItemWidth(200f);
+		if (ImGui.SliderFloat(
+			    "Engage range (yalms)",
+			    ref engageRange,
+			    CombatDecision.MinEngageRange,
+			    CombatDecision.MaxEngageRange,
+			    "%.0f"))
+		{
+			config.EngageRange = CombatDecision.ClampEngageRange(engageRange);
+			saveConfig();
+		}
+
+		var aRankScan = config.ARankScanRange;
+		ImGui.SetNextItemWidth(200f);
+		if (ImGui.SliderFloat(
+			    "A-rank scan range (yalms)",
+			    ref aRankScan,
+			    EngageTargetDecision.MinARankScanRange,
+			    EngageTargetDecision.MaxARankScanRange,
+			    "%.0f"))
+		{
+			config.ARankScanRange = EngageTargetDecision.ClampARankScanRange(aRankScan);
+			saveConfig();
+		}
+	}
+
+	private void DrawCombatTab()
+	{
+		ImGui.TextWrapped("Rotation Solver Reborn settings applied on engage.");
+		ImGui.Spacing();
+		DrawRsrHostileCombo();
+		DrawRsrTargetingCombo("Tank targeting", config.RsrTargetingTank, v => config.RsrTargetingTank = v);
+		DrawRsrTargetingCombo("Non-tank targeting", config.RsrTargetingNonTank, v => config.RsrTargetingNonTank = v);
+	}
+
+	private void DrawIntegrationsTab()
+	{
+		ImGui.Text("Plugin availability:");
 		DrawDependencyLine(DependencyAvailability.TeleporterDisplayName, teleporterAvailable);
 		DrawDependencyLine(DependencyAvailability.LifestreamDisplayName, lifestreamAvailable);
+		DrawDependencyLine(DependencyAvailability.VnavmeshDisplayName, vnavmeshAvailable);
+		DrawDependencyLine(DependencyAvailability.RsrDisplayName, rsrAvailable);
+		ImGui.TextColored(PlaceholderColor, ConfigTabs.FormatHuntAlertsPlaceholder());
+		ImGui.TextDisabled("HuntAlerts intake lands in Phase 10.");
 	}
 
 	private static void DrawDependencyLine(string displayName, Func<bool> probe)
