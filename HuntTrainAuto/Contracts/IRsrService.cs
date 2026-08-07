@@ -19,13 +19,14 @@ public interface IRsrService : IDisposable
 	bool IsAvailable { get; }
 
 	/// <summary>
-	/// Apply default combat settings then start AutoDuty mode
+	/// Apply combat settings then start AutoDuty mode
 	/// (<c>AutodutyChangeOperatingMode</c>). Soft-fails silently.
-	/// Defaults: HostileType AllTargetsCanAttack, FriendlyPartyNpcHealRaise3 true,
-	/// AutoOffAfterCombat false, targeting LowHP.
+	/// Settings: HostileType from <paramref name="hostileType"/>,
+	/// FriendlyPartyNpcHealRaise3 true, AutoOffAfterCombat false,
+	/// then Autoduty mode with <paramref name="targeting"/>.
 	/// </summary>
 	/// <returns>True when the AutoDuty CallGate invoke succeeded.</returns>
-	bool RotationAuto();
+	bool RotationAuto(RsrTargetingType targeting, RsrTargetHostileType hostileType);
 
 	/// <summary>
 	/// Stop rotation (<c>ChangeOperatingMode(Off)</c>). Soft-fails silently.

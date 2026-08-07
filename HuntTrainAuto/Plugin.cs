@@ -93,6 +93,13 @@ public sealed class Plugin : IDalamudPlugin
 		Config = pluginInterface.GetPluginConfig() as Configuration ?? new Configuration();
 		Config.EngageRange = CombatDecision.ClampEngageRange(Config.EngageRange);
 		Config.ARankScanRange = EngageTargetDecision.ClampARankScanRange(Config.ARankScanRange);
+		Config.RsrHostileType = RsrSettingsDecision.ClampHostileType(Config.RsrHostileType);
+		Config.RsrTargetingTank = RsrSettingsDecision.ClampTargetingType(
+			Config.RsrTargetingTank,
+			RsrSettingsDecision.DefaultTankTargeting);
+		Config.RsrTargetingNonTank = RsrSettingsDecision.ClampTargetingType(
+			Config.RsrTargetingNonTank,
+			RsrSettingsDecision.DefaultNonTankTargeting);
 
 		windowSystem = new WindowSystem(typeof(Plugin).Assembly.GetName()?.Name ?? "HuntTrainAuto");
 		configWindow = new ConfigWindow(Config, () => pluginInterface.SavePluginConfig(Config));
@@ -164,7 +171,7 @@ public sealed class Plugin : IDalamudPlugin
 			condition,
 			pluginLog,
 			() => Config.EngageRange);
-		rsrEnable = new RsrEnableHelper(RsrIpc, pluginLog);
+		rsrEnable = new RsrEnableHelper(RsrIpc, pluginLog, ResolveRsrRotationSettings);
 		mapManager = new MapManager(dataManager, msg => pluginLog.Warning(msg));
 
 		chatMessageHandler = new ChatMessageHandler(chatGui, gameGui, Config);
@@ -360,6 +367,31 @@ public sealed class Plugin : IDalamudPlugin
 		{
 			return false;
 		}
+	}
+
+	/// <summary>
+	/// Resolve RSR targeting / HostileType from config + local ClassJob.Role (tank = 1).
+	/// Soft-fails to non-tank defaults when the player/job is unavailable.
+	/// </summary>
+	private (RsrTargetingType Targeting, RsrTargetHostileType Hostile) ResolveRsrRotationSettings()
+	{
+		var isTank = false;
+		try
+		{
+			var player = objectTable.LocalPlayer;
+			if (player != null && player.ClassJob.ValueNullable is { } job)
+				isTank = RsrSettingsDecision.IsTankRole(job.Role);
+		}
+		catch
+		{
+			// Soft-fail: treat as non-tank.
+		}
+
+		return RsrSettingsDecision.Resolve(
+			isTank,
+			Config.RsrHostileType,
+			Config.RsrTargetingTank,
+			Config.RsrTargetingNonTank);
 	}
 
 	/// <summary>

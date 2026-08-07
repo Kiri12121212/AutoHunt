@@ -6,20 +6,26 @@ using HuntTrainAuto.Contracts;
 namespace HuntTrainAuto.Combat;
 
 /// <summary>
-/// Thin Framework wiring for RSR enable (TASKS 6.2).
+/// Thin Framework wiring for RSR enable (TASKS 6.2–6.4).
 /// Starts <see cref="IRsrService.RotationAuto"/> while in combat phase until success,
 /// and <see cref="IRsrService.RotationStop"/> on exit until success (anti-sticky). Soft-fails.
+/// Targeting / HostileType come from <paramref name="resolveSettings"/> (config + role).
 /// </summary>
 public sealed class RsrEnableHelper
 {
 	private readonly IRsrService rsr;
 	private readonly IPluginLog pluginLog;
+	private readonly Func<(RsrTargetingType Targeting, RsrTargetHostileType Hostile)> resolveSettings;
 	private bool rotationAutoStarted;
 
-	public RsrEnableHelper(IRsrService rsr, IPluginLog pluginLog)
+	public RsrEnableHelper(
+		IRsrService rsr,
+		IPluginLog pluginLog,
+		Func<(RsrTargetingType Targeting, RsrTargetHostileType Hostile)> resolveSettings)
 	{
 		this.rsr = rsr;
 		this.pluginLog = pluginLog;
+		this.resolveSettings = resolveSettings;
 	}
 
 	/// <summary>True after a successful StartAuto until a successful Stop.</summary>
@@ -74,10 +80,11 @@ public sealed class RsrEnableHelper
 
 		if (kind == RsrEnableKind.StartAuto)
 		{
-			var ok = rsr.RotationAuto();
+			var (targeting, hostile) = resolveSettings();
+			var ok = rsr.RotationAuto(targeting, hostile);
 			rotationAutoStarted = RsrEnableDecision.NextRotationAutoStarted(kind, ok, rotationAutoStarted);
 			if (ok)
-				pluginLog.Debug("RSR: RotationAuto (combat phase enter)");
+				pluginLog.Debug($"RSR: RotationAuto targeting={targeting} hostile={hostile}");
 			else
 				pluginLog.Debug("RSR: RotationAuto soft-fail; will retry while InCombatPhase");
 		}

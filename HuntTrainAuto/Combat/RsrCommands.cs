@@ -31,16 +31,20 @@ public static class RsrCommands
 		RsrTargetHostileType hostileType = RsrTargetHostileType.AllTargetsCanAttack)
 		=>
 		[
-			HostileTypeSetting(hostileType),
+			HostileTypeSetting(RsrSettingsDecision.ClampHostileType(hostileType)),
 			FriendlyPartyNpcHealRaise3Setting(true),
 			AutoOffAfterCombatSetting(false),
 		];
 
 	/// <summary>
-	/// AD tank vs non-tank targeting default (config UI owned by later tasks).
+	/// AD tank vs non-tank targeting defaults (HighHP / LowHP).
+	/// Prefer <see cref="RsrSettingsDecision.ResolveTargeting"/> when config is available.
 	/// </summary>
 	public static RsrTargetingType DefaultTargetingForTankRole(bool isTank)
-		=> isTank ? RsrTargetingType.HighHP : RsrTargetingType.LowHP;
+		=> RsrSettingsDecision.ResolveTargeting(
+			isTank,
+			RsrSettingsDecision.DefaultTankTargeting,
+			RsrSettingsDecision.DefaultNonTankTargeting);
 
 	/// <summary>
 	/// AD <c>IPCSubscriber_Common.IsReady</c> equivalent over Dalamud

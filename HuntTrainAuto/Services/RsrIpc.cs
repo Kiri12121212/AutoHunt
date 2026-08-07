@@ -89,14 +89,6 @@ public sealed class RsrIpc : IRsrService
 	}
 
 	/// <inheritdoc />
-	public bool RotationAuto()
-		=> RotationAuto(RsrTargetingType.LowHP, RsrTargetHostileType.AllTargetsCanAttack);
-
-	/// <summary>
-	/// Same as <see cref="RotationAuto()"/> with explicit targeting / hostile defaults
-	/// for later config wiring (6.3+). Soft-fails silently.
-	/// </summary>
-	/// <returns>True when <c>AutodutyChangeOperatingMode</c> succeeded.</returns>
 	public bool RotationAuto(RsrTargetingType targeting, RsrTargetHostileType hostileType)
 	{
 		foreach (var setting in RsrCommands.DefaultRotationAutoSettings(hostileType))

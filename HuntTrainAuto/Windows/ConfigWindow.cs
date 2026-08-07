@@ -76,6 +76,12 @@ public sealed class ConfigWindow : Window, IDisposable
 		}
 
 		ImGui.Spacing();
+		ImGui.Text("RSR (combat)");
+		DrawRsrHostileCombo();
+		DrawRsrTargetingCombo("Tank targeting", config.RsrTargetingTank, v => config.RsrTargetingTank = v);
+		DrawRsrTargetingCombo("Non-tank targeting", config.RsrTargetingNonTank, v => config.RsrTargetingNonTank = v);
+
+		ImGui.Spacing();
 		ImGui.Separator();
 		ImGui.Spacing();
 
@@ -115,6 +121,51 @@ public sealed class ConfigWindow : Window, IDisposable
 				saveConfig();
 			}
 		}
+	}
+
+	private void DrawRsrHostileCombo()
+	{
+		ImGui.SetNextItemWidth(280f);
+		var current = config.RsrHostileType;
+		if (!ImGui.BeginCombo("Hostile type", current.ToString()))
+			return;
+
+		foreach (RsrTargetHostileType value in Enum.GetValues<RsrTargetHostileType>())
+		{
+			var selected = value == current;
+			if (ImGui.Selectable(value.ToString(), selected))
+			{
+				config.RsrHostileType = RsrSettingsDecision.ClampHostileType(value);
+				saveConfig();
+			}
+
+			if (selected)
+				ImGui.SetItemDefaultFocus();
+		}
+
+		ImGui.EndCombo();
+	}
+
+	private void DrawRsrTargetingCombo(string label, RsrTargetingType current, Action<RsrTargetingType> set)
+	{
+		ImGui.SetNextItemWidth(280f);
+		if (!ImGui.BeginCombo(label, current.ToString()))
+			return;
+
+		foreach (RsrTargetingType value in Enum.GetValues<RsrTargetingType>())
+		{
+			var selected = value == current;
+			if (ImGui.Selectable(value.ToString(), selected))
+			{
+				set(RsrSettingsDecision.ClampTargetingType(value, current));
+				saveConfig();
+			}
+
+			if (selected)
+				ImGui.SetItemDefaultFocus();
+		}
+
+		ImGui.EndCombo();
 	}
 
 	public void Dispose()
