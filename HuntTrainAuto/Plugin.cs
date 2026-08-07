@@ -66,9 +66,9 @@ public sealed class Plugin : IDalamudPlugin
 	public bool InCombatPhase => combat.InCombatPhase;
 
 	/// <summary>
-	/// Train pipeline state machine (TASKS 7.1–7.2).
+	/// Train pipeline state machine (TASKS 7.1–7.4).
 	/// Framework.Update fills progress signals via <see cref="HuntTrainObserve"/> and ticks phases;
-	/// resets on master-off / hard clear / dispose.
+	/// new flags abort+restart via <see cref="FlagRestartDecision"/>; resets on master-off / hard clear / dispose.
 	/// </summary>
 	public HuntTrainController Train => train;
 
@@ -212,21 +212,26 @@ public sealed class Plugin : IDalamudPlugin
 
 	private void OnHuntFlagReceived(HuntFlag flag)
 	{
-		// New flag (skip or new plan) invalidates any in-flight instance change / automove / mount / unmount.
-		// RSR stop: RsrStopTrigger.FlagChange → ImmediateClear.
-		// Abort/restart on new flag while mid-pipeline is TASKS 7.4 — not here.
+		// New flag: abort mid-pipeline if needed, then restart (TASKS 7.4).
+		// Snapshot pipeline before clears / adopt so Start* is not applied while non-Idle.
+		var pipelineActive = FlagRestartDecision.IsPipelineActive(
+			train.Phase,
+			HasInFlightPipelineWork());
+
 		activeHuntFlag = flag;
-		instanceChange.Clear();
-		mount.Clear();
-		flagArrival.Clear();
-		unmount.ClearAll();
-		engage.Clear();
-		combat.Clear();
-		rsrEnable.Clear();
 
 		var adopted = teleportPlan.TryAdoptFromIntent(chatMessageHandler.TeleportIntent);
 		var alreadyClose = chatMessageHandler.TeleportIntent.LatestDecision is
 			{ Action: TeleportAction.Skip, SkipReason: TeleportSkipReason.AlreadyClose };
+
+		var plan = FlagRestartDecision.Decide(
+			Config.Enabled,
+			pipelineActive,
+			teleportPlan.HasActive,
+			alreadyClose,
+			Config.UseMount);
+
+		ApplyFlagRestart(plan);
 
 		if (adopted)
 		{
@@ -236,15 +241,78 @@ public sealed class Plugin : IDalamudPlugin
 		else if (alreadyClose)
 		{
 			// Same-zone close enough: no TP — still mount before later nav (HTA mount-on-ready).
+			// Enqueue after ClearMount so AbortThenRestart does not wipe this job.
 			mount.EnqueueIfEnabled(Config.UseMount);
 		}
 
-		// Idle → Teleport / Mount / Navigate from observable flag intent (7.2).
-		train.Apply(HuntTrainObserve.DecideFlagStart(
-			Config.Enabled,
-			teleportPlan.HasActive,
-			alreadyClose,
-			Config.UseMount));
+		if (plan.StartEvent != HuntTrainEvent.None)
+			train.Apply(plan.StartEvent);
+	}
+
+	/// <summary>
+	/// Leftover runners / path while phase may already be Idle (soft-fail IPC).
+	/// </summary>
+	private bool HasInFlightPipelineWork()
+	{
+		try
+		{
+			if (teleportPlan.HasActive
+				|| instanceChange.IsActive
+				|| mount.IsActive
+				|| unmount.IsActive
+				|| combat.InCombatPhase
+				|| follow.Enabled)
+				return true;
+
+			return VNavmeshIpc.PathIsRunning();
+		}
+		catch
+		{
+			// Soft-fail: treat as no leftover work; phase alone still drives abort.
+			return false;
+		}
+	}
+
+	/// <summary>
+	/// Apply <see cref="FlagRestartDecision"/> abort clears (TASKS 7.4).
+	/// Mount enqueue / Start* Apply happen in <see cref="OnHuntFlagReceived"/> after this.
+	/// </summary>
+	private void ApplyFlagRestart(FlagRestartPlan plan)
+	{
+		if (plan.StopNavPath)
+		{
+			try
+			{
+				movement.Stop();
+			}
+			catch
+			{
+				// soft-fail: vnav / player may be unavailable
+			}
+		}
+
+		if (plan.ClearFollow)
+			follow.Clear();
+		if (plan.ClearInstanceChange)
+			instanceChange.Clear();
+		if (plan.ClearMount)
+			mount.Clear();
+		if (plan.ClearFlagArrival)
+			flagArrival.Clear();
+		if (plan.ClearUnmount)
+			unmount.ClearAll();
+		if (plan.ClearEngage)
+			engage.Clear();
+		if (plan.ClearCombat)
+			combat.Clear();
+		if (plan.ClearRsr)
+		{
+			// RSR stop: RsrStopTrigger.FlagChange → ImmediateClear.
+			rsrEnable.Clear();
+		}
+
+		if (plan.ResetTrainController)
+			train.Reset();
 	}
 
 	private void ApplyDelayTeleport()

@@ -60,5 +60,6 @@
 		<Compile Include="..\HuntTrainAuto\State\HuntTrainController.cs" Link="State\HuntTrainController.cs" />
 		<Compile Include="..\HuntTrainAuto\State\HuntTrainObserve.cs" Link="State\HuntTrainObserve.cs" />
 		<Compile Include="..\HuntTrainAuto\State\TerritoryCleanupDecision.cs" Link="State\TerritoryCleanupDecision.cs" />
+		<Compile Include="..\HuntTrainAuto\State\FlagRestartDecision.cs" Link="State\FlagRestartDecision.cs" />
 	</ItemGroup>
 </Project>
