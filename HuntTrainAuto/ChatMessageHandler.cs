@@ -9,11 +9,14 @@ using Dalamud.Plugin.Services;
 namespace HuntTrainAuto;
 
 /// <summary>
-/// Subscribes to <see cref="IChatGui.ChatMessage"/>. Sender match + map-link → <see cref="HuntFlag"/>
-/// extraction are wired here; highlight / suppress / open-map remain for later phase-2 tasks.
+/// Subscribes to <see cref="IChatGui.ChatMessage"/>. Sender match, map-link → <see cref="HuntFlag"/>,
+/// and conductor highlight are wired here; suppress / open-map remain for later phase-2 tasks.
 /// </summary>
 public sealed class ChatMessageHandler : IDisposable
 {
+	/// <summary>HTA parity UI foreground color for conductor chat lines.</summary>
+	public const ushort ConductorUiForeground = 578;
+
 	private readonly IChatGui chatGui;
 	private readonly Configuration config;
 
@@ -25,8 +28,8 @@ public sealed class ChatMessageHandler : IDisposable
 	}
 
 	/// <summary>
-	/// Result of the most recent chat message evaluation. Later tasks (highlight, suppress)
-	/// can read this without re-decoding. Map-link work must run in the same callback pass.
+	/// Result of the most recent chat message evaluation. Later tasks (suppress)
+	/// can read this without re-decoding. Highlight and map-link work must run in the same callback pass.
 	/// </summary>
 	public bool IsConductorMessage { get; private set; }
 
@@ -57,8 +60,25 @@ public sealed class ChatMessageHandler : IDisposable
 		ConductorSenderName = senderName;
 
 		TryExtractHuntFlag(message);
+		message.Message = HighlightConductorMessage(message.Message);
 
-		// Stub for phase-2 follow-ups (highlight/suppress, open map).
+		// Stub for phase-2 follow-ups (suppress, open map).
+	}
+
+	/// <summary>
+	/// Wrap existing payloads with UI foreground <see cref="ConductorUiForeground"/> (HTA parity).
+	/// Uses Dalamud <see cref="SeStringBuilder"/> — not linked into pure unit tests.
+	/// </summary>
+	internal static SeString HighlightConductorMessage(SeString message)
+	{
+		ArgumentNullException.ThrowIfNull(message);
+
+		var builder = new SeStringBuilder();
+		builder.AddUiForeground(ConductorUiForeground);
+		foreach (var payload in message.Payloads)
+			builder.Add(payload);
+		builder.AddUiForegroundOff();
+		return builder.Build();
 	}
 
 	/// <summary>
