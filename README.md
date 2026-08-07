@@ -49,8 +49,6 @@ https://raw.githubusercontent.com/KiritsuguuEmiya/DalamudPlugins/main/pluginmast
 
 Download links point at GitHub Releases `latest/download/HuntTrainAuto.zip` — **placeholder until a release zip is published**; until then use the local copy path above.
 
-In-game QA: [docs/MANUAL_TEST.md](docs/MANUAL_TEST.md).
-
 ## Commands
 
 - `/hta` — toggle config window
