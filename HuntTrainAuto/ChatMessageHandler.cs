@@ -11,6 +11,7 @@ namespace HuntTrainAuto;
 /// <summary>
 /// Subscribes to <see cref="IChatGui.ChatMessage"/>. Sender match, map-link → <see cref="HuntFlag"/>,
 /// optional auto-open map with AgentMap dedupe, conductor highlight, and optional non-conductor suppress.
+/// Teleport decision is computed only (stored on <see cref="TeleportIntent"/>) — no Teleporter/Lifestream calls.
 /// </summary>
 public sealed class ChatMessageHandler : IDisposable
 {
@@ -39,6 +40,15 @@ public sealed class ChatMessageHandler : IDisposable
 
 	/// <summary>Most recently extracted conductor map-link flag, if any.</summary>
 	public HuntFlag? LatestHuntFlag { get; private set; }
+
+	/// <summary>Latest teleport decision / intended arrival (never executes TP).</summary>
+	public TeleportIntent TeleportIntent { get; } = new();
+
+	/// <summary>
+	/// Optional player/nearest snapshot for decision evaluation.
+	/// Return null to soft-fail (records <see cref="TeleportSkipReason.PlayerStateUnavailable"/>).
+	/// </summary>
+	public Func<HuntFlag, TeleportPlayerSnapshot?>? TryGetPlayerSnapshot { get; set; }
 
 	/// <summary>Raised when a conductor message yields a new <see cref="HuntFlag"/>.</summary>
 	public event Action<HuntFlag>? HuntFlagReceived;
@@ -122,6 +132,7 @@ public sealed class ChatMessageHandler : IDisposable
 				mapLink.PlaceName);
 
 			LatestHuntFlag = flag;
+			TryEvaluateTeleportDecision(flag);
 			HuntFlagReceived?.Invoke(flag);
 
 			if (config.AutoOpenMap
@@ -132,6 +143,34 @@ public sealed class ChatMessageHandler : IDisposable
 			}
 
 			return;
+		}
+	}
+
+	/// <summary>
+	/// Computes teleport decision and stores it on <see cref="TeleportIntent"/>.
+	/// Soft-fails when snapshot unavailable or provider throws — never teleports.
+	/// </summary>
+	private void TryEvaluateTeleportDecision(HuntFlag flag)
+	{
+		try
+		{
+			var snapshot = TryGetPlayerSnapshot?.Invoke(flag);
+			var decision = TeleportDecision.Evaluate(
+				config.Enabled,
+				config.AutoTeleport,
+				config.AutoTeleportAetheryteDistanceDiff,
+				config.AutoSwitchInstanceToOne,
+				flag,
+				snapshot);
+			TeleportIntent.Set(decision);
+		}
+		catch
+		{
+			TeleportIntent.Set(new TeleportDecisionResult
+			{
+				Action = TeleportAction.Skip,
+				SkipReason = TeleportSkipReason.PlayerStateUnavailable,
+			});
 		}
 	}
 

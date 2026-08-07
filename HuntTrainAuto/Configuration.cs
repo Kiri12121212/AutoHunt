@@ -16,6 +16,22 @@ public sealed class Configuration : IPluginConfiguration
 	public bool AutoOpenMap { get; set; } = true;
 	public bool NoDuplicateFlags { get; set; } = true;
 
+	/// <summary>HTA parity: auto-teleport on conductor flags (zone / instance / far).</summary>
+	public bool AutoTeleport { get; set; } = true;
+
+	/// <summary>
+	/// Same-zone skip threshold: if player distance to flag ≤ this, skip TP (mount/nav later).
+	/// HTA default is 3f (<c>Config.AutoTeleportAetheryteDistanceDiff</c>); kept for parity.
+	/// Units must match the distance passed into <see cref="TeleportDecision.Decide"/>.
+	/// </summary>
+	public float AutoTeleportAetheryteDistanceDiff { get; set; } = 3f;
+
+	/// <summary>
+	/// When teleporting to another zone, set arrival instance to 1 (HTA parity).
+	/// Used when building target instance for the decision API — does not call Lifestream.
+	/// </summary>
+	public bool AutoSwitchInstanceToOne { get; set; } = false;
+
 	/// <summary>Aetheryte RowIds excluded from nearest-aetheryte selection (HTA default included 148; we start empty).</summary>
 	public List<uint> AetheryteBlacklist { get; set; } = [];
 

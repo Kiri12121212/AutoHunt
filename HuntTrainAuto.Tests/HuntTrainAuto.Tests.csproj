@@ -30,5 +30,7 @@
 		<Compile Include="..\HuntTrainAuto\DistanceCompensation.cs" Link="DistanceCompensation.cs" />
 		<Compile Include="..\HuntTrainAuto\NearestAetheryte.cs" Link="NearestAetheryte.cs" />
 		<Compile Include="..\HuntTrainAuto\ArrivalData.cs" Link="ArrivalData.cs" />
+		<Compile Include="..\HuntTrainAuto\TeleportDecision.cs" Link="TeleportDecision.cs" />
+		<Compile Include="..\HuntTrainAuto\TeleportIntent.cs" Link="TeleportIntent.cs" />
 	</ItemGroup>
 </Project>
