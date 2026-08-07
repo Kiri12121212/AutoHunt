@@ -2,6 +2,7 @@
 using System;
 using Dalamud.Plugin;
 using Dalamud.Plugin.Ipc;
+using HuntTrainAuto.Contracts;
 
 namespace HuntTrainAuto.Services;
 
@@ -10,7 +11,7 @@ namespace HuntTrainAuto.Services;
 /// HTA uses <c>EzIPC.Init(this, "Lifestream", …)</c> so channels are prefixed
 /// <c>Lifestream.*</c> (see NightmareXIV/Lifestream <c>IPCProvider</c>).
 /// </summary>
-public sealed class LifestreamIpc : IDisposable
+public sealed class LifestreamIpc : ILifestreamService
 {
 	/// <summary>IPC: <c>Lifestream.Teleport</c> — <c>Func&lt;uint, byte, bool&gt;</c>.</summary>
 	private const string TeleportChannel = "Lifestream.Teleport";

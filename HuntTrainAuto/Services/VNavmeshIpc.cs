@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.Numerics;
 using Dalamud.Plugin;
 using Dalamud.Plugin.Ipc;
+using HuntTrainAuto.Contracts;
 
 namespace HuntTrainAuto.Services;
 
@@ -14,7 +15,7 @@ namespace HuntTrainAuto.Services;
 /// <c>IPCProvider</c>. Cannot be unit-tested without a live Dalamud + vnavmesh
 /// provider — probe/availability is CallGate try/catch only.
 /// </summary>
-public sealed class VNavmeshIpc : IDisposable
+public sealed class VNavmeshIpc : IVnavmeshService
 {
 	/// <summary>IPC: <c>vnavmesh.Nav.IsReady</c> — <c>Func&lt;bool&gt;</c>.</summary>
 	private const string NavIsReadyChannel = "vnavmesh.Nav.IsReady";
