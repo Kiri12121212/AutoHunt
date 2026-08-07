@@ -16,6 +16,12 @@ public sealed class Configuration : IPluginConfiguration
 	public bool AutoOpenMap { get; set; } = true;
 	public bool NoDuplicateFlags { get; set; } = true;
 
+	/// <summary>Aetheryte RowIds excluded from nearest-aetheryte selection (HTA default included 148; we start empty).</summary>
+	public List<uint> AetheryteBlacklist { get; set; } = [];
+
+	/// <summary>HTA distance-compensation hack for named aetherytes. Default false (HTA parity).</summary>
+	public bool DistanceCompensationHack { get; set; } = false;
+
 	public bool UseMount { get; set; } = true;
 	public int Mount { get; set; } = 0;
 

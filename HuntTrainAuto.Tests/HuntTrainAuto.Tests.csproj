@@ -25,5 +25,9 @@
 		<Compile Include="..\HuntTrainAuto\HuntFlag.cs" Link="HuntFlag.cs" />
 		<Compile Include="..\HuntTrainAuto\ChatSuppress.cs" Link="ChatSuppress.cs" />
 		<Compile Include="..\HuntTrainAuto\MapOpenDedupe.cs" Link="MapOpenDedupe.cs" />
+		<Compile Include="..\HuntTrainAuto\MapCoordinates.cs" Link="MapCoordinates.cs" />
+		<Compile Include="..\HuntTrainAuto\MapSizeFactor.cs" Link="MapSizeFactor.cs" />
+		<Compile Include="..\HuntTrainAuto\DistanceCompensation.cs" Link="DistanceCompensation.cs" />
+		<Compile Include="..\HuntTrainAuto\NearestAetheryte.cs" Link="NearestAetheryte.cs" />
 	</ItemGroup>
 </Project>
