@@ -29,5 +29,6 @@
 		<Compile Include="..\HuntTrainAuto\MapSizeFactor.cs" Link="MapSizeFactor.cs" />
 		<Compile Include="..\HuntTrainAuto\DistanceCompensation.cs" Link="DistanceCompensation.cs" />
 		<Compile Include="..\HuntTrainAuto\NearestAetheryte.cs" Link="NearestAetheryte.cs" />
+		<Compile Include="..\HuntTrainAuto\ArrivalData.cs" Link="ArrivalData.cs" />
 	</ItemGroup>
 </Project>
