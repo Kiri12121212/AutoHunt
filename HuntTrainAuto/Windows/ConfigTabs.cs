@@ -27,9 +27,6 @@ public static class ConfigTabs
 		"Debug",
 	];
 
-	public const string HuntAlertsDisplayName = "HuntAlerts";
-	public const string HuntAlertsPlaceholderStatus = "Phase 10 — not wired";
-
 	public const int MinTeleportDelayMs = 0;
 	public const int MaxTeleportDelayMs = 30_000;
 
@@ -67,9 +64,6 @@ public static class ConfigTabs
 	/// <summary>Normalize configured mount id (no upper bound — Excel RowIds vary).</summary>
 	public static int ClampMountId(int mount)
 		=> mount < MountDecision.NeverMount ? MountDecision.NeverMount : mount;
-
-	public static string FormatHuntAlertsPlaceholder()
-		=> $"{HuntAlertsDisplayName}: {HuntAlertsPlaceholderStatus}";
 
 	/// <summary>
 	/// Clamp a single TP delay endpoint; NaN-safe via int (already finite).

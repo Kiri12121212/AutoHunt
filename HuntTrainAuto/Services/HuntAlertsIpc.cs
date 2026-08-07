@@ -26,6 +26,7 @@ public sealed class HuntAlertsIpc : IHuntAlertsService
 	private readonly Action<HuntFlag>? onFlag;
 	private readonly ICallGateSubscriber<HuntTrainMessage, object> onHuntTrain;
 	private bool subscribed;
+	private HuntAlertsLastAlert? lastMappedAlert;
 
 	/// <param name="resolveMapParams">
 	/// Territory → sheet map params (<c>MapManager.GetMapParams(0, territory)</c>).
@@ -74,6 +75,30 @@ public sealed class HuntAlertsIpc : IHuntAlertsService
 		}
 	}
 
+	/// <inheritdoc />
+	public bool IsAvailable => PluginStatus == HuntAlertsPluginStatus.Available;
+
+	/// <inheritdoc />
+	public HuntAlertsPluginStatus PluginStatus
+	{
+		get
+		{
+			try
+			{
+				return HuntAlertsAvailability.Evaluate(
+					pluginInterface.InstalledPlugins.Select(
+						p => (p.InternalName, p.IsLoaded, (Version?)p.Version)));
+			}
+			catch
+			{
+				return HuntAlertsPluginStatus.Missing;
+			}
+		}
+	}
+
+	/// <inheritdoc />
+	public HuntAlertsLastAlert? LastMappedAlert => lastMappedAlert;
+
 	private void OnHuntTrainMessageReceived(HuntTrainMessage message)
 	{
 		try
@@ -114,6 +139,7 @@ public sealed class HuntAlertsIpc : IHuntAlertsService
 				    offsetY))
 				return;
 
+			lastMappedAlert = HuntAlertsAvailability.FromMappedFlag(flag);
 			onFlag?.Invoke(flag);
 		}
 		catch

@@ -256,6 +256,15 @@ public sealed class Plugin : IDalamudPlugin
 			() => Config.EnableNotificationSound,
 			PlayNotificationSound);
 
+		// MapManager before HuntAlerts IPC so train messages resolve SizeFactor/offsets.
+		mapManager = new MapManager(dataManager, msg => pluginLog.Warning(msg));
+		// HuntAlerts → HuntFlag → world-visit / TP-nav intake (TASKS 10.3–10.5).
+		huntAlertsIpc = new HuntAlertsIpc(
+			pluginInterface,
+			Config,
+			territoryTypeId => mapManager.GetMapParams(mapId: 0, territoryTypeId),
+			OnHuntAlertsFlag);
+
 		configWindow = new ConfigWindow(
 			Config,
 			() => pluginInterface.SavePluginConfig(Config),
@@ -263,6 +272,8 @@ public sealed class Plugin : IDalamudPlugin
 			() => LifestreamIpc.IsAvailable,
 			() => VNavmeshIpc.IsAvailable,
 			() => RsrIpc.IsAvailable,
+			() => huntAlertsIpc.PluginStatus,
+			() => huntAlertsIpc.LastMappedAlert,
 			CaptureStatus,
 			debugLog);
 		windowSystem.AddWindow(configWindow);
@@ -273,14 +284,6 @@ public sealed class Plugin : IDalamudPlugin
 			Config,
 			() => pluginInterface.SavePluginConfig(Config),
 			() => configWindow.IsOpen = true);
-		// MapManager before HuntAlerts IPC so train messages resolve SizeFactor/offsets.
-		mapManager = new MapManager(dataManager, msg => pluginLog.Warning(msg));
-		// HuntAlerts → HuntFlag → world-visit / TP-nav intake (TASKS 10.3–10.5).
-		huntAlertsIpc = new HuntAlertsIpc(
-			pluginInterface,
-			Config,
-			territoryTypeId => mapManager.GetMapParams(mapId: 0, territoryTypeId),
-			OnHuntAlertsFlag);
 		instanceChange = new InstanceChangeRunner(
 			LifestreamIpc,
 			chat,
