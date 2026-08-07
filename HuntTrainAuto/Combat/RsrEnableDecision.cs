@@ -17,7 +17,8 @@ public enum RsrEnableKind
 	/// <summary>
 	/// Stop (or retry) rotation — while out of combat phase if we believe RSR is on,
 	/// so enable is not sticky after a soft-failed stop.
-	/// Explicit flag/death/territory stops are 6.4+.
+	/// Abort Clear paths (flag / territory / master-off / dispose) use the same kind
+	/// via <see cref="RsrStopDecision.DecideClear"/>.
 	/// </summary>
 	Stop,
 }

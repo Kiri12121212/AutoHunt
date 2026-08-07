@@ -55,5 +55,6 @@
 		<Compile Include="..\HuntTrainAuto\Combat\RsrCommands.cs" Link="Combat\RsrCommands.cs" />
 		<Compile Include="..\HuntTrainAuto\Combat\RsrSettingsDecision.cs" Link="Combat\RsrSettingsDecision.cs" />
 		<Compile Include="..\HuntTrainAuto\Combat\RsrEnableDecision.cs" Link="Combat\RsrEnableDecision.cs" />
+		<Compile Include="..\HuntTrainAuto\Combat\RsrStopDecision.cs" Link="Combat\RsrStopDecision.cs" />
 	</ItemGroup>
 </Project>

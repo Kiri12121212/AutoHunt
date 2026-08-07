@@ -48,25 +48,24 @@ public sealed class RsrEnableHelper
 	}
 
 	/// <summary>
-	/// Stop RSR if we started it (new flag / territory / master off / dispose).
-	/// Keeps the latch when stop soft-fails so a later Clear/Tick can retry.
+	/// Stop RSR if we started it (flag / territory / master off / dispose — TASKS 6.5).
+	/// Keeps the latch when stop soft-fails so a later Clear/Tick can retry
+	/// (<see cref="RsrStopDecision.DecideClear"/> + shared NextRotationAutoStarted).
 	/// </summary>
 	public void Clear()
 	{
 		try
 		{
-			if (!rotationAutoStarted)
-			{
+			var kind = RsrStopDecision.DecideClear(rotationAutoStarted);
+			if (kind == RsrEnableKind.None)
 				return;
-			}
 
-			if (rsr.RotationStop())
-			{
-				rotationAutoStarted = false;
-				return;
-			}
-
-			pluginLog.Debug("RsrEnableHelper clear: RotationStop failed; keeping latch for retry");
+			var ok = rsr.RotationStop();
+			rotationAutoStarted = RsrEnableDecision.NextRotationAutoStarted(kind, ok, rotationAutoStarted);
+			if (ok)
+				pluginLog.Debug("RSR: RotationStop (abort clear)");
+			else
+				pluginLog.Debug("RsrEnableHelper clear: RotationStop failed; keeping latch for retry");
 		}
 		catch (Exception ex)
 		{
@@ -76,7 +75,8 @@ public sealed class RsrEnableHelper
 
 	private void TickCore(bool inCombatPhase)
 	{
-		var kind = RsrEnableDecision.Decide(inCombatPhase, rotationAutoStarted);
+		// Start via enable decision; Stop via shared stop/enable Decide (death / mob dead / phase exit).
+		var kind = RsrStopDecision.DecideTick(inCombatPhase, rotationAutoStarted);
 
 		if (kind == RsrEnableKind.StartAuto)
 		{

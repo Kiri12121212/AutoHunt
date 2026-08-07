@@ -202,6 +202,7 @@ public sealed class Plugin : IDalamudPlugin
 	private void OnHuntFlagReceived(HuntFlag flag)
 	{
 		// New flag (skip or new plan) invalidates any in-flight instance change / automove / mount / unmount.
+		// RSR stop: RsrStopTrigger.FlagChange → ImmediateClear.
 		activeHuntFlag = flag;
 		instanceChange.Clear();
 		mount.Clear();
@@ -252,6 +253,7 @@ public sealed class Plugin : IDalamudPlugin
 		if (HuntingTerritory.IsHuntingTerritory(territoryId, GetIntendedUseRowId))
 			return;
 
+		// RSR stop: RsrStopTrigger.TerritoryLeave → ImmediateClear.
 		instanceChange.Clear();
 		mount.Clear();
 		activeHuntFlag = null;
@@ -326,6 +328,7 @@ public sealed class Plugin : IDalamudPlugin
 		instanceChange.Tick();
 		if (!Config.Enabled)
 		{
+			// RSR stop: RsrStopTrigger.MasterOff → ImmediateClear (Tick skipped below).
 			mount.Clear();
 			unmount.ClearAll();
 			engage.Clear();
@@ -348,9 +351,10 @@ public sealed class Plugin : IDalamudPlugin
 				playerDead: false);
 		}
 
-		// Death / combat-end / master-off cleanup (enter combat is owned by EngageTargetHelper).
+		// Death / mob-dead / combat-end → CombatDecision Idle (RsrStopPath.CombatPhaseTick).
+		// Enter combat is owned by EngageTargetHelper.
 		combat.Tick(follow, pluginEnabled: true);
-		// RSR only after combat phase enter — not flag arrival / unmount / Following alone.
+		// RSR start only in combat phase; Stop on phase exit (death / combat end) via DecideTick.
 		rsrEnable.Tick(combat.InCombatPhase);
 	}
 
@@ -513,6 +517,7 @@ public sealed class Plugin : IDalamudPlugin
 		framework.Update -= OnFrameworkUpdate;
 		clientState.TerritoryChanged -= OnTerritoryChanged;
 		chatMessageHandler.HuntFlagReceived -= OnHuntFlagReceived;
+		// RSR stop: RsrStopTrigger.Dispose → ImmediateClear.
 		instanceChange.Clear();
 		mount.Clear();
 		activeHuntFlag = null;
