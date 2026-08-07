@@ -211,11 +211,13 @@ public sealed class Plugin : IDalamudPlugin
 			() => configWindow.IsOpen = true);
 		// MapManager before HuntAlerts IPC so train messages resolve SizeFactor/offsets.
 		mapManager = new MapManager(dataManager, msg => pluginLog.Warning(msg));
-		// HuntAlerts → HuntFlag mapping (TASKS 10.3); pipeline intake lands in 10.4/10.5.
+		// HuntAlerts → HuntFlag mapping + cross-world Lifestream (TASKS 10.3/10.4);
+		// same-world TP/nav intake is 10.5.
 		huntAlertsIpc = new HuntAlertsIpc(
 			pluginInterface,
 			Config,
-			territoryTypeId => mapManager.GetMapParams(mapId: 0, territoryTypeId));
+			territoryTypeId => mapManager.GetMapParams(mapId: 0, territoryTypeId),
+			OnHuntAlertsFlag);
 		instanceChange = new InstanceChangeRunner(
 			LifestreamIpc,
 			chat,
@@ -297,6 +299,48 @@ public sealed class Plugin : IDalamudPlugin
 			ToggleUi,
 			() => configWindow.IsOpen = true,
 			() => pluginInterface.SavePluginConfig(Config));
+
+	/// <summary>
+	/// HuntAlerts mapped-flag hook (TASKS 10.4): cross-world → Lifestream <c>ChangeWorld</c>.
+	/// Same-world is left for controller intake (10.5).
+	/// </summary>
+	private void OnHuntAlertsFlag(HuntFlag flag)
+	{
+		try
+		{
+			var decision = HuntAlertsWorldVisit.TryHandle(
+				flag,
+				Config.HuntAlertsIntegration,
+				LifestreamIpc,
+				TryGetCurrentWorldName());
+
+			if (decision.Action == HuntAlertsWorldVisitAction.RequestWorldVisit)
+				pluginLog.Information($"HuntAlerts cross-world visit: {decision.World}");
+			else if (decision.Action == HuntAlertsWorldVisitAction.CannotVisit)
+				pluginLog.Information($"HuntAlerts cannot visit world: {decision.World}");
+		}
+		catch (Exception ex)
+		{
+			pluginLog.Debug($"OnHuntAlertsFlag soft-fail: {ex.Message}");
+		}
+	}
+
+	private string? TryGetCurrentWorldName()
+	{
+		try
+		{
+			var player = objectTable.LocalPlayer;
+			if (player == null || !player.CurrentWorld.IsValid)
+				return null;
+
+			var name = player.CurrentWorld.Value.Name.ToString();
+			return string.IsNullOrWhiteSpace(name) ? null : name;
+		}
+		catch
+		{
+			return null;
+		}
+	}
 
 	private void OnHuntFlagReceived(HuntFlag flag)
 	{

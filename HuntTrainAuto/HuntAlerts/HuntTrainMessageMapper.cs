@@ -50,6 +50,8 @@ public static class HuntTrainMessageMapper
 	/// Map a HuntAlerts train message to a chat-shaped <see cref="HuntFlag"/>.
 	/// Returns false when filtered, incomplete, or coordinates cannot be resolved.
 	/// Attaches <see cref="ArrivalData"/> when <c>startLocationAetheryteId</c> is non-zero.
+	/// Always sets <see cref="HuntFlag.HuntWorld"/> from <c>huntWorld</c> when non-blank
+	/// so cross-world visit works without Arrival.
 	/// Callers should resolve <paramref name="mapId"/> / size / offsets via
 	/// <c>MapManager.GetMapParams</c> (or <see cref="UnpackMapParams"/>) when sheets are available.
 	/// </summary>
@@ -104,6 +106,10 @@ public static class HuntTrainMessageMapper
 			rawY,
 			placeName,
 			timestamp);
+
+		// Carry hunt world on the flag even when Arrival is omitted (aetheryte id 0).
+		var huntWorld = message.huntWorld?.Trim();
+		flag.HuntWorld = string.IsNullOrEmpty(huntWorld) ? null : huntWorld;
 
 		flag.Arrival = ArrivalData.CreateOrNull(
 			message.startLocationAetheryteId,

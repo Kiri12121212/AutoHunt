@@ -20,6 +20,7 @@ public sealed class HuntFlagTests
 		Assert.Equal(ts, flag.Timestamp);
 		Assert.Null(flag.WorldPos);
 		Assert.Null(flag.Arrival);
+		Assert.Null(flag.HuntWorld);
 	}
 
 	[Theory]

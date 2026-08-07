@@ -67,6 +67,7 @@ public sealed class HuntTrainMessageMapperTests
 		Assert.Equal(813u, flag.Arrival.Territory);
 		Assert.Equal(2, flag.Arrival.Instance);
 		Assert.Equal("Phoenix", flag.Arrival.World);
+		Assert.Equal("Phoenix", flag.HuntWorld);
 	}
 
 	[Fact]
@@ -124,6 +125,7 @@ public sealed class HuntTrainMessageMapperTests
 			timestamp: DateTimeOffset.UnixEpoch));
 
 		Assert.Null(flag.Arrival);
+		Assert.Equal("Phoenix", flag.HuntWorld);
 	}
 
 	[Fact]
