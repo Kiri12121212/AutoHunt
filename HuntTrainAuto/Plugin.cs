@@ -100,6 +100,14 @@ public sealed class Plugin : IDalamudPlugin
 	private bool suppressHaDrainThisTick;
 
 	/// <summary>
+	/// Last chat or HuntAlerts adopt for windowed cross-source dedupe (TASKS 10.7).
+	/// First source wins for the same hunt within
+	/// <see cref="HuntAlertsFlagDedupe.DefaultCrossSourceWindow"/>.
+	/// Cleared on master-off / dispose with pending.
+	/// </summary>
+	private HuntFlagDedupeMemory? lastFlagIntakeMemory;
+
+	/// <summary>
 	/// After Drain/Process attempted <c>ChangeWorld</c> this tick
 	/// (<see cref="HuntAlertsWorldVisitDecisionResult.AttemptedChangeWorld"/> — success
 	/// or fail, including BusyMidVisit refresh after same-pending fail), skip
@@ -385,6 +393,36 @@ public sealed class Plugin : IDalamudPlugin
 	{
 		try
 		{
+			// Chat already won this hunt: do not ChangeWorld / Store pending — a later
+			// forceAccept flush must not restart (cross-source window still applies).
+			if (HuntAlertsFlagDedupe.ShouldSuppressCrossSource(
+				    lastFlagIntakeMemory,
+				    flag,
+				    HuntFlagIntakeSource.HuntAlerts,
+				    DateTimeOffset.UtcNow,
+				    Config.HuntAlertsIntegration))
+			{
+				// Clear only a stale same-hunt defer (near chat-won memory); keep an
+				// unrelated pending world visit even if its coords happen to lie near
+				// the suppressed incoming HA flag.
+				var pendingForSuppress = Volatile.Read(ref pendingHuntAlerts);
+				if (HuntAlertsFlagDedupe.ShouldClearPendingOnCrossSourceSuppress(
+					    pendingForSuppress?.Flag,
+					    lastFlagIntakeMemory?.Flag))
+				{
+					pluginLog.Information(
+						"HuntAlerts defer/intake skipped (cross-source chat↔HA window dedupe); pending cleared");
+					ClearPendingHuntAlerts();
+				}
+				else
+				{
+					pluginLog.Information(
+						"HuntAlerts defer/intake skipped (cross-source chat↔HA window dedupe); unrelated pending kept");
+				}
+
+				return;
+			}
+
 			var pending = Volatile.Read(ref pendingHuntAlerts);
 			var decision = HuntAlertsWorldVisit.TryHandle(
 				flag,
@@ -491,18 +529,21 @@ public sealed class Plugin : IDalamudPlugin
 				HuntAlertsPendingDeferSlot.Store(ref pendingHuntAlerts, flag, keepWorld);
 				return;
 			case HuntAlertsEnterWithPendingKind.AbortVisitThenEnter:
-				// Near-dup suppress check *before* Abort/clear: if Accept would no-op,
-				// keep the pending visit instead of aborting for nothing.
+				// Near-dup / cross-source suppress check *before* Abort/clear: if Accept
+				// would no-op, keep the pending visit instead of aborting for nothing.
 				var pipelineActive = FlagRestartDecision.IsPipelineActive(
 					train.Phase,
 					HasInFlightPipelineWork());
 				if (!HuntAlertsFlagDedupe.ShouldProceedAbortVisitThenEnter(
 					    activeHuntFlag,
 					    flag,
-					    pipelineActive))
+					    pipelineActive,
+					    lastFlagIntakeMemory,
+					    DateTimeOffset.UtcNow,
+					    Config.HuntAlertsIntegration))
 				{
 					pluginLog.Information(
-						"HuntAlerts AbortVisitThenEnter skipped (near-dup suppress); pending visit kept");
+						"HuntAlerts AbortVisitThenEnter skipped (near-dup / cross-source suppress); pending visit kept");
 					return;
 				}
 
@@ -536,6 +577,7 @@ public sealed class Plugin : IDalamudPlugin
 	/// (<see cref="TeleportDecision.Evaluate"/>), then shared restart intake.
 	/// Pass <paramref name="forceAccept"/> for deferred flush after world visit so
 	/// near-dup vs <see cref="activeHuntFlag"/> cannot skip Arrival trust + recompute.
+	/// Cross-source window still applies (forceAccept does not bypass it).
 	/// Pass <paramref name="clearPendingDefer"/> false for Framework HA drain Accept and
 	/// flush (already took the slot) so mid-batch IPC flags / a newer defer survive —
 	/// <see cref="AdoptHuntFlag"/> must not Clear <see cref="huntAlertsFlagQueue"/> then.
@@ -549,6 +591,7 @@ public sealed class Plugin : IDalamudPlugin
 		var pipelineActive = FlagRestartDecision.IsPipelineActive(
 			train.Phase,
 			HasInFlightPipelineWork());
+		var now = DateTimeOffset.UtcNow;
 
 		if (HuntAlertsFlagDedupe.ShouldSuppress(
 			    activeHuntFlag,
@@ -557,9 +600,25 @@ public sealed class Plugin : IDalamudPlugin
 			    forceAccept: forceAccept))
 			return;
 
+		if (HuntAlertsFlagDedupe.ShouldSuppressCrossSource(
+			    lastFlagIntakeMemory,
+			    flag,
+			    HuntFlagIntakeSource.HuntAlerts,
+			    now,
+			    Config.HuntAlertsIntegration))
+		{
+			pluginLog.Information(
+				"HuntAlerts intake skipped (cross-source chat↔HA window dedupe)");
+			return;
+		}
+
 		var instanceHint = HuntAlertsArrivalTrust.ClearUntrustedArrival(flag);
 		PrepareTeleportIntent(flag, instanceHint);
 		AdoptHuntFlag(flag, clearPendingDefer);
+		lastFlagIntakeMemory = HuntAlertsFlagDedupe.Remember(
+			flag,
+			HuntFlagIntakeSource.HuntAlerts,
+			now);
 	}
 
 	/// <summary>
@@ -644,7 +703,8 @@ public sealed class Plugin : IDalamudPlugin
 			if (taken == null)
 				return;
 
-			// Force-accept: deferred hand-off must not be blocked by near-dup vs activeHuntFlag.
+			// Force-accept: bypass near-dup pipeline suppress so Arrival trust still strips.
+			// Cross-source window still applies (chat-won hunts must not restart).
 			// clearPendingDefer: false — slot already taken; do not orphan a newer defer.
 			AcceptHuntAlertsFlag(taken.Flag, forceAccept: true, clearPendingDefer: false);
 			accepted = true;
@@ -682,7 +742,26 @@ public sealed class Plugin : IDalamudPlugin
 	}
 
 	private void OnHuntFlagReceived(HuntFlag flag)
-		=> AdoptHuntFlag(flag, clearPendingDefer: true);
+	{
+		var now = DateTimeOffset.UtcNow;
+		if (HuntAlertsFlagDedupe.ShouldSuppressCrossSource(
+			    lastFlagIntakeMemory,
+			    flag,
+			    HuntFlagIntakeSource.Chat,
+			    now,
+			    Config.HuntAlertsIntegration))
+		{
+			pluginLog.Information(
+				"Conductor flag skipped (cross-source chat↔HA window dedupe)");
+			return;
+		}
+
+		AdoptHuntFlag(flag, clearPendingDefer: true);
+		lastFlagIntakeMemory = HuntAlertsFlagDedupe.Remember(
+			flag,
+			HuntFlagIntakeSource.Chat,
+			now);
+	}
 
 	/// <summary>
 	/// Shared adopt path for chat + HuntAlerts. Flush and Framework HA drain Accept pass
@@ -695,8 +774,9 @@ public sealed class Plugin : IDalamudPlugin
 	private void AdoptHuntFlag(HuntFlag flag, bool clearPendingDefer)
 	{
 		// Conductor chat wins concurrent HuntAlerts (TASKS 10.5): clear pending stash +
-		// IPC queue + soft-fail Abort any in-flight Lifestream visit so a later forceAccept
-		// flush / queued ChangeWorld+Store cannot override this adopt.
+		// IPC queue + soft-fail Abort any in-flight Lifestream visit so a later
+		// flush / queued ChangeWorld+Store cannot override this adopt (chat Remember
+		// also arms cross-source suppress for forceAccept flush).
 		// Framework HA drain + flush pass clearPendingDefer: false — never Clear / Abort
 		// (would cancel a visit just queued for pending, or drop later flags and break
 		// newest-wins); flush already took the slot so a newer defer is preserved.
@@ -995,6 +1075,7 @@ public sealed class Plugin : IDalamudPlugin
 		{
 			// RSR stop: RsrStopTrigger.MasterOff → ImmediateClear (Tick skipped below).
 			ClearPendingHuntAlerts();
+			lastFlagIntakeMemory = HuntAlertsFlagDedupe.Clear(lastFlagIntakeMemory);
 			HuntAlertsFlagQueue.Clear(huntAlertsFlagQueue);
 			mount.Clear();
 			unmount.ClearAll();
@@ -1296,6 +1377,7 @@ public sealed class Plugin : IDalamudPlugin
 		chatMessageHandler.HuntFlagReceived -= OnHuntFlagReceived;
 		// RSR stop: RsrStopTrigger.Dispose → ImmediateClear.
 		ClearPendingHuntAlerts();
+		lastFlagIntakeMemory = HuntAlertsFlagDedupe.Clear(lastFlagIntakeMemory);
 		HuntAlertsFlagQueue.Clear(huntAlertsFlagQueue);
 		instanceChange.Clear();
 		mount.Clear();

@@ -44,8 +44,8 @@ public enum HuntAlertsEnterWithPendingKind
 	/// <summary>
 	/// Pending defer is for a different world than the new flag — abort the in-flight
 	/// Lifestream visit, clear pending, then enter the pipeline for the new flag.
-	/// Plugin must gate on near-dup suppress <em>before</em> Abort/clear (see
-	/// <c>HuntAlertsFlagDedupe.ShouldProceedAbortVisitThenEnter</c>).
+	/// Plugin must gate on near-dup / cross-source suppress <em>before</em> Abort/clear
+	/// (see <c>HuntAlertsFlagDedupe.ShouldProceedAbortVisitThenEnter</c>).
 	/// </summary>
 	AbortVisitThenEnter,
 }
