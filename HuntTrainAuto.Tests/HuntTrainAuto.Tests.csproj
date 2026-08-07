@@ -65,6 +65,7 @@
 		<Compile Include="..\HuntTrainAuto\Windows\ConfigTabs.cs" Link="Windows\ConfigTabs.cs" />
 		<Compile Include="..\HuntTrainAuto\Windows\StatusDisplay.cs" Link="Windows\StatusDisplay.cs" />
 		<Compile Include="..\HuntTrainAuto\Notifications\NotificationDecision.cs" Link="Notifications\NotificationDecision.cs" />
+		<Compile Include="..\HuntTrainAuto\HuntAlerts\HuntAlertsFilter.cs" Link="HuntAlerts\HuntAlertsFilter.cs" />
 		<Compile Include="..\HuntTrainAuto\Logging\DebugEvent.cs" Link="Logging\DebugEvent.cs" />
 		<Compile Include="..\HuntTrainAuto\Logging\DebugEventLog.cs" Link="Logging\DebugEventLog.cs" />
 		<Compile Include="..\HuntTrainAuto\Logging\DebugEventFormatter.cs" Link="Logging\DebugEventFormatter.cs" />

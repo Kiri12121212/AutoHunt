@@ -1,6 +1,7 @@
 global using HuntTrainAuto.Chat;
 global using HuntTrainAuto.Combat;
 global using HuntTrainAuto.Domain;
+global using HuntTrainAuto.HuntAlerts;
 global using HuntTrainAuto.Logging;
 global using HuntTrainAuto.Map;
 global using HuntTrainAuto.Movement;
