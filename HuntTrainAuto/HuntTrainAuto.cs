@@ -1,3 +1,8 @@
+#nullable enable
+using System;
+using System.Numerics;
+using Dalamud.Game.ClientState.Conditions;
+using Dalamud.Game.ClientState.Objects;
 using Dalamud.Game.Command;
 using Dalamud.Interface.Windowing;
 using Dalamud.Plugin;
@@ -12,11 +17,31 @@ public sealed class Plugin : IDalamudPlugin
 {
 	private readonly IDalamudPluginInterface pluginInterface;
 	private readonly IClientState clientState;
+	private readonly IObjectTable objectTable;
 	private readonly IDataManager dataManager;
+	private readonly IFramework framework;
+	private readonly ICondition condition;
+	private readonly IPluginLog pluginLog;
 	private readonly WindowSystem windowSystem;
 	private readonly ConfigWindow configWindow;
 	private readonly Chat2Ipc chat2Ipc;
 	private readonly ChatMessageHandler chatMessageHandler;
+	private readonly MapManager mapManager;
+	private readonly TeleportPlan teleportPlan = new();
+	private readonly InstanceChangeRunner instanceChange;
+
+	private long teleportNextAllowedMs;
+	private bool isMoving;
+	private Vector3 lastPosition;
+
+	/// <summary>Teleporter IPC; execution owned by phase 3.6 Framework loop.</summary>
+	public TeleporterIpc TeleporterIpc { get; }
+
+	/// <summary>Lifestream IPC; instance/fallback TP owned by phase 3.6–3.7.</summary>
+	public LifestreamIpc LifestreamIpc { get; }
+
+	/// <summary>Active Framework teleport plan (HTA <c>TeleportTo</c>).</summary>
+	public TeleportPlan TeleportPlan => teleportPlan;
 
 	public Configuration Config { get; }
 
@@ -24,13 +49,22 @@ public sealed class Plugin : IDalamudPlugin
 		IDalamudPluginInterface pluginInterface,
 		ICommandManager commandManager,
 		IClientState clientState,
+		IObjectTable objectTable,
+		ITargetManager targetManager,
 		IDataManager dataManager,
 		IChatGui chatGui,
-		IGameGui gameGui)
+		IGameGui gameGui,
+		IFramework framework,
+		ICondition condition,
+		IPluginLog pluginLog)
 	{
 		this.pluginInterface = pluginInterface;
 		this.clientState = clientState;
+		this.objectTable = objectTable;
 		this.dataManager = dataManager;
+		this.framework = framework;
+		this.condition = condition;
+		this.pluginLog = pluginLog;
 		Config = pluginInterface.GetPluginConfig() as Configuration ?? new Configuration();
 
 		windowSystem = new WindowSystem(typeof(Plugin).Assembly.GetName()?.Name ?? "HuntTrainAuto");
@@ -43,11 +77,25 @@ public sealed class Plugin : IDalamudPlugin
 			() => pluginInterface.SavePluginConfig(Config),
 			() => configWindow.IsOpen = true);
 
+		TeleporterIpc = new TeleporterIpc(pluginInterface);
+		LifestreamIpc = new LifestreamIpc(pluginInterface);
+		instanceChange = new InstanceChangeRunner(
+			LifestreamIpc,
+			clientState,
+			objectTable,
+			targetManager,
+			condition,
+			pluginLog);
+		mapManager = new MapManager(dataManager, msg => pluginLog.Warning(msg));
+
 		chatMessageHandler = new ChatMessageHandler(chatGui, gameGui, Config);
+		chatMessageHandler.TryGetPlayerSnapshot = TryGetPlayerSnapshot;
+		chatMessageHandler.HuntFlagReceived += OnHuntFlagReceived;
 
 		pluginInterface.UiBuilder.Draw += Draw;
 		pluginInterface.UiBuilder.OpenConfigUi += ToggleUi;
 		clientState.TerritoryChanged += OnTerritoryChanged;
+		framework.Update += OnFrameworkUpdate;
 
 		commandManager.AddHandler("/hta", new CommandInfo(OnCommand)
 		{
@@ -65,13 +113,190 @@ public sealed class Plugin : IDalamudPlugin
 			() => configWindow.IsOpen = true,
 			() => pluginInterface.SavePluginConfig(Config));
 
+	private void OnHuntFlagReceived(HuntFlag flag)
+	{
+		_ = flag;
+		// New flag (skip or new plan) invalidates any in-flight instance change / automove.
+		instanceChange.Clear();
+		if (!teleportPlan.TryAdoptFromIntent(chatMessageHandler.TeleportIntent))
+			return;
+
+		ApplyDelayTeleport();
+		pluginLog.Information("Engaging autoteleport");
+	}
+
+	private void ApplyDelayTeleport()
+	{
+		var span = Config.TeleportDelayMax - Config.TeleportDelayMin;
+		var offset = span > 0 ? Random.Shared.Next(span) : 0;
+		teleportNextAllowedMs = TeleportThrottle.ApplyPreDelay(
+			teleportNextAllowedMs,
+			Environment.TickCount64,
+			Config.TeleportDelayEnabled,
+			Config.TeleportDelayMin,
+			Config.TeleportDelayMax,
+			offset);
+	}
+
 	private void OnTerritoryChanged(uint territoryId)
 	{
+		if (teleportPlan.Active is { } plan)
+		{
+			if (TeleportGate.ShouldEnqueueInstanceChange(plan.Instance) && territoryId == plan.Territory)
+				EnqueueChangeInstanceAfterTeleport(plan.Instance, plan.Territory);
+
+			pluginLog.Debug("TeleportPlan cleared (territory changed)");
+			teleportPlan.Clear();
+		}
+
 		if (HuntingTerritory.IsHuntingTerritory(territoryId, GetIntendedUseRowId))
 			return;
 
+		instanceChange.Clear();
 		ConductorList.Clear(Config.Conductors);
 		pluginInterface.SavePluginConfig(Config);
+	}
+
+	private void OnFrameworkUpdate(IFramework fw)
+	{
+		_ = fw;
+		var now = Environment.TickCount64;
+		var player = objectTable.LocalPlayer;
+		var active = teleportPlan.Active;
+
+		if (TeleportGate.IsPlayerReady(
+				player != null,
+				player is { CurrentHp: > 0 },
+				condition[ConditionFlag.Unconscious])
+			&& active != null
+			&& TeleportGate.IsAutoTeleportEnabled(Config.Enabled, Config.AutoTeleport))
+		{
+			if (TeleportGate.IsScreenReady(
+				condition[ConditionFlag.BetweenAreas],
+				condition[ConditionFlag.BetweenAreas51],
+				condition[ConditionFlag.OccupiedInCutSceneEvent],
+				condition[ConditionFlag.WatchingCutscene]))
+			{
+				var soft = TeleportThrottle.SoftWaitNextAllowed(
+					teleportNextAllowedMs,
+					now,
+					player!.IsCasting,
+					player.CastActionId,
+					condition[ConditionFlag.Casting],
+					condition[ConditionFlag.MountOrOrnamentTransition]);
+				if (soft != null)
+					teleportNextAllowedMs = soft.Value;
+
+				if (TeleportGate.CanAttemptTeleport(
+					condition[ConditionFlag.InCombat],
+					condition[ConditionFlag.BetweenAreas],
+					condition[ConditionFlag.BetweenAreas51],
+					condition[ConditionFlag.Casting],
+					isMoving))
+				{
+					if (TeleportThrottle.TryFire(ref teleportNextAllowedMs, now))
+						TryExecuteTeleport(active.AetheryteId);
+				}
+			}
+
+			isMoving = player!.Position != lastPosition;
+			lastPosition = player.Position;
+		}
+
+		if (TeleportGate.IsBetweenAreas(
+			condition[ConditionFlag.BetweenAreas],
+			condition[ConditionFlag.BetweenAreas51])
+			&& teleportPlan.Active is { } betweenPlan)
+		{
+			if (TeleportGate.ShouldEnqueueInstanceChange(betweenPlan.Instance))
+				EnqueueChangeInstanceAfterTeleport(betweenPlan.Instance, betweenPlan.Territory);
+
+			pluginLog.Debug("TeleportPlan cleared (between areas)");
+			teleportPlan.Clear();
+		}
+
+		instanceChange.Tick();
+	}
+
+	private void TryExecuteTeleport(uint aetheryteId)
+	{
+		if (TeleporterIpc.Teleport(aetheryteId, 0))
+		{
+			pluginLog.Information("Teleporting using Teleporter plugin");
+			return;
+		}
+
+		if (LifestreamIpc.Teleport(aetheryteId))
+		{
+			pluginLog.Information("Teleporting using Lifestream plugin");
+			return;
+		}
+
+		pluginLog.Warning("Failed to teleport (Teleporter/Lifestream unavailable or congested); will retry");
+	}
+
+	/// <summary>
+	/// Enqueue post-TP instance switch (HTA <c>TaskChangeInstanceAfterTeleport</c>).
+	/// Survives <see cref="TeleportPlan"/> clear; advanced on Framework ticks.
+	/// </summary>
+	private void EnqueueChangeInstanceAfterTeleport(int instance, uint territoryId)
+		=> instanceChange.Enqueue(instance, territoryId);
+
+	private TeleportPlayerSnapshot? TryGetPlayerSnapshot(HuntFlag flag)
+	{
+		try
+		{
+			var player = objectTable.LocalPlayer;
+			if (player == null)
+				return null;
+
+			var mapParams = mapManager.GetMapParams(flag.MapId, flag.TerritoryTypeId);
+			float? flagMapX = null;
+			float? flagMapY = null;
+			NearestAetheryteResult? nearest = null;
+
+			if (mapParams != null)
+			{
+				var sizeFactor = mapParams.Value.SizeFactor;
+				flagMapX = MapCoordinates.ConvertRawPositionToMapCoordinate(flag.RawX, sizeFactor);
+				flagMapY = MapCoordinates.ConvertRawPositionToMapCoordinate(flag.RawY, sizeFactor);
+				nearest = mapManager.GetNearestAetheryte(
+					flag.TerritoryTypeId,
+					flag.MapId,
+					flagMapX.Value,
+					flagMapY.Value,
+					Config.AetheryteBlacklist,
+					Config.DistanceCompensationHack);
+			}
+
+			float? distance = null;
+			if (mapParams != null
+				&& flagMapX != null
+				&& flagMapY != null
+				&& clientState.TerritoryType == flag.TerritoryTypeId)
+			{
+				var pos = player.Position;
+				var p = mapParams.Value;
+				var px = MapCoordinates.ConvertWorldToMapCoordinate(pos.X, p.SizeFactor, p.OffsetX);
+				var py = MapCoordinates.ConvertWorldToMapCoordinate(pos.Z, p.SizeFactor, p.OffsetY);
+				distance = MapCoordinates.MapDistance(px, py, flagMapX.Value, flagMapY.Value);
+			}
+
+			var lifestreamInstance = LifestreamIpc.GetCurrentInstance();
+			return new TeleportPlayerSnapshot
+			{
+				CurrentTerritory = clientState.TerritoryType,
+				CurrentInstance = lifestreamInstance > 0 ? lifestreamInstance : (int)clientState.Instance,
+				TargetInstance = 0,
+				PlayerDistance = distance,
+				Nearest = nearest,
+			};
+		}
+		catch (Exception ex)
+		{
+			pluginLog.Debug($"TryGetPlayerSnapshot soft-fail: {ex.Message}");
+			return null;
+		}
 	}
 
 	private uint? GetIntendedUseRowId(uint territoryId) =>
@@ -87,8 +312,13 @@ public sealed class Plugin : IDalamudPlugin
 
 	public void Dispose()
 	{
+		framework.Update -= OnFrameworkUpdate;
 		clientState.TerritoryChanged -= OnTerritoryChanged;
+		chatMessageHandler.HuntFlagReceived -= OnHuntFlagReceived;
+		instanceChange.Clear();
 		chatMessageHandler.Dispose();
+		LifestreamIpc.Dispose();
+		TeleporterIpc.Dispose();
 		chat2Ipc.Dispose();
 		pluginInterface.UiBuilder.Draw -= Draw;
 		pluginInterface.UiBuilder.OpenConfigUi -= ToggleUi;

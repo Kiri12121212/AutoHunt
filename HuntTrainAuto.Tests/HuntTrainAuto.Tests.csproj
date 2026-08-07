@@ -25,5 +25,17 @@
 		<Compile Include="..\HuntTrainAuto\HuntFlag.cs" Link="HuntFlag.cs" />
 		<Compile Include="..\HuntTrainAuto\ChatSuppress.cs" Link="ChatSuppress.cs" />
 		<Compile Include="..\HuntTrainAuto\MapOpenDedupe.cs" Link="MapOpenDedupe.cs" />
+		<Compile Include="..\HuntTrainAuto\MapCoordinates.cs" Link="MapCoordinates.cs" />
+		<Compile Include="..\HuntTrainAuto\MapSizeFactor.cs" Link="MapSizeFactor.cs" />
+		<Compile Include="..\HuntTrainAuto\DistanceCompensation.cs" Link="DistanceCompensation.cs" />
+		<Compile Include="..\HuntTrainAuto\NearestAetheryte.cs" Link="NearestAetheryte.cs" />
+		<Compile Include="..\HuntTrainAuto\ArrivalData.cs" Link="ArrivalData.cs" />
+		<Compile Include="..\HuntTrainAuto\TeleportDecision.cs" Link="TeleportDecision.cs" />
+		<Compile Include="..\HuntTrainAuto\TeleportIntent.cs" Link="TeleportIntent.cs" />
+		<Compile Include="..\HuntTrainAuto\TeleportThrottle.cs" Link="TeleportThrottle.cs" />
+		<Compile Include="..\HuntTrainAuto\TeleportGate.cs" Link="TeleportGate.cs" />
+		<Compile Include="..\HuntTrainAuto\TeleportPlan.cs" Link="TeleportPlan.cs" />
+		<Compile Include="..\HuntTrainAuto\InstanceChangeDecision.cs" Link="InstanceChangeDecision.cs" />
+		<Compile Include="..\HuntTrainAuto\InstanceChangeSession.cs" Link="InstanceChangeSession.cs" />
 	</ItemGroup>
 </Project>

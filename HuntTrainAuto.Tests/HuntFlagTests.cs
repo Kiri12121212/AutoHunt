@@ -44,13 +44,14 @@ public sealed class HuntFlagTests
 	}
 
 	[Fact]
-	public void WorldPos_and_Arrival_stubs_are_settable()
+	public void WorldPos_and_Arrival_are_settable()
 	{
 		var flag = HuntFlag.FromMapLink(1, 2, 3, 4, "Zone", DateTimeOffset.UnixEpoch);
 		flag.WorldPos = new Vector3(1, 2, 3);
-		flag.Arrival = new ArrivalData();
+		flag.Arrival = ArrivalData.CreateOrNull(10u, 1u, 0);
 
 		Assert.Equal(new Vector3(1, 2, 3), flag.WorldPos);
 		Assert.NotNull(flag.Arrival);
+		Assert.Equal(10u, flag.Arrival.AetheryteId);
 	}
 }

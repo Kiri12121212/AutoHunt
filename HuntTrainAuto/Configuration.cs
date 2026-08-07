@@ -16,6 +16,37 @@ public sealed class Configuration : IPluginConfiguration
 	public bool AutoOpenMap { get; set; } = true;
 	public bool NoDuplicateFlags { get; set; } = true;
 
+	/// <summary>HTA parity: auto-teleport on conductor flags (zone / instance / far).</summary>
+	public bool AutoTeleport { get; set; } = true;
+
+	/// <summary>
+	/// Same-zone skip threshold: if player distance to flag ≤ this, skip TP (mount/nav later).
+	/// HTA default is 3f (<c>Config.AutoTeleportAetheryteDistanceDiff</c>); kept for parity.
+	/// Units must match the distance passed into <see cref="TeleportDecision.Decide"/>.
+	/// </summary>
+	public float AutoTeleportAetheryteDistanceDiff { get; set; } = 3f;
+
+	/// <summary>
+	/// When teleporting to another zone, set arrival instance to 1 (HTA parity).
+	/// Used when building target instance for the decision API — does not call Lifestream.
+	/// </summary>
+	public bool AutoSwitchInstanceToOne { get; set; } = false;
+
+	/// <summary>HTA <c>TeleportDelayEnabled</c>: random pre-delay before first TP attempt.</summary>
+	public bool TeleportDelayEnabled { get; set; } = false;
+
+	/// <summary>HTA <c>TeleportDelayMin</c> (ms).</summary>
+	public int TeleportDelayMin { get; set; } = 200;
+
+	/// <summary>HTA <c>TeleportDelayMax</c> (ms).</summary>
+	public int TeleportDelayMax { get; set; } = 700;
+
+	/// <summary>Aetheryte RowIds excluded from nearest-aetheryte selection (HTA default included 148; we start empty).</summary>
+	public List<uint> AetheryteBlacklist { get; set; } = [];
+
+	/// <summary>HTA distance-compensation hack for named aetherytes. Default false (HTA parity).</summary>
+	public bool DistanceCompensationHack { get; set; } = false;
+
 	public bool UseMount { get; set; } = true;
 	public int Mount { get; set; } = 0;
 

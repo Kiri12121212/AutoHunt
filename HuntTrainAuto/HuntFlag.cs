@@ -6,7 +6,7 @@ namespace HuntTrainAuto;
 
 /// <summary>
 /// Conductor map-link flag extracted from chat payloads.
-/// <see cref="WorldPos"/> / <see cref="Arrival"/> are phase 3–4 stubs.
+/// <see cref="WorldPos"/> is a phase-4 stub; <see cref="Arrival"/> is filled in phase 3.
 /// </summary>
 public sealed class HuntFlag
 {
@@ -25,7 +25,7 @@ public sealed class HuntFlag
 	/// <summary>Filled later via mesh / floor query (phase 4).</summary>
 	public Vector3? WorldPos { get; set; }
 
-	/// <summary>Filled later by nearest-aetheryte selection (phase 3).</summary>
+	/// <summary>Teleport plan from nearest-aetheryte selection (phase 3).</summary>
 	public ArrivalData? Arrival { get; set; }
 
 	/// <summary>
@@ -50,9 +50,4 @@ public sealed class HuntFlag
 			Timestamp = timestamp ?? DateTimeOffset.UtcNow,
 		};
 	}
-}
-
-/// <summary>Phase 3 stub for nearest aetheryte / instance plan.</summary>
-public sealed class ArrivalData
-{
 }
