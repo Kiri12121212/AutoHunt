@@ -19,6 +19,7 @@ public sealed class ConfigWindow : Window, IDisposable
 	private readonly Func<bool> vnavmeshAvailable;
 	private readonly Func<bool> rsrAvailable;
 	private readonly Func<StatusSnapshot> getStatus;
+	private readonly DebugEventLog debugLog;
 	private string conductorInput = string.Empty;
 	private int selectedConductor;
 	private int selectedTab;
@@ -30,7 +31,8 @@ public sealed class ConfigWindow : Window, IDisposable
 		Func<bool> lifestreamAvailable,
 		Func<bool> vnavmeshAvailable,
 		Func<bool> rsrAvailable,
-		Func<StatusSnapshot> getStatus) : base("HuntTrainAuto")
+		Func<StatusSnapshot> getStatus,
+		DebugEventLog debugLog) : base("HuntTrainAuto")
 	{
 		this.config = config;
 		this.saveConfig = saveConfig;
@@ -39,6 +41,7 @@ public sealed class ConfigWindow : Window, IDisposable
 		this.vnavmeshAvailable = vnavmeshAvailable;
 		this.rsrAvailable = rsrAvailable;
 		this.getStatus = getStatus;
+		this.debugLog = debugLog;
 		SizeConstraints = new WindowSizeConstraints
 		{
 			MinimumSize = new Vector2(420, 420),
@@ -96,6 +99,13 @@ public sealed class ConfigWindow : Window, IDisposable
 		{
 			selectedTab = ConfigTabs.Integrations;
 			DrawIntegrationsTab();
+			ImGui.EndTabItem();
+		}
+
+		if (ImGui.BeginTabItem(ConfigTabs.Labels[ConfigTabs.Debug]))
+		{
+			selectedTab = ConfigTabs.Debug;
+			DrawDebugTab();
 			ImGui.EndTabItem();
 		}
 
@@ -261,6 +271,22 @@ public sealed class ConfigWindow : Window, IDisposable
 			config.TeleportDelayMax = max;
 			saveConfig();
 		}
+
+		ImGui.Spacing();
+		ImGui.Text("Notifications");
+		var enableNotifications = config.EnableNotifications;
+		if (ImGui.Checkbox("Notify on conductor flag", ref enableNotifications))
+		{
+			config.EnableNotifications = enableNotifications;
+			saveConfig();
+		}
+
+		var enableSound = config.EnableNotificationSound;
+		if (ImGui.Checkbox("Play sound on conductor flag", ref enableSound))
+		{
+			config.EnableNotificationSound = enableSound;
+			saveConfig();
+		}
 	}
 
 	private void DrawMountTab()
@@ -375,6 +401,39 @@ public sealed class ConfigWindow : Window, IDisposable
 		DrawDependencyLine(DependencyAvailability.RsrDisplayName, rsrAvailable);
 		ImGui.TextColored(PlaceholderColor, ConfigTabs.FormatHuntAlertsPlaceholder());
 		ImGui.TextDisabled("HuntAlerts intake lands in Phase 10.");
+	}
+
+	private void DrawDebugTab()
+	{
+		var debugLogging = config.EnableDebugLogging;
+		if (ImGui.Checkbox("Record automation events", ref debugLogging))
+		{
+			config.EnableDebugLogging = debugLogging;
+			saveConfig();
+		}
+
+		ImGui.SameLine();
+		if (ImGui.SmallButton("Clear log"))
+			debugLog.Clear();
+
+		ImGui.TextDisabled($"Recent events ({debugLog.Count}/{debugLog.Capacity}, newest first)");
+		ImGui.Spacing();
+
+		var events = debugLog.SnapshotNewestFirst();
+		if (events.Count == 0)
+		{
+			ImGui.TextDisabled("(empty)");
+			return;
+		}
+
+		var height = Math.Clamp(events.Count, 4, 16) * ImGui.GetTextLineHeightWithSpacing();
+		if (!ImGui.BeginChild("##htaDebugLog", new Vector2(-1, height), border: true))
+			return;
+
+		foreach (var e in events)
+			ImGui.TextUnformatted(DebugEventFormatter.FormatLine(e));
+
+		ImGui.EndChild();
 	}
 
 	private static void DrawDependencyLine(string displayName, Func<bool> probe)

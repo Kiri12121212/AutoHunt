@@ -7,6 +7,7 @@ using Dalamud.Game.Command;
 using Dalamud.Interface.Windowing;
 using Dalamud.Plugin;
 using Dalamud.Plugin.Services;
+using FFXIVClientStructs.FFXIV.Client.UI;
 using Lumina.Excel.Sheets;
 
 namespace HuntTrainAuto;
@@ -38,6 +39,9 @@ public sealed class Plugin : IDalamudPlugin
 	private readonly CombatTransitionHelper combat;
 	private readonly RsrEnableHelper rsrEnable;
 	private readonly HuntTrainController train = new();
+	private readonly DebugEventLog debugLog = new();
+	private readonly DebugEventProbe debugProbe;
+	private readonly HuntNotificator notificator;
 
 	private HuntFlag? activeHuntFlag;
 	private long teleportNextAllowedMs;
@@ -150,7 +154,8 @@ public sealed class Plugin : IDalamudPlugin
 		IFramework framework,
 		ICondition condition,
 		IPartyList partyList,
-		IPluginLog pluginLog)
+		IPluginLog pluginLog,
+		INotificationManager notificationManager)
 	{
 		this.pluginInterface = pluginInterface;
 		this.clientState = clientState;
@@ -177,6 +182,15 @@ public sealed class Plugin : IDalamudPlugin
 		VNavmeshIpc = new VNavmeshIpc(pluginInterface);
 		RsrIpc = new RsrIpc(pluginInterface);
 
+		debugProbe = new DebugEventProbe(debugLog);
+		notificator = new HuntNotificator(
+			notificationManager,
+			pluginLog,
+			() => Config.Enabled,
+			() => Config.EnableNotifications,
+			() => Config.EnableNotificationSound,
+			PlayNotificationSound);
+
 		configWindow = new ConfigWindow(
 			Config,
 			() => pluginInterface.SavePluginConfig(Config),
@@ -184,7 +198,8 @@ public sealed class Plugin : IDalamudPlugin
 			() => LifestreamIpc.IsAvailable,
 			() => VNavmeshIpc.IsAvailable,
 			() => RsrIpc.IsAvailable,
-			CaptureStatus);
+			CaptureStatus,
+			debugLog);
 		windowSystem.AddWindow(configWindow);
 
 		chat = new GameChat();
@@ -285,6 +300,8 @@ public sealed class Plugin : IDalamudPlugin
 			HasInFlightPipelineWork());
 
 		activeHuntFlag = flag;
+		notificator.NotifyConductorFlag(flag);
+		debugProbe.RecordFlagReceived(Config.EnableDebugLogging, flag.PlaceName);
 
 		var adopted = teleportPlan.TryAdoptFromIntent(chatMessageHandler.TeleportIntent);
 		var alreadyClose = chatMessageHandler.TeleportIntent.LatestDecision is
@@ -298,6 +315,9 @@ public sealed class Plugin : IDalamudPlugin
 			Config.UseMount);
 
 		ApplyFlagRestart(plan);
+		// Probe post-abort Idle/clears before Start* so mid-pipeline restarts do not
+		// collapse Combat→Teleport (etc.) into one impossible edge.
+		ObserveDebugSignals();
 
 		if (adopted)
 		{
@@ -313,6 +333,8 @@ public sealed class Plugin : IDalamudPlugin
 
 		if (plan.StartEvent != HuntTrainEvent.None)
 			train.Apply(plan.StartEvent);
+
+		ObserveDebugSignals();
 	}
 
 	/// <summary>
@@ -551,6 +573,7 @@ public sealed class Plugin : IDalamudPlugin
 			combat.Clear();
 			rsrEnable.Clear();
 			train.Reset();
+			ObserveDebugSignals();
 			return;
 		}
 
@@ -587,7 +610,49 @@ public sealed class Plugin : IDalamudPlugin
 			withinFlagArrival: withinArrival,
 			readyForGroundFollow: unmount.ReadyForGroundFollow,
 			inCombatPhase: combat.InCombatPhase));
+
+		ObserveDebugSignals();
 	}
+
+	/// <summary>
+	/// Edge-record phase / mount / unmount / follow for the Debug tab (TASKS 9.2).
+	/// Soft-fails individual probes; never throws to Framework.
+	/// </summary>
+	private void ObserveDebugSignals()
+	{
+		try
+		{
+			string? followName = null;
+			var followEnabled = false;
+			try
+			{
+				followEnabled = follow.Enabled;
+				var target = follow.FollowTarget;
+				if (target != null)
+					followName = target.Name.TextValue;
+			}
+			catch
+			{
+				// soft-fail follow probe
+			}
+
+			debugProbe.Observe(
+				Config.EnableDebugLogging,
+				train.Phase,
+				mount.Session.Phase,
+				unmount.Session.Phase,
+				followName,
+				followEnabled);
+		}
+		catch (Exception ex)
+		{
+			pluginLog.Debug($"ObserveDebugSignals soft-fail: {ex.Message}");
+		}
+	}
+
+	/// <summary>Optional UI sound for conductor-flag alerts; soft-fail via caller.</summary>
+	private static unsafe void PlayNotificationSound()
+		=> UIGlobals.PlaySoundEffect(36);
 
 	private bool IsLocalPlayerDead()
 	{

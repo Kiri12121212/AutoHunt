@@ -6,18 +6,19 @@ namespace HuntTrainAuto.Tests.Windows;
 public sealed class ConfigTabsTests
 {
 	[Fact]
-	public void Labels_match_phase8_tabs()
+	public void Labels_match_phase8_and_debug_tabs()
 	{
 		Assert.Equal(
-			["Status", "Settings", "Mount", "Follow", "Combat", "Integrations"],
+			["Status", "Settings", "Mount", "Follow", "Combat", "Integrations", "Debug"],
 			ConfigTabs.Labels);
-		Assert.Equal(6, ConfigTabs.Labels.Length);
+		Assert.Equal(7, ConfigTabs.Labels.Length);
 		Assert.Equal(0, ConfigTabs.Status);
 		Assert.Equal(1, ConfigTabs.Settings);
 		Assert.Equal(2, ConfigTabs.Mount);
 		Assert.Equal(3, ConfigTabs.Follow);
 		Assert.Equal(4, ConfigTabs.Combat);
 		Assert.Equal(5, ConfigTabs.Integrations);
+		Assert.Equal(6, ConfigTabs.Debug);
 	}
 
 	[Theory]
@@ -25,7 +26,8 @@ public sealed class ConfigTabsTests
 	[InlineData(0, 0)]
 	[InlineData(2, 2)]
 	[InlineData(5, 5)]
-	[InlineData(99, 5)]
+	[InlineData(6, 6)]
+	[InlineData(99, 6)]
 	public void ClampSelected_stays_in_range(int input, int expected)
 		=> Assert.Equal(expected, ConfigTabs.ClampSelected(input));
 
@@ -34,6 +36,7 @@ public sealed class ConfigTabsTests
 	[InlineData(1, "Settings")]
 	[InlineData(2, "Mount")]
 	[InlineData(5, "Integrations")]
+	[InlineData(6, "Debug")]
 	[InlineData(-1, "Status")]
 	public void LabelAt_uses_clamped_index(int index, string expected)
 		=> Assert.Equal(expected, ConfigTabs.LabelAt(index));
