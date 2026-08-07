@@ -34,6 +34,7 @@ public sealed class Plugin : IDalamudPlugin
 	private readonly FlagArrivalHelper flagArrival;
 	private readonly UnmountRunner unmount;
 	private readonly FollowHelper follow;
+	private readonly FollowTargetResolver followTarget;
 
 	private HuntFlag? activeHuntFlag;
 	private long teleportNextAllowedMs;
@@ -65,6 +66,7 @@ public sealed class Plugin : IDalamudPlugin
 		IGameGui gameGui,
 		IFramework framework,
 		ICondition condition,
+		IPartyList partyList,
 		IPluginLog pluginLog)
 	{
 		this.pluginInterface = pluginInterface;
@@ -117,6 +119,7 @@ public sealed class Plugin : IDalamudPlugin
 			objectTable,
 			pluginLog,
 			() => Config.PartyFollowDistance);
+		followTarget = new FollowTargetResolver(objectTable, partyList, pluginLog);
 		mapManager = new MapManager(dataManager, msg => pluginLog.Warning(msg));
 
 		chatMessageHandler = new ChatMessageHandler(chatGui, gameGui, Config);
@@ -276,7 +279,15 @@ public sealed class Plugin : IDalamudPlugin
 		// Arrival/unmount before mount.Tick so AlreadyClose mount jobs are cleared before they remount.
 		TickFlagArrivalAndUnmount();
 		mount.Tick(Config.Mount);
-		// Follow target resolution is phase 5.2+; tick runs only after SetFollow enables.
+		// After unmount: resolve follow target (conductor > leader > in-combat ally), then tick path.
+		if (unmount.ReadyForGroundFollow)
+		{
+			followTarget.ResolveAndApply(
+				follow,
+				Config.Conductors,
+				Config.FollowConductorFirst);
+		}
+
 		follow.Tick(pluginEnabled: true);
 	}
 
