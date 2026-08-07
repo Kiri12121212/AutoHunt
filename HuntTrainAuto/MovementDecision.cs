@@ -105,30 +105,36 @@ public static class MovementDecision
 	public static bool NeedsTakeoff(bool fly, bool mounted, bool inFlight, bool casting)
 		=> fly && mounted && !inFlight && !casting;
 
+	/// <summary>Throttle Jump takeoff attempts (avoid per-tick spam).</summary>
+	public const int TakeoffCooldownMs = 500;
+
 	/// <summary>AD: set last-point tolerance when a single waypoint remains.</summary>
 	public static bool ShouldSetLastPointTolerance(int numWaypoints)
 		=> numWaypoints == 1;
 
 	/// <summary>
-	/// Soft-wait before starting a mesh pathfind (AD ready / nav / in-progress / waypoints guards).
+	/// Soft-wait before starting a mesh pathfind (AD ready / nav / in-progress / waypoints / running guards).
 	/// </summary>
 	public static bool ShouldWaitBeforeMeshPathfind(
 		bool playerReady,
 		bool navReady,
 		bool pathfindInProgress,
-		int numWaypoints)
+		int numWaypoints,
+		bool pathIsRunning = false)
 		=> !playerReady
 			|| !navReady
 			|| pathfindInProgress
-			|| numWaypoints > 0;
+			|| numWaypoints > 0
+			|| pathIsRunning;
 
 	/// <summary>Inverse of <see cref="ShouldWaitBeforeMeshPathfind"/> — safe to start pathfind.</summary>
 	public static bool CanStartMeshPathfind(
 		bool playerReady,
 		bool navReady,
 		bool pathfindInProgress,
-		int numWaypoints)
-		=> !ShouldWaitBeforeMeshPathfind(playerReady, navReady, pathfindInProgress, numWaypoints);
+		int numWaypoints,
+		bool pathIsRunning = false)
+		=> !ShouldWaitBeforeMeshPathfind(playerReady, navReady, pathfindInProgress, numWaypoints, pathIsRunning);
 
 	/// <summary>
 	/// One <c>Move</c> decision step after zone/fly resolution.
@@ -221,7 +227,7 @@ public static class MovementDecision
 			};
 		}
 
-		if (ShouldWaitBeforeMeshPathfind(playerReady, navReady, pathfindInProgress, numWaypoints))
+		if (ShouldWaitBeforeMeshPathfind(playerReady, navReady, pathfindInProgress, numWaypoints, pathIsRunning))
 		{
 			return new MoveTickResult
 			{

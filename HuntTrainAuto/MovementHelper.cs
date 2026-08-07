@@ -25,6 +25,7 @@ public sealed class MovementHelper
 	private readonly ICondition condition;
 	private readonly IClientState clientState;
 	private readonly IPluginLog pluginLog;
+	private long nextTakeoffMs;
 
 	public MovementHelper(
 		VNavmeshIpc vnav,
@@ -169,7 +170,8 @@ public sealed class MovementHelper
 					vnav.PathStop();
 				return true;
 			case MoveTickKind.Takeoff:
-				TryJumpTakeoff();
+				if (TryFireTakeoff())
+					TryJumpTakeoff();
 				return false;
 			case MoveTickKind.SetLastPointToleranceAndWait:
 				vnav.PathSetTolerance(lastPointTolerance);
@@ -186,6 +188,16 @@ public sealed class MovementHelper
 			default:
 				return false;
 		}
+	}
+
+	private bool TryFireTakeoff()
+	{
+		var now = Environment.TickCount64;
+		if (now < nextTakeoffMs)
+			return false;
+
+		nextTakeoffMs = now + MovementDecision.TakeoffCooldownMs;
+		return true;
 	}
 
 	private unsafe void TryJumpTakeoff()
