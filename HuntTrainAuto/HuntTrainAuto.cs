@@ -36,13 +36,19 @@ public sealed class Plugin : IDalamudPlugin
 
 		commandManager.AddHandler("/hta", new CommandInfo(OnCommand)
 		{
-			HelpMessage = "Toggle the HuntTrainAuto window",
+			HelpMessage = "Toggle HuntTrainAuto UI; /hta clear; /hta add <name> or /hta <name>",
 		});
 	}
 
 	public string Name => "HuntTrainAuto";
 
-	private void OnCommand(string command, string args) => ToggleUi();
+	private void OnCommand(string command, string args) =>
+		ChatCommands.Handle(
+			args,
+			Config.Conductors,
+			ToggleUi,
+			() => configWindow.IsOpen = true,
+			() => pluginInterface.SavePluginConfig(Config));
 
 	private void Draw() => windowSystem.Draw();
 

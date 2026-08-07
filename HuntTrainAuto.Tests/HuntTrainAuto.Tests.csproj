@@ -16,8 +16,9 @@
 		</PackageReference>
 	</ItemGroup>
 
-	<!-- Link pure helper only — no Dalamud plugin project reference. -->
+	<!-- Link pure helpers only — no Dalamud plugin project reference. -->
 	<ItemGroup>
 		<Compile Include="..\HuntTrainAuto\ConductorList.cs" Link="ConductorList.cs" />
+		<Compile Include="..\HuntTrainAuto\ChatCommands.cs" Link="ChatCommands.cs" />
 	</ItemGroup>
 </Project>
