@@ -895,6 +895,8 @@ public sealed class Plugin : IDalamudPlugin
 			{
 				// soft-fail: vnav / player may be unavailable
 			}
+
+			movement.ResetMeshPathfindRetry();
 		}
 
 		if (plan.ClearFollow)
@@ -939,7 +941,10 @@ public sealed class Plugin : IDalamudPlugin
 		try
 		{
 			var hunting = HuntingTerritory.IsHuntingTerritory(territoryId, GetIntendedUseRowId);
-			var plan = TerritoryCleanupDecision.Decide(teleportPlan.HasActive, hunting);
+			var plan = TerritoryCleanupDecision.Decide(
+				teleportPlan.HasActive,
+				hunting,
+				hasActiveHuntFlag: activeHuntFlag != null);
 			ApplyTerritoryCleanup(territoryId, plan);
 		}
 		catch (Exception ex)
@@ -972,6 +977,13 @@ public sealed class Plugin : IDalamudPlugin
 				// soft-fail: vnav / player may be unavailable mid-load
 			}
 		}
+
+		if (plan.InvalidateFlagWorldPos && activeHuntFlag != null)
+			activeHuntFlag.WorldPos = null;
+
+		// Fresh soft-retry budget after mesh reload / zone swap.
+		if (plan.StopNavPath || plan.InvalidateFlagWorldPos)
+			movement.ResetMeshPathfindRetry();
 
 		if (plan.ClearFollow)
 			follow.Clear();

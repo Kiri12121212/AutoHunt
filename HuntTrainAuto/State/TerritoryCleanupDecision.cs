@@ -20,6 +20,12 @@ public enum TerritoryCleanupKind
 	TpArrivalHandoff,
 
 	/// <summary>
+	/// Hunting territory entered without an active TP plan (BetweenAreas cleared early, etc.).
+	/// Stop stale path and invalidate flag WorldPos so Navigate re-resolves against the new mesh.
+	/// </summary>
+	HuntingMeshReload,
+
+	/// <summary>
 	/// Arrived in a non-hunting territory (left hunt zone or TP landed wrong): full pipeline abort.
 	/// </summary>
 	LeaveHuntingFull,
@@ -61,6 +67,12 @@ public readonly struct TerritoryCleanupPlan
 	/// </summary>
 	public bool StopNavPath { get; init; }
 
+	/// <summary>
+	/// Clear <see cref="HuntFlag.WorldPos"/> so PointOnFloor re-runs against the new mesh
+	/// after territory change (stale floor hits from the previous zone break pathfind).
+	/// </summary>
+	public bool InvalidateFlagWorldPos { get; init; }
+
 	public bool ClearConductors { get; init; }
 	public bool ResetTrainController { get; init; }
 	public bool SaveConfig { get; init; }
@@ -76,14 +88,22 @@ public static class TerritoryCleanupDecision
 	/// Decide cleanup for the new territory.
 	/// <paramref name="teleportPlanActive"/> is the plan state <b>before</b> any clear.
 	/// <paramref name="isHuntingTerritory"/> is the destination (new) territory.
+	/// <paramref name="hasActiveHuntFlag"/>: when BetweenAreas already cleared the TP plan,
+	/// hunting→hunting still needs mesh reload handoff (invalidate WorldPos / stop path).
 	/// </summary>
-	public static TerritoryCleanupPlan Decide(bool teleportPlanActive, bool isHuntingTerritory)
+	public static TerritoryCleanupPlan Decide(
+		bool teleportPlanActive,
+		bool isHuntingTerritory,
+		bool hasActiveHuntFlag = false)
 	{
 		if (teleportPlanActive && isHuntingTerritory)
 			return TpArrivalHandoff();
 
 		if (!isHuntingTerritory)
 			return LeaveHuntingFull();
+
+		if (hasActiveHuntFlag)
+			return HuntingMeshReload();
 
 		return StayHuntingNoop();
 	}
@@ -92,6 +112,19 @@ public static class TerritoryCleanupDecision
 		=> new()
 		{
 			Kind = TerritoryCleanupKind.StayHuntingNoop,
+		};
+
+	/// <summary>
+	/// Hunting territory entered without an active TP plan (e.g. BetweenAreas cleared early).
+	/// Keep train / mount handoff; refresh nav against the new mesh.
+	/// </summary>
+	public static TerritoryCleanupPlan HuntingMeshReload()
+		=> new()
+		{
+			Kind = TerritoryCleanupKind.HuntingMeshReload,
+			StopNavPath = true,
+			InvalidateFlagWorldPos = true,
+			ClearFlagArrival = true,
 		};
 
 	public static TerritoryCleanupPlan TpArrivalHandoff()
@@ -103,6 +136,7 @@ public static class TerritoryCleanupDecision
 			EnqueueMount = true,
 			// Path may still be running from the previous zone; stop without aborting handoff.
 			StopNavPath = true,
+			InvalidateFlagWorldPos = true,
 			ClearFollow = true,
 			ClearEngage = true,
 			ClearCombat = true,

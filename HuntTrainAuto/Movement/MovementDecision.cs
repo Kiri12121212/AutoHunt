@@ -114,15 +114,19 @@ public static class MovementDecision
 
 	/// <summary>
 	/// Soft-wait before starting a mesh pathfind (AD ready / nav / in-progress / waypoints / running guards).
+	/// <paramref name="playerOnMesh"/>: after territory swap, wait until the local player projects
+	/// onto the loaded mesh (avoids <c>poly → 0</c> spam while still falling / off-mesh).
 	/// </summary>
 	public static bool ShouldWaitBeforeMeshPathfind(
 		bool playerReady,
 		bool navReady,
 		bool pathfindInProgress,
 		int numWaypoints,
-		bool pathIsRunning = false)
+		bool pathIsRunning = false,
+		bool playerOnMesh = true)
 		=> !playerReady
 			|| !navReady
+			|| !playerOnMesh
 			|| pathfindInProgress
 			|| numWaypoints > 0
 			|| pathIsRunning;
@@ -133,8 +137,10 @@ public static class MovementDecision
 		bool navReady,
 		bool pathfindInProgress,
 		int numWaypoints,
-		bool pathIsRunning = false)
-		=> !ShouldWaitBeforeMeshPathfind(playerReady, navReady, pathfindInProgress, numWaypoints, pathIsRunning);
+		bool pathIsRunning = false,
+		bool playerOnMesh = true)
+		=> !ShouldWaitBeforeMeshPathfind(
+			playerReady, navReady, pathfindInProgress, numWaypoints, pathIsRunning, playerOnMesh);
 
 	/// <summary>
 	/// One <c>Move</c> decision step after zone/fly resolution.
@@ -155,7 +161,8 @@ public static class MovementDecision
 		bool navReady,
 		bool pathfindInProgress,
 		int numWaypoints,
-		bool pathIsRunning)
+		bool pathIsRunning,
+		bool playerOnMesh = true)
 	{
 		if (!playerValid)
 		{
@@ -227,7 +234,8 @@ public static class MovementDecision
 			};
 		}
 
-		if (ShouldWaitBeforeMeshPathfind(playerReady, navReady, pathfindInProgress, numWaypoints, pathIsRunning))
+		if (ShouldWaitBeforeMeshPathfind(
+			    playerReady, navReady, pathfindInProgress, numWaypoints, pathIsRunning, playerOnMesh))
 		{
 			return new MoveTickResult
 			{

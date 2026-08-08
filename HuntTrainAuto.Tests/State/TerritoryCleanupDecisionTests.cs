@@ -5,11 +5,12 @@ namespace HuntTrainAuto.Tests.State;
 public sealed class TerritoryCleanupDecisionTests
 {
 	[Fact]
-	public void Decide_stay_hunting_noop_when_no_plan()
+	public void Decide_stay_hunting_noop_when_no_plan_and_no_flag()
 	{
 		var plan = TerritoryCleanupDecision.Decide(
 			teleportPlanActive: false,
-			isHuntingTerritory: true);
+			isHuntingTerritory: true,
+			hasActiveHuntFlag: false);
 
 		Assert.Equal(TerritoryCleanupKind.StayHuntingNoop, plan.Kind);
 		Assert.False(plan.ClearTeleportPlan);
@@ -17,9 +18,30 @@ public sealed class TerritoryCleanupDecisionTests
 		Assert.False(plan.ResetTrainController);
 		Assert.False(plan.ClearConductors);
 		Assert.False(plan.StopNavPath);
+		Assert.False(plan.InvalidateFlagWorldPos);
 		Assert.False(plan.ClearEngage);
 		Assert.False(plan.ClearCombat);
 		Assert.False(plan.SaveConfig);
+	}
+
+	[Fact]
+	public void Decide_hunting_mesh_reload_when_flag_without_plan()
+	{
+		// BetweenAreas cleared TeleportPlan before OnTerritoryChanged.
+		var plan = TerritoryCleanupDecision.Decide(
+			teleportPlanActive: false,
+			isHuntingTerritory: true,
+			hasActiveHuntFlag: true);
+
+		Assert.Equal(TerritoryCleanupKind.HuntingMeshReload, plan.Kind);
+		Assert.True(plan.StopNavPath);
+		Assert.True(plan.InvalidateFlagWorldPos);
+		Assert.True(plan.ClearFlagArrival);
+		Assert.False(plan.ClearTeleportPlan);
+		Assert.False(plan.EnqueueMount);
+		Assert.False(plan.ResetTrainController);
+		Assert.False(plan.ClearActiveHuntFlag);
+		Assert.False(plan.ClearConductors);
 	}
 
 	[Fact]
@@ -34,6 +56,7 @@ public sealed class TerritoryCleanupDecisionTests
 		Assert.True(plan.EnqueueInstanceChangeIfNeeded);
 		Assert.True(plan.EnqueueMount);
 		Assert.True(plan.StopNavPath);
+		Assert.True(plan.InvalidateFlagWorldPos);
 		Assert.True(plan.ClearFollow);
 		Assert.True(plan.ClearEngage);
 		Assert.True(plan.ClearCombat);
@@ -94,6 +117,9 @@ public sealed class TerritoryCleanupDecisionTests
 		Assert.Equal(
 			TerritoryCleanupKind.TpArrivalHandoff,
 			TerritoryCleanupDecision.TpArrivalHandoff().Kind);
+		Assert.Equal(
+			TerritoryCleanupKind.HuntingMeshReload,
+			TerritoryCleanupDecision.HuntingMeshReload().Kind);
 		Assert.Equal(
 			TerritoryCleanupKind.LeaveHuntingFull,
 			TerritoryCleanupDecision.LeaveHuntingFull().Kind);
