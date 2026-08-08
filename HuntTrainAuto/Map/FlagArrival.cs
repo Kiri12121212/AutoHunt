@@ -6,7 +6,7 @@ namespace HuntTrainAuto.Map;
 /// <summary>Result of <see cref="FlagArrival.Evaluate"/>.</summary>
 public readonly struct FlagArrivalResult
 {
-	/// <summary>Player is within <see cref="Configuration.FlagArrivalTolerance"/> of flag <see cref="HuntFlag.WorldPos"/>.</summary>
+	/// <summary>Player is within <see cref="Configuration.FlagArrivalTolerance"/> of flag <see cref="HuntFlag.WorldPos"/> (XZ).</summary>
 	public required bool IsArrived { get; init; }
 
 	/// <summary>
@@ -16,14 +16,14 @@ public readonly struct FlagArrivalResult
 	/// </summary>
 	public required bool ShouldStopPath { get; init; }
 
-	/// <summary>Euclidean distance to flag world pos; <see cref="float.MaxValue"/> when world pos missing/invalid.</summary>
+	/// <summary>XZ distance to flag world pos; <see cref="float.MaxValue"/> when world pos missing/invalid.</summary>
 	public float Distance { get; init; }
 }
 
 /// <summary>
 /// Pure hunt-flag arrival decisions (TASKS 4.10 / brief 4.5).
-/// Hunt flags are area markers — use <see cref="DefaultTolerance"/> (~5y), not AD's 0.25 path tolerance.
-/// Reuses <see cref="MovementDecision.IsArrived"/> (mesh-style; no direct-path −1 yalm fudge).
+/// Hunt flags are area markers — use <see cref="DefaultTolerance"/> (~5y) on <b>XZ</b>, not 3D
+/// (flying above the floor PointOnFloor must still count as arrived so Unmount can dismount-land).
 /// Unmount is owned by <see cref="UnmountRunner"/> — this only signals arrival / one-shot stop-path.
 /// </summary>
 public static class FlagArrival
@@ -32,9 +32,9 @@ public static class FlagArrival
 	public const float DefaultTolerance = 5f;
 
 	/// <summary>
-	/// Whether distance to flag is within tolerance (mesh-style <see cref="MovementDecision.IsArrived"/>).
+	/// Whether XZ distance to flag is within tolerance (mesh-style <see cref="MovementDecision.IsArrived"/>).
 	/// Missing / zero <paramref name="flagWorldPos"/> → not arrived.
-	/// While <paramref name="inFlight"/>, not arrived — keep descending onto the floor before unmount.
+	/// <paramref name="inFlight"/> is accepted for call-site compatibility; XZ arrival applies either way.
 	/// </summary>
 	public static bool IsArrived(
 		Vector3 playerPos,
@@ -42,13 +42,11 @@ public static class FlagArrival
 		float tolerance,
 		bool inFlight = false)
 	{
-		if (inFlight)
-			return false;
-
+		_ = inFlight;
 		if (flagWorldPos is not { } world || world == Vector3.Zero)
 			return false;
 
-		var distance = MovementDecision.Distance(playerPos, world);
+		var distance = MovementDecision.DistanceXZ(playerPos, world);
 		return MovementDecision.IsArrived(world, distance, tolerance, useMesh: true);
 	}
 
@@ -66,7 +64,7 @@ public static class FlagArrival
 	/// <param name="flagWorldPos"><see cref="HuntFlag.WorldPos"/>; null until PointOnFloor.</param>
 	/// <param name="tolerance"><see cref="Configuration.FlagArrivalTolerance"/>.</param>
 	/// <param name="pathAlreadyStoppedForArrival">True after PathStop was issued for the current flag.</param>
-	/// <param name="inFlight">True while airborne — defer arrival until on the floor.</param>
+	/// <param name="inFlight">Unused for the distance check (XZ); kept for callers.</param>
 	public static FlagArrivalResult Evaluate(
 		Vector3 playerPos,
 		Vector3? flagWorldPos,
@@ -74,6 +72,7 @@ public static class FlagArrival
 		bool pathAlreadyStoppedForArrival = false,
 		bool inFlight = false)
 	{
+		_ = inFlight;
 		if (flagWorldPos is not { } world || world == Vector3.Zero)
 		{
 			return new FlagArrivalResult
@@ -84,9 +83,8 @@ public static class FlagArrival
 			};
 		}
 
-		var distance = MovementDecision.Distance(playerPos, world);
-		var arrived = !inFlight
-			&& MovementDecision.IsArrived(world, distance, tolerance, useMesh: true);
+		var distance = MovementDecision.DistanceXZ(playerPos, world);
+		var arrived = MovementDecision.IsArrived(world, distance, tolerance, useMesh: true);
 		return new FlagArrivalResult
 		{
 			IsArrived = arrived,

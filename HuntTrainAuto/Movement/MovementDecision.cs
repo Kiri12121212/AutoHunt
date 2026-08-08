@@ -1,4 +1,5 @@
 #nullable enable
+using System;
 using System.Numerics;
 
 namespace HuntTrainAuto.Movement;
@@ -49,6 +50,13 @@ public static class MovementDecision
 	/// <summary>AD default path / last-point tolerance (yalms).</summary>
 	public const float DefaultTolerance = 0.25f;
 
+	/// <summary>
+	/// Arrival / PathStop / Unmount while still <c>InFlight</c> near the floor PointOnFloor.
+	/// Wider than <see cref="DefaultTolerance"/> — live hover often sits ~0.3–0.6y above the dest
+	/// and never clears <c>InFlight</c> without a dismount.
+	/// </summary>
+	public const float InFlightFloorTolerance = 1.5f;
+
 	/// <summary>GeneralAction id for Jump (flight takeoff).</summary>
 	public const uint JumpGeneralActionId = 2;
 
@@ -97,6 +105,14 @@ public static class MovementDecision
 	/// <summary>Euclidean distance helper for arrival checks.</summary>
 	public static float Distance(Vector3 from, Vector3 to)
 		=> Vector3.Distance(from, to);
+
+	/// <summary>Horizontal (XZ) distance — hunt flags are area markers; Y differs while flying.</summary>
+	public static float DistanceXZ(Vector3 from, Vector3 to)
+	{
+		var dx = from.X - to.X;
+		var dz = from.Z - to.Z;
+		return MathF.Sqrt((dx * dx) + (dz * dz));
+	}
 
 	/// <summary>
 	/// Need Jump takeoff when flying path requested, mounted, and not yet in flight.
@@ -147,7 +163,7 @@ public static class MovementDecision
 			playerReady, navReady, pathfindInProgress, numWaypoints, pathIsRunning, playerOnMesh, fly);
 
 	/// <summary>
-	/// While still <c>InFlight</c>, only treat as arrived when within <see cref="DefaultTolerance"/>
+	/// While still <c>InFlight</c>, only treat as arrived when within <see cref="InFlightFloorTolerance"/>
 	/// so a loose flag last-point tolerance cannot PathStop high above the floor.
 	/// </summary>
 	public static bool IsArrivedForMove(
@@ -163,7 +179,7 @@ public static class MovementDecision
 		if (!inFlight)
 			return true;
 
-		return IsArrived(destination, distanceToDestination, DefaultTolerance, useMesh);
+		return IsArrived(destination, distanceToDestination, InFlightFloorTolerance, useMesh);
 	}
 
 	/// <summary>

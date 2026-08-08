@@ -34,7 +34,7 @@ public sealed class FlagArrivalHelper
 	/// Subsequent ticks while still arrived report <see cref="FlagArrivalResult.IsArrived"/>
 	/// but do not stop again (so unmount/follow can path).
 	/// </summary>
-	/// <param name="inFlight">Defer arrival while airborne so Navigate can finish onto the floor.</param>
+	/// <param name="inFlight">Unused for XZ arrival; kept for call-site compatibility.</param>
 	public FlagArrivalResult Tick(
 		Vector3 playerPos,
 		Vector3? flagWorldPos,

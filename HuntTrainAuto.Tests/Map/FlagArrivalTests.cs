@@ -27,12 +27,14 @@ public sealed class FlagArrivalTests
 	}
 
 	[Fact]
-	public void IsArrived_false_while_in_flight()
+	public void IsArrived_uses_xz_while_in_flight()
 	{
-		var player = new Vector3(1, 10, 0);
 		var flag = new Vector3(1, 0, 0);
-		Assert.True(FlagArrival.IsArrived(player, flag, 15f, inFlight: false));
-		Assert.False(FlagArrival.IsArrived(player, flag, 15f, inFlight: true));
+		// Directly above floor PointOnFloor — 3D would be 10y, XZ is 0 → arrived (dismount-land).
+		Assert.True(FlagArrival.IsArrived(new Vector3(1, 10, 0), flag, 1f, inFlight: true));
+		Assert.True(FlagArrival.IsArrived(new Vector3(1, 10, 0), flag, 1f, inFlight: false));
+		// XZ too far.
+		Assert.False(FlagArrival.IsArrived(new Vector3(5, 0, 0), flag, 1f, inFlight: true));
 	}
 
 	[Fact]
@@ -89,17 +91,27 @@ public sealed class FlagArrivalTests
 	}
 
 	[Fact]
-	public void Evaluate_in_flight_defers_arrival()
+	public void Evaluate_in_flight_above_flag_arrives_on_xz()
 	{
-		var result = FlagArrival.Evaluate(
-			new Vector3(1, 3, 0),
+		var above = FlagArrival.Evaluate(
+			new Vector3(1, 12f, 0),
 			new Vector3(1, 0, 0),
-			5f,
+			1f,
 			pathAlreadyStoppedForArrival: false,
 			inFlight: true);
-		Assert.False(result.IsArrived);
-		Assert.False(result.ShouldStopPath);
-		Assert.Equal(3f, result.Distance);
+		Assert.True(above.IsArrived);
+		Assert.True(above.ShouldStopPath);
+		Assert.Equal(0f, above.Distance);
+
+		var far = FlagArrival.Evaluate(
+			new Vector3(5, 0, 0),
+			new Vector3(1, 0, 0),
+			1f,
+			pathAlreadyStoppedForArrival: false,
+			inFlight: true);
+		Assert.False(far.IsArrived);
+		Assert.False(far.ShouldStopPath);
+		Assert.Equal(4f, far.Distance);
 	}
 
 	[Fact]
@@ -112,11 +124,11 @@ public sealed class FlagArrivalTests
 	}
 
 	[Fact]
-	public void Evaluate_reuses_MovementDecision_IsArrived()
+	public void Evaluate_uses_xz_distance()
 	{
-		var player = new Vector3(10, 2, 10);
+		var player = new Vector3(10, 50, 10);
 		var flag = new Vector3(12, 2, 10);
-		var distance = MovementDecision.Distance(player, flag);
+		var distance = MovementDecision.DistanceXZ(player, flag);
 		var expected = MovementDecision.IsArrived(flag, distance, FlagArrival.DefaultTolerance, useMesh: true);
 		var result = FlagArrival.Evaluate(player, flag, FlagArrival.DefaultTolerance);
 		Assert.Equal(expected, result.IsArrived);

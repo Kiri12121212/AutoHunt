@@ -65,7 +65,7 @@ public sealed class UnmountRunner
 
 		enqueuedForCurrentArrival = true;
 		session.Enqueue(Environment.TickCount64);
-		pluginLog.Debug("Unmount job enqueued");
+		pluginLog.Information("Unmount job enqueued");
 	}
 
 	/// <summary>
@@ -118,6 +118,8 @@ public sealed class UnmountRunner
 		if (UnmountDecision.IsSessionTimedOut(session.DeadlineMs, now))
 		{
 			pluginLog.Debug($"Unmount job timed out after {UnmountDecision.SessionTimeoutMs}ms");
+			// Drop latch so a still-arrived / still-mounted player can re-enqueue.
+			enqueuedForCurrentArrival = false;
 			session.Clear();
 			return;
 		}
@@ -159,7 +161,7 @@ public sealed class UnmountRunner
 		{
 			session.MarkGroundFollowReady();
 			session.Clear();
-			pluginLog.Debug("Unmount complete; ready for ground follow (canFly: false)");
+			pluginLog.Information("Unmount complete; ready for ground follow (canFly: false)");
 			return;
 		}
 

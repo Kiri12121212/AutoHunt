@@ -161,11 +161,18 @@ public sealed class MovementDecisionTests
 	}
 
 	[Fact]
-	public void IsArrivedForMove_in_flight_requires_default_tolerance()
+	public void IsArrivedForMove_in_flight_requires_floor_tolerance()
 	{
 		Assert.False(MovementDecision.IsArrivedForMove(
 			new Vector3(1, 0, 0),
 			distanceToDestination: 3f,
+			lastPointTolerance: 5f,
+			useMesh: true,
+			inFlight: true));
+		// Live hover often sits ~0.3–0.6y above dest — must arrive within InFlightFloorTolerance.
+		Assert.True(MovementDecision.IsArrivedForMove(
+			new Vector3(1, 0, 0),
+			distanceToDestination: 0.6f,
 			lastPointTolerance: 5f,
 			useMesh: true,
 			inFlight: true));
@@ -332,6 +339,14 @@ public sealed class MovementDecisionTests
 		var a = new Vector3(0, 0, 0);
 		var b = new Vector3(3, 4, 0);
 		Assert.Equal(5f, MovementDecision.Distance(a, b));
+	}
+
+	[Fact]
+	public void DistanceXZ_ignores_y()
+	{
+		var a = new Vector3(0, 100, 0);
+		var b = new Vector3(3, -50, 4);
+		Assert.Equal(5f, MovementDecision.DistanceXZ(a, b));
 	}
 
 	private static MoveTickResult Decide(
