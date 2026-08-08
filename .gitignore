@@ -2,6 +2,7 @@
 .kata.toml
 .kata.local.toml
 .kata-proposed
+AGENT.md
 AGENTS.md
 CLAUDE.md
 docs/

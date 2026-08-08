@@ -1,3 +1,4 @@
+global using HuntTrainAuto;
 global using HuntTrainAuto.Chat;
 global using HuntTrainAuto.Combat;
 global using HuntTrainAuto.Domain;

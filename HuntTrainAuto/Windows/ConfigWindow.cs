@@ -41,7 +41,7 @@ public sealed class ConfigWindow : Window, IDisposable
 		Func<HuntAlertsLastAlert?> getHuntAlertsLastAlert,
 		Func<StatusSnapshot> getStatus,
 		DebugEventLog debugLog,
-		Func<string?>? getHuntAlertsLastIntake = null) : base("HuntTrainAuto")
+		Func<string?>? getHuntAlertsLastIntake = null) : base(PluginVersion.WindowTitle)
 	{
 		this.config = config;
 		this.saveConfig = saveConfig;
@@ -176,6 +176,8 @@ public sealed class ConfigWindow : Window, IDisposable
 	private void DrawStatusTab()
 	{
 		ImGui.TextWrapped("Live train pipeline status (read-only).");
+		ImGui.Spacing();
+		ImGui.TextDisabled(PluginVersion.StatusLine);
 		ImGui.Spacing();
 
 		var snap = StatusDisplay.SafeCapture(getStatus);
