@@ -274,7 +274,8 @@ public sealed class Plugin : IDalamudPlugin
 			Config,
 			territoryTypeId => mapManager.GetMapParams(mapId: 0, territoryTypeId),
 			OnHuntAlertsFlag,
-			ResolveTerritoryExVersion);
+			ResolveTerritoryExVersion,
+			pluginLog);
 
 		configWindow = new ConfigWindow(
 			Config,
@@ -286,7 +287,8 @@ public sealed class Plugin : IDalamudPlugin
 			() => huntAlertsIpc.PluginStatus,
 			() => huntAlertsIpc.LastMappedAlert,
 			CaptureStatus,
-			debugLog);
+			debugLog,
+			() => huntAlertsIpc.LastIntakeStatus);
 		windowSystem.AddWindow(configWindow);
 
 		chat = new GameChat();

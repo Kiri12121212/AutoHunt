@@ -125,6 +125,25 @@ public sealed class HuntAlertsAvailabilityTests
 		=> Assert.Equal("Last alert: none", HuntAlertsAvailability.FormatLastAlertStatus(null));
 
 	[Fact]
+	public void FormatLastIntakeStatus_none_when_blank()
+		=> Assert.Equal("Last intake: none", HuntAlertsAvailability.FormatLastIntakeStatus(null));
+
+	[Fact]
+	public void FormatIntakeStatus_includes_detail_and_clock()
+	{
+		var when = new DateTimeOffset(2026, 8, 8, 1, 46, 49, TimeSpan.Zero);
+		Assert.Equal(
+			"Last intake: rejected: integration off @ 01:46:49 UTC",
+			HuntAlertsAvailability.FormatIntakeStatus("rejected: integration off", when));
+	}
+
+	[Fact]
+	public void FormatLastIntakeStatus_passes_through_preformatted()
+	{
+		const string line = "Last intake: mapped Ragnarok / Heritage Found @ 01:46:49 UTC";
+		Assert.Equal(line, HuntAlertsAvailability.FormatLastIntakeStatus(line));
+	}
+	[Fact]
 	public void FormatLastAlertStatus_includes_world_place_and_time()
 	{
 		var last = new HuntAlertsLastAlert(

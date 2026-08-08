@@ -150,6 +150,25 @@ public static class HuntAlertsAvailability
 			: $"Last alert: {where} @ {when} UTC";
 	}
 
+	/// <summary>
+	/// Compact last IPC intake line for Integrations diagnostics.
+	/// Null / blank → <c>Last intake: none</c>.
+	/// </summary>
+	public static string FormatLastIntakeStatus(string? status)
+		=> string.IsNullOrWhiteSpace(status)
+			? $"Last intake: {LastAlertNoneLabel}"
+			: status.StartsWith("Last intake:", StringComparison.Ordinal)
+				? status
+				: $"Last intake: {status}";
+
+	/// <summary>Build a timestamped intake status line (pure).</summary>
+	public static string FormatIntakeStatus(string detail, DateTimeOffset when)
+	{
+		var trimmed = string.IsNullOrWhiteSpace(detail) ? LastAlertNoneLabel : detail.Trim();
+		var clock = when.ToString("HH:mm:ss", System.Globalization.CultureInfo.InvariantCulture);
+		return $"Last intake: {trimmed} @ {clock} UTC";
+	}
+
 	/// <summary>Build a snapshot after a successful map (pure).</summary>
 	public static HuntAlertsLastAlert FromMappedFlag(HuntFlag flag)
 		=> new(

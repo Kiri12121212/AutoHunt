@@ -4,6 +4,7 @@ using System;
 using System.Linq;
 using Dalamud.Plugin;
 using Dalamud.Plugin.Ipc;
+using Dalamud.Plugin.Services;
 using HuntTrainAuto.Contracts;
 using HuntTrainAuto.Domain;
 using HuntTrainAuto.HuntAlerts;
@@ -15,6 +16,8 @@ namespace HuntTrainAuto.Services;
 /// Soft-fail subscriber for HuntAlerts
 /// <c>HuntAlerts.OnHuntTrainMessageReceived</c> (HTA <c>SonarMonitor</c> pattern
 /// via Dalamud CallGate — no ECommons EzIPC attributes).
+/// Subscribes as <c>object</c> so CallGate skips JSON re-shape (publisher field-shaped
+/// DTO stays intact), then copies members into <see cref="HuntTrainMessage"/>.
 /// Maps accepted messages to <see cref="HuntFlag"/> (TASKS 10.3); optional
 /// <paramref name="onFlag"/> runs world-visit + TP/nav intake (10.4–10.5).
 /// </summary>
@@ -25,9 +28,11 @@ public sealed class HuntAlertsIpc : IHuntAlertsService
 	private readonly Func<uint, MapCoordParams?>? resolveMapParams;
 	private readonly Func<uint, uint?>? resolveExVersion;
 	private readonly Action<HuntFlag>? onFlag;
-	private readonly ICallGateSubscriber<HuntTrainMessage, object> onHuntTrain;
+	private readonly IPluginLog? log;
+	private readonly ICallGateSubscriber<object, object> onHuntTrain;
 	private bool subscribed;
 	private HuntAlertsLastAlert? lastMappedAlert;
+	private string? lastIntakeStatus;
 
 	/// <param name="resolveMapParams">
 	/// Territory → sheet map params (<c>MapManager.GetMapParams(0, territory)</c>).
@@ -42,26 +47,34 @@ public sealed class HuntAlertsIpc : IHuntAlertsService
 		Configuration config,
 		Func<uint, MapCoordParams?>? resolveMapParams = null,
 		Action<HuntFlag>? onFlag = null,
-		Func<uint, uint?>? resolveExVersion = null)
+		Func<uint, uint?>? resolveExVersion = null,
+		IPluginLog? log = null)
 	{
 		this.pluginInterface = pluginInterface;
 		this.config = config;
 		this.resolveMapParams = resolveMapParams;
 		this.resolveExVersion = resolveExVersion;
 		this.onFlag = onFlag;
+		this.log = log;
 
-		onHuntTrain = pluginInterface.GetIpcSubscriber<HuntTrainMessage, object>(
+		onHuntTrain = pluginInterface.GetIpcSubscriber<object, object>(
 			HuntAlertsAvailability.OnHuntTrainMessageReceivedChannel);
 
 		try
 		{
 			onHuntTrain.Subscribe(OnHuntTrainMessageReceived);
 			subscribed = true;
+			log?.Information(
+				$"HuntAlerts IPC subscribed ({HuntAlertsAvailability.OnHuntTrainMessageReceivedChannel})");
 		}
-		catch
+		catch (Exception ex)
 		{
 			// Soft-fail: CallGate subscribe must not break plugin startup.
 			subscribed = false;
+			lastIntakeStatus = HuntAlertsAvailability.FormatIntakeStatus(
+				"subscribe failed",
+				DateTimeOffset.UtcNow);
+			log?.Warning($"HuntAlerts IPC subscribe failed: {ex.Message}");
 		}
 	}
 
@@ -106,16 +119,45 @@ public sealed class HuntAlertsIpc : IHuntAlertsService
 	/// <inheritdoc />
 	public HuntAlertsLastAlert? LastMappedAlert => lastMappedAlert;
 
-	private void OnHuntTrainMessageReceived(HuntTrainMessage message)
+	/// <inheritdoc />
+	public string? LastIntakeStatus => lastIntakeStatus;
+
+	private void OnHuntTrainMessageReceived(object payload)
 	{
 		try
 		{
+			var now = DateTimeOffset.UtcNow;
+			if (!HuntTrainMessageCoerce.TryCoerce(payload, out var message))
+			{
+				RememberIntake("rejected: bad IPC payload", now);
+				log?.Warning("HuntAlerts IPC: null/unusable payload");
+				return;
+			}
+
+			if (!config.HuntAlertsIntegration)
+			{
+				RememberIntake("rejected: integration off", now);
+				log?.Information(
+					$"HuntAlerts IPC ignored (integration off): type={message.huntType} kind={message.huntKind} world={message.huntWorld} territory={message.startTerritoryTypeId}");
+				return;
+			}
+
+			if (!IsPluginLoaded)
+			{
+				RememberIntake("rejected: HuntAlerts not loaded", now);
+				log?.Warning("HuntAlerts IPC ignored (plugin not loaded)");
+				return;
+			}
+
 			if (!HuntAlertsAvailability.TryAcceptMessage(
 				    config.HuntAlertsIntegration,
 				    IsPluginLoaded,
 				    message,
 				    out var accepted))
+			{
+				RememberIntake("rejected: accept gate", now);
 				return;
+			}
 
 			MapCoordParams? resolved = null;
 			uint? exVersion = null;
@@ -123,18 +165,18 @@ public sealed class HuntAlertsIpc : IHuntAlertsService
 			{
 				resolved = resolveMapParams?.Invoke(accepted.startTerritoryTypeId);
 			}
-			catch
+			catch (Exception ex)
 			{
-				// Soft-fail: sheets / Excel access must not drop the IPC callback.
+				log?.Debug($"HuntAlerts map-params soft-fail: {ex.Message}");
 			}
 
 			try
 			{
 				exVersion = resolveExVersion?.Invoke(accepted.startTerritoryTypeId);
 			}
-			catch
+			catch (Exception ex)
 			{
-				// Soft-fail: ExVersion lookup must not drop the IPC callback.
+				log?.Debug($"HuntAlerts ExVersion soft-fail: {ex.Message}");
 			}
 
 			HuntTrainMessageMapper.UnpackMapParams(
@@ -150,22 +192,37 @@ public sealed class HuntAlertsIpc : IHuntAlertsService
 				    config.HuntAlertsRankFilter,
 				    config.HuntAlertsWorldBlacklist,
 				    out var flag,
+				    out var rejectReason,
 				    mapId,
 				    sizeFactor,
 				    offsetX,
 				    offsetY,
 				    trainGroupFilter: config.HuntAlertsTrainGroupFilter,
 				    expansionVersion: exVersion))
+			{
+				RememberIntake($"rejected: {rejectReason}", now);
+				log?.Information(
+					$"HuntAlerts map rejected ({rejectReason}): type={accepted.huntType} kind={accepted.huntKind} world={accepted.huntWorld} territory={accepted.startTerritoryTypeId} coords='{accepted.locationCoords}' xy={accepted.mapLocationX},{accepted.mapLocationY}");
 				return;
+			}
 
 			lastMappedAlert = HuntAlertsAvailability.FromMappedFlag(flag);
+			RememberIntake(
+				$"mapped {flag.HuntWorld ?? "?"} / {flag.PlaceName ?? $"territory {flag.TerritoryTypeId}"}",
+				now);
+			log?.Information(
+				$"HuntAlerts mapped: {flag.HuntWorld} / {flag.PlaceName} territory={flag.TerritoryTypeId}");
 			onFlag?.Invoke(flag);
 		}
-		catch
+		catch (Exception ex)
 		{
-			// Never throw out of an IPC callback.
+			RememberIntake($"rejected: callback error ({ex.GetType().Name})", DateTimeOffset.UtcNow);
+			log?.Warning($"HuntAlerts IPC callback soft-fail: {ex.Message}");
 		}
 	}
+
+	private void RememberIntake(string detail, DateTimeOffset when)
+		=> lastIntakeStatus = HuntAlertsAvailability.FormatIntakeStatus(detail, when);
 
 	public void Dispose()
 	{

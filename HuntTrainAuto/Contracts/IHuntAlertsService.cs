@@ -25,4 +25,9 @@ public interface IHuntAlertsService : IDisposable
 
 	/// <summary>Last successfully mapped HuntAlerts flag, if any.</summary>
 	HuntAlertsLastAlert? LastMappedAlert { get; }
+
+	/// <summary>
+	/// Last IPC intake outcome (mapped or reject reason), for Integrations diagnostics.
+	/// </summary>
+	string? LastIntakeStatus { get; }
 }
