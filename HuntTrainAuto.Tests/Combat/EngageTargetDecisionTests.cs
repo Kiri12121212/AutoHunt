@@ -120,13 +120,12 @@ public sealed class EngageTargetDecisionTests
 	}
 
 	[Fact]
-	public void ShouldEnterCombatOnMob_melee_cap_keeps_pathing_past_caster_range()
+	public void ShouldEnterCombatOnMob_uses_configured_range_not_melee_walk_in()
 	{
-		var melee = CombatDecision.EffectiveEngageRange(25f, meleeEngageRole: true);
-		Assert.Equal(CombatDecision.DefaultMeleeEngageRange, melee);
-		Assert.False(EngageTargetDecision.ShouldEnterCombatOnMob(20f, melee));
-		Assert.False(EngageTargetDecision.ShouldEnterCombatOnMob(5f, melee));
-		Assert.True(EngageTargetDecision.ShouldEnterCombatOnMob(3f, melee));
+		// Vnav stops at EngageRange; BossMod closes further — do not require 3y.
+		Assert.True(EngageTargetDecision.ShouldEnterCombatOnMob(20f, 25f));
+		Assert.True(EngageTargetDecision.ShouldEnterCombatOnMob(5f, 25f));
+		Assert.False(EngageTargetDecision.ShouldEnterCombatOnMob(26f, 25f));
 	}
 
 	[Theory]
@@ -194,7 +193,7 @@ public sealed class EngageTargetDecisionTests
 	[Theory]
 	[InlineData(true, false, true, true)]
 	[InlineData(true, true, true, false)]
-	[InlineData(false, false, true, false)]
+	[InlineData(false, false, true, true)]
 	[InlineData(true, false, false, false)]
 	public void ShouldFlushDeferredFlagAfterCombat(
 		bool wasInCombat,

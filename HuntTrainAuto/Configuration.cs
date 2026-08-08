@@ -111,17 +111,29 @@ public sealed class Configuration : IPluginConfiguration
 	public int HuntPfRetryIntervalMs { get; set; } = HuntPfDecision.DefaultRetryIntervalMs;
 
 	/// <summary>
+	/// Leave the hunt party when the train ends (conductor LAST STOP after combat,
+	/// or idle timeout with no new flag). Soft-fails <c>/leave</c>. Default off.
+	/// </summary>
+	public bool AutoLeaveHuntParty { get; set; } = false;
+
+	/// <summary>
+	/// Idle leave after last combat end with no newer flag (ms).
+	/// Clamped via <see cref="HuntPfLeaveDecision.ClampIdleLeaveMs"/>.
+	/// </summary>
+	public int HuntPartyIdleLeaveMs { get; set; } = HuntPfLeaveDecision.DefaultIdleLeaveMs;
+
+	/// <summary>
 	/// Scan radius (yalms) for nearby A-rank NotoriousMonsters after unmount.
 	/// Conductor-fight join ignores this and uses the conductor's target.
 	/// </summary>
 	public float ARankScanRange { get; set; } = EngageTargetDecision.DefaultARankScanRange;
 
 	/// <summary>
-	/// Max distance (yalms) to engage target before entering combat phase.
+	/// Max distance (yalms) to engage target before PathStop + combat phase.
 	/// Default <see cref="CombatDecision.DefaultEngageRange"/>.
 	/// Clamped to
 	/// [<see cref="CombatDecision.MinEngageRange"/>, <see cref="CombatDecision.MaxEngageRange"/>].
-	/// Tanks / melee DPS use <see cref="CombatDecision.EffectiveEngageRange"/> (melee cap).
+	/// BossMod AI owns closing further / dodge after vnav stops.
 	/// </summary>
 	public float EngageRange { get; set; } = CombatDecision.DefaultEngageRange;
 

@@ -25,4 +25,10 @@ public interface IBossModService : IDisposable
 
 	/// <summary>Disable Automovement / AI. Soft-fails silently.</summary>
 	bool DisableAi();
+
+	/// <summary>
+	/// Soft-fail readback of <c>AIConfig.Enabled</c> when Configuration IPC supports get.
+	/// Null when unavailable / unreadable (BMR Beh may not expose Enabled).
+	/// </summary>
+	bool? TryGetAiEnabled();
 }

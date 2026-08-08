@@ -54,6 +54,16 @@ public sealed class MountRunner
 		if (!MountDecision.ShouldEnqueueIfEnabled(useMount))
 			return;
 
+		// Same-zone TP often keeps Mounted/InFlight — do not open a WaitReady job.
+		var mounted = condition[ConditionFlag.Mounted];
+		var inFlight = condition[ConditionFlag.InFlight];
+		if (MountDecision.ShouldSkipEnqueueAlreadyReady(mounted, inFlight))
+		{
+			session.Clear();
+			pluginLog.Debug("Mount job skipped (already mounted / in flight)");
+			return;
+		}
+
 		session.Enqueue(Environment.TickCount64);
 		pluginLog.Debug("Mount job enqueued");
 	}
@@ -89,8 +99,13 @@ public sealed class MountRunner
 		// Same-zone TP often keeps Mounted — complete before CanBegin gates.
 		// Otherwise BetweenAreas / instance-change can pin WaitReady and block Navigate.
 		var mounted = condition[ConditionFlag.Mounted];
-		if (MountDecision.IsMountCompleteOrSkipped(mounted, mountConfig))
+		var inFlight = condition[ConditionFlag.InFlight];
+		if (MountDecision.IsMountCompleteOrSkipped(mounted, inFlight, mountConfig))
 		{
+			pluginLog.Debug(
+				session.Phase == MountPhase.WaitReady
+					? "Mount job complete (already ready; cleared WaitReady)"
+					: "Mount job complete");
 			session.Clear();
 			return;
 		}
@@ -122,7 +137,8 @@ public sealed class MountRunner
 	private void TickMounting(int mountConfig, long now)
 	{
 		var mounted = condition[ConditionFlag.Mounted];
-		if (MountDecision.IsMountCompleteOrSkipped(mounted, mountConfig))
+		var inFlight = condition[ConditionFlag.InFlight];
+		if (MountDecision.IsMountCompleteOrSkipped(mounted, inFlight, mountConfig))
 		{
 			session.Clear();
 			return;

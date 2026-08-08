@@ -232,8 +232,10 @@ public static class TeleportDecision
 
 		var s = snapshot.Value;
 		var zoneChange = s.CurrentTerritory != flag.TerritoryTypeId;
+		// Snapshot hint first; else flag.ReportedInstance (chat/HA may only set the flag).
+		var reported = s.TargetInstance > 0 ? s.TargetInstance : flag.ReportedInstance;
 		var targetInstance = ResolveTargetInstance(
-			s.TargetInstance,
+			reported,
 			zoneChange,
 			autoSwitchInstanceToOne);
 

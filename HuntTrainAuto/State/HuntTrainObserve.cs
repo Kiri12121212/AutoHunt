@@ -41,6 +41,9 @@ public static class HuntTrainObserve
 	/// <param name="abort">Hard abort request.</param>
 	/// <param name="teleportPlanActive"><see cref="TeleportPlan.HasActive"/>.</param>
 	/// <param name="mountJobActive"><see cref="MountRunner.IsActive"/>.</param>
+	/// <param name="mounted">Local player <c>ConditionFlag.Mounted</c>.</param>
+	/// <param name="inFlight">Local player <c>ConditionFlag.InFlight</c>.</param>
+	/// <param name="mountConfig"><see cref="Configuration.Mount"/> (-1 never).</param>
 	/// <param name="withinFlagArrival">Flag-area arrival this tick.</param>
 	/// <param name="readyForGroundFollow"><see cref="UnmountRunner.ReadyForGroundFollow"/>.</param>
 	/// <param name="inCombatPhase"><see cref="CombatSession.InCombatPhase"/>.</param>
@@ -49,6 +52,9 @@ public static class HuntTrainObserve
 		bool abort = false,
 		bool teleportPlanActive = false,
 		bool mountJobActive = false,
+		bool mounted = false,
+		bool inFlight = false,
+		int mountConfig = 0,
 		bool withinFlagArrival = false,
 		bool readyForGroundFollow = false,
 		bool inCombatPhase = false)
@@ -58,7 +64,12 @@ public static class HuntTrainObserve
 			Abort = abort,
 			// Meaningful only while Teleport / Mount — Decide ignores otherwise.
 			TeleportComplete = !teleportPlanActive,
-			MountComplete = !mountJobActive,
+			// Already mounted/in-flight completes Mount even if a WaitReady job is stuck.
+			MountComplete = MountDecision.IsTrainMountComplete(
+				mountJobActive,
+				mounted,
+				inFlight,
+				mountConfig),
 			WithinFlagArrival = withinFlagArrival,
 			ReadyForGroundFollow = readyForGroundFollow,
 			PartyEngaged = inCombatPhase,

@@ -119,13 +119,59 @@ public sealed class BossModIpc : IBossModService
 	{
 		// Prefer Configuration when present (newer BMR); always also /bmrai on for Beh.
 		_ = TryConfigurationBmr(BossModCommands.EnableAiConfigArgs);
-		return chat.TryExecuteCommand(BossModCommands.BmrEnableChatCommand);
+		var chatOk = chat.TryExecuteCommand(BossModCommands.BmrEnableChatCommand);
+		// When Enabled is readable, require it true (chat alone can soft-succeed with no effect).
+		var enabled = TryGetAiEnabled();
+		if (enabled is bool e)
+			return e;
+		return chatOk;
 	}
 
 	private bool DisableBmr()
 	{
 		_ = TryConfigurationBmr(BossModCommands.DisableAiConfigArgs);
-		return chat.TryExecuteCommand(BossModCommands.BmrDisableChatCommand);
+		var chatOk = chat.TryExecuteCommand(BossModCommands.BmrDisableChatCommand);
+		var enabled = TryGetAiEnabled();
+		if (enabled is bool e)
+			return !e;
+		return chatOk;
+	}
+
+	/// <inheritdoc />
+	public bool? TryGetAiEnabled()
+	{
+		try
+		{
+			var provider = ActiveProvider;
+			object? raw = provider switch
+			{
+				BossModProviderKind.Vbm => configurationVbm.InvokeFunc(
+					BossModCommands.GetAiEnabledConfigArgs,
+					false),
+				BossModProviderKind.Bmr => configurationBmr.InvokeFunc(
+					[.. BossModCommands.GetAiEnabledConfigArgs],
+					false),
+				_ => null,
+			};
+			return ParseBoolConfig(raw);
+		}
+		catch
+		{
+			return null;
+		}
+	}
+
+	private static bool? ParseBoolConfig(object? raw)
+	{
+		switch (raw)
+		{
+			case bool b:
+				return b;
+			case string s when bool.TryParse(s, out var parsed):
+				return parsed;
+			default:
+				return null;
+		}
 	}
 
 	private void ApplyCoexistenceSettings(BossModProviderKind provider)

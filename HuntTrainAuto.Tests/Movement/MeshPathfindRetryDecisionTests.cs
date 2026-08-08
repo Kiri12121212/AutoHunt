@@ -73,4 +73,20 @@ public sealed class MeshPathfindRetryDecisionTests
 		=> Assert.Equal(
 			expected,
 			MeshPathfindRetryDecision.ShouldResetOnNavProgress(pathRunning, waypoints));
+
+	[Theory]
+	[InlineData(true, true)]
+	[InlineData(false, false)]
+	public void ShouldCountStartAttempt(bool onMesh, bool expected)
+		=> Assert.Equal(expected, MeshPathfindRetryDecision.ShouldCountStartAttempt(onMesh));
+
+	[Theory]
+	[InlineData(false, true, true)]
+	[InlineData(true, true, false)]
+	[InlineData(false, false, false)]
+	[InlineData(true, false, false)]
+	public void ShouldResetOnMeshAcquire(bool wasOn, bool nowOn, bool expected)
+		=> Assert.Equal(
+			expected,
+			MeshPathfindRetryDecision.ShouldResetOnMeshAcquire(wasOn, nowOn));
 }

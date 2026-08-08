@@ -53,6 +53,9 @@ public sealed class ChatMessageHandler : IDisposable
 	/// <summary>Raised when a conductor message yields a new <see cref="HuntFlag"/>.</summary>
 	public event Action<HuntFlag>? HuntFlagReceived;
 
+	/// <summary>Raised for every conductor chat line (map-link or plain text).</summary>
+	public event Action<string>? ConductorTextReceived;
+
 	private void OnChatMessage(IHandleableChatMessage message)
 	{
 		IsConductorMessage = false;
@@ -70,6 +73,15 @@ public sealed class ChatMessageHandler : IDisposable
 			IsConductorMessage = true;
 			ConductorSenderName = senderName;
 			TryExtractHuntFlag(message);
+			try
+			{
+				ConductorTextReceived?.Invoke(message.Message.TextValue);
+			}
+			catch
+			{
+				// soft-fail subscriber
+			}
+
 			message.Message = HighlightConductorMessage(message.Message);
 		}
 

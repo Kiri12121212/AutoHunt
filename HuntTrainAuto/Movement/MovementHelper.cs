@@ -29,6 +29,7 @@ public sealed class MovementHelper
 	private long nextMeshPathfindAttemptMs;
 	private int meshPathfindAttempts;
 	private bool meshPathfindExhaustedLogged;
+	private bool lastPlayerOnMesh = true;
 
 	public MovementHelper(
 		IVnavmeshService vnav,
@@ -172,6 +173,13 @@ public sealed class MovementHelper
 
 		// After territory swap: do not pathfind until the player projects onto the new mesh.
 		var playerOnMesh = !useMesh || !navReady || IsPlayerOnMesh(playerPos);
+		if (MeshPathfindRetryDecision.ShouldResetOnMeshAcquire(lastPlayerOnMesh, playerOnMesh))
+		{
+			MeshPathfindRetryDecision.Reset(ref nextMeshPathfindAttemptMs, ref meshPathfindAttempts);
+			meshPathfindExhaustedLogged = false;
+		}
+
+		lastPlayerOnMesh = playerOnMesh;
 
 		var decision = MovementDecision.DecideMoveTick(
 			playerValid,
@@ -213,13 +221,13 @@ public sealed class MovementHelper
 				vnav.PathMoveTo(new List<Vector3> { position }, decision.Fly);
 				return false;
 			case MoveTickKind.StartMeshPath:
-				return TryStartMeshPath(position, tolerance, decision.Fly);
+				return TryStartMeshPath(position, tolerance, decision.Fly, playerOnMesh);
 			default:
 				return false;
 		}
 	}
 
-	private bool TryStartMeshPath(Vector3 position, float tolerance, bool fly)
+	private bool TryStartMeshPath(Vector3 position, float tolerance, bool fly, bool playerOnMesh)
 	{
 		var now = Environment.TickCount64;
 		var retry = MeshPathfindRetryDecision.Decide(
@@ -251,11 +259,19 @@ public sealed class MovementHelper
 		chat.TryExecuteCommand("/automove off");
 		vnav.PathSetTolerance(tolerance);
 		_ = vnav.SimpleMovePathfindAndMoveTo(position, fly);
-		// Throttle even on IPC true: silent poly→0 failures otherwise re-queue every tick.
-		MeshPathfindRetryDecision.AfterStartAttempt(
-			ref nextMeshPathfindAttemptMs,
-			ref meshPathfindAttempts,
-			now);
+		// Throttle always; only burn attempt budget when on-mesh (mid-air fly post-TP).
+		if (MeshPathfindRetryDecision.ShouldCountStartAttempt(playerOnMesh))
+		{
+			MeshPathfindRetryDecision.AfterStartAttempt(
+				ref nextMeshPathfindAttemptMs,
+				ref meshPathfindAttempts,
+				now);
+		}
+		else
+		{
+			nextMeshPathfindAttemptMs = now + MeshPathfindRetryDecision.RetryCooldownMs;
+		}
+
 		return false;
 	}
 

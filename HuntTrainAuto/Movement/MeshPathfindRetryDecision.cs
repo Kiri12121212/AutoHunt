@@ -91,4 +91,15 @@ public static class MeshPathfindRetryDecision
 	/// </summary>
 	public static bool ShouldResetOnNavProgress(bool pathIsRunning, int numWaypoints)
 		=> pathIsRunning || numWaypoints > 0;
+
+	/// <summary>
+	/// Mid-air fly starts should not burn the soft-retry budget (0dv8 post-TP mounted).
+	/// Throttle still applies; count only when the player is on-mesh.
+	/// </summary>
+	public static bool ShouldCountStartAttempt(bool playerOnMesh)
+		=> playerOnMesh;
+
+	/// <summary>Fresh budget when the player first projects onto the mesh after being off it.</summary>
+	public static bool ShouldResetOnMeshAcquire(bool wasOnMesh, bool nowOnMesh)
+		=> !wasOnMesh && nowOnMesh;
 }

@@ -182,11 +182,20 @@ public sealed class EngageTargetHelper
 			return false;
 		}
 
-		// Already in combat phase — do not path; RSR owns rotation.
-		// Melee roles enter combat only at EffectiveEngageRange (melee cap) so
-		// approach happens above via Move before this latch.
+		// Already in combat phase — keep vnav stopped; BossMod AI owns positioning.
 		if (combat.InCombatPhase)
+		{
+			try
+			{
+				movement.Stop();
+			}
+			catch
+			{
+				// soft-fail
+			}
+
 			return true;
+		}
 
 		var player = objectTable.LocalPlayer;
 		if (player == null)
@@ -218,19 +227,20 @@ public sealed class EngageTargetHelper
 
 		if (EngageTargetDecision.ShouldEnterCombatOnMob(dist, engageRange))
 		{
+			// Hand off to BossMod / RSR — do not keep pathing into melee.
 			movement.Stop();
 			combat.Apply(CombatTransitionKind.EnterCombat, entityId);
 			pluginLog.Information(
-				$"Engage: EnterCombat via {pick.Kind} dist={dist:0.0} range={engageRange:0.0}");
+				$"Engage: EnterCombat via {pick.Kind} dist={dist:0.0} range={engageRange:0.0} (vnav stop)");
 			return true;
 		}
 
-		// Path to mob on foot — not following a player.
+		// Path toward mob on foot until engage range.
 		combat.EnterFollowing();
 		movement.Move(
 			mob.Position,
 			tolerance: 1f,
-			lastPointTolerance: 2f,
+			lastPointTolerance: Math.Max(2f, engageRange),
 			fly: false,
 			useMesh: true);
 		return false;

@@ -38,15 +38,15 @@ public sealed class MountSession
 
 	/// <summary>
 	/// Start or replace a pending mount job.
-	/// Arms <see cref="DeadlineMs"/> immediately so WaitReady cannot pin forever when
-	/// Lifestream busy / BetweenAreas / instance-change blocks <c>CanBeginMountAttempt</c>.
+	/// Arms a short <see cref="MountDecision.WaitReadyTimeoutMs"/> so WaitReady cannot pin
+	/// Navigate when screen / instance-change blocks <c>CanBeginMountAttempt</c>.
 	/// </summary>
 	public void Enqueue(long nowMs)
 	{
 		Phase = MountPhase.WaitReady;
 		NextCheckMs = 0;
 		NextSummonMs = 0;
-		DeadlineMs = nowMs + MountDecision.SessionTimeoutMs;
+		DeadlineMs = nowMs + MountDecision.WaitReadyTimeoutMs;
 		WarnedFallback = false;
 		WarnedNoMounts = false;
 	}

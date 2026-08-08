@@ -45,6 +45,7 @@ public sealed class Plugin : IDalamudPlugin
 	private readonly FlagArrivalHelper flagArrival;
 	private readonly UnmountRunner unmount;
 	private readonly HuntPfHelper huntPf;
+	private readonly HuntPfLeaveHelper huntPfLeave;
 	private readonly MovementHelper movement;
 	private readonly EngageTargetHelper engage;
 	private readonly CombatTransitionHelper combat;
@@ -411,6 +412,15 @@ public sealed class Plugin : IDalamudPlugin
 			pluginLog,
 			() => Config.AutoJoinHuntPf,
 			() => Config.HuntPfRetryIntervalMs);
+		huntPfLeave = new HuntPfLeaveHelper(
+			chat,
+			partyList,
+			condition,
+			pluginLog,
+			() => Config.AutoLeaveHuntParty,
+			() => Config.HuntPartyIdleLeaveMs,
+			() => huntPf.JoinedLatch,
+			() => huntPf.Clear());
 		movement = new MovementHelper(
 			VNavmeshIpc,
 			chat,
@@ -443,6 +453,7 @@ public sealed class Plugin : IDalamudPlugin
 		chatMessageHandler = new ChatMessageHandler(chatGui, gameGui, Config);
 		chatMessageHandler.TryGetPlayerSnapshot = TryGetPlayerSnapshot;
 		chatMessageHandler.HuntFlagReceived += OnHuntFlagReceived;
+		chatMessageHandler.ConductorTextReceived += OnConductorTextReceived;
 
 		pluginInterface.UiBuilder.Draw += Draw;
 		pluginInterface.UiBuilder.OpenMainUi += ToggleUi;
@@ -697,6 +708,18 @@ public sealed class Plugin : IDalamudPlugin
 		bool forceAccept = false,
 		bool clearPendingDefer = true)
 	{
+		// Same combat defer as chat (3wr1) — avoid mid-pull HA restart + deferred stomp.
+		if (!forceAccept
+		    && EngageTargetDecision.ShouldSuppressChatWhileFightingARank(
+			    combat.InCombatPhase,
+			    engage.TargetIsARank))
+		{
+			deferredCombatFlag = flag;
+			pluginLog.Information(
+				"HuntAlerts flag deferred (in combat vs A-rank); will adopt after combat");
+			return;
+		}
+
 		var pipelineActive = FlagRestartDecision.IsPipelineActive(
 			train.Phase,
 			HasInFlightPipelineWork());
@@ -735,6 +758,8 @@ public sealed class Plugin : IDalamudPlugin
 		}
 
 		var instanceHint = HuntAlertsArrivalTrust.ClearUntrustedArrival(flag);
+		deferredCombatFlag = null;
+		divertingToEngage = false;
 		PrepareTeleportIntent(flag, instanceHint);
 		AdoptHuntFlag(flag, clearPendingDefer);
 		lastFlagIntakeMemory = HuntAlertsFlagDedupe.Remember(
@@ -928,6 +953,8 @@ public sealed class Plugin : IDalamudPlugin
 			return;
 		}
 
+		// Re-evaluate + INF reported/hint/target/current (chat path previously skipped this).
+		PrepareTeleportIntent(flag, flag.ReportedInstance);
 		AdoptHuntFlag(flag, clearPendingDefer: true);
 		lastFlagIntakeMemory = HuntAlertsFlagDedupe.Remember(
 			flag,
@@ -1052,7 +1079,14 @@ public sealed class Plugin : IDalamudPlugin
 		if (plan.StartEvent != HuntTrainEvent.None)
 			train.Apply(plan.StartEvent);
 
+		huntPfLeave.NoteFlag(Environment.TickCount64);
 		ObserveDebugSignals();
+	}
+
+	private void OnConductorTextReceived(string text)
+	{
+		if (ConductorLastStopParse.IsLastStop(text))
+			huntPfLeave.ArmLastStop();
 	}
 
 	/// <summary>
@@ -1215,6 +1249,9 @@ public sealed class Plugin : IDalamudPlugin
 			rsrEnable.Clear();
 			bossModEnable.Clear();
 		}
+		// Full leave of hunting zones ends the train session for party leave.
+		if (plan.Kind == TerritoryCleanupKind.LeaveHuntingFull)
+			huntPfLeave.Clear();
 
 		if (plan.EnqueueInstanceChangeIfNeeded && activePlan is { } tp)
 		{
@@ -1344,6 +1381,7 @@ public sealed class Plugin : IDalamudPlugin
 			rsrEnable.Clear();
 			bossModEnable.Clear();
 			huntPf.Clear();
+			huntPfLeave.Clear();
 			train.Reset();
 			ObserveDebugSignals();
 			return;
@@ -1406,13 +1444,16 @@ public sealed class Plugin : IDalamudPlugin
 			divertingToEngage = false;
 		TryFlushDeferredCombatFlag(wasInCombatPhase, combat.InCombatPhase);
 		// Hunt PF join after combat tick so we skip mid-fight thrash.
+		var nowMs = Environment.TickCount64;
 		if (unmount.ReadyForGroundFollow && !playerDead)
 		{
 			huntPf.Tick(
 				atHuntStart: true,
-				nowMs: Environment.TickCount64,
+				nowMs: nowMs,
 				inCombat: combat.InCombatPhase);
 		}
+		// Train-end leave (LAST STOP / idle) — never on bare CombatEnded.
+		huntPfLeave.Tick(wasInCombatPhase, combat.InCombatPhase, nowMs);
 		// Remount on combat-end falling edge (UseMount) — same EnqueueIfEnabled as TP / AlreadyClose.
 		if (MountDecision.ShouldEnqueueOnCombatEnd(
 			    wasInCombatPhase,
@@ -1430,6 +1471,9 @@ public sealed class Plugin : IDalamudPlugin
 			abort: false,
 			teleportPlanActive: teleportPlan.HasActive,
 			mountJobActive: mount.IsActive,
+			mounted: condition[ConditionFlag.Mounted],
+			inFlight: condition[ConditionFlag.InFlight],
+			mountConfig: Config.Mount,
 			withinFlagArrival: withinArrival,
 			readyForGroundFollow: unmount.ReadyForGroundFollow,
 			inCombatPhase: combat.InCombatPhase));
@@ -1477,26 +1521,10 @@ public sealed class Plugin : IDalamudPlugin
 	}
 
 	/// <summary>
-	/// Engage path-stop range: casters/healers use config; tanks/melee DPS are
-	/// capped at melee so vnav closes in (RSR ranged fillers do not approach).
-	/// Soft-fails to melee cap when job is unavailable (safer for GNB/melee trains).
+	/// Engage path-stop range from config. Vnav PathStops here; BossMod AI closes / dodges.
 	/// </summary>
 	private float ResolveEngageRange()
-	{
-		var meleeEngage = true;
-		try
-		{
-			var player = objectTable.LocalPlayer;
-			if (player != null && player.ClassJob.ValueNullable is { } job)
-				meleeEngage = RsrSettingsDecision.IsMeleeEngageRole(job.Role);
-		}
-		catch
-		{
-			// Soft-fail: treat as melee so we do not re-open the GNB 25y bug.
-		}
-
-		return CombatDecision.EffectiveEngageRange(Config.EngageRange, meleeEngage);
-	}
+		=> CombatDecision.ClampEngageRange(Config.EngageRange);
 
 	/// <summary>
 	/// Resolve RSR targeting / HostileType from config + local ClassJob.Role (tank = 1).
@@ -1532,6 +1560,9 @@ public sealed class Plugin : IDalamudPlugin
 		try
 		{
 			if (divertingToEngage)
+				return;
+			// After FlagArrival PathStop / while Unmount runs, do not restart mesh path (8sy1).
+			if (flagArrival.PathStoppedForArrival || unmount.IsActive)
 				return;
 
 			var flag = activeHuntFlag;
@@ -1578,11 +1609,13 @@ public sealed class Plugin : IDalamudPlugin
 				return;
 
 			var probe = engage.Probe(Config.Conductors);
-			if (!probe.Found)
+			if (!probe.Found
+			    || !EngageTargetDecision.ShouldDivertFromFlagNav(probe.Distance, Config.ARankScanRange))
+			{
+				// Mob gone / out of divert range — unblock Navigate (hgb1).
+				divertingToEngage = false;
 				return;
-
-			if (!EngageTargetDecision.ShouldDivertFromFlagNav(probe.Distance, Config.ARankScanRange))
-				return;
+			}
 
 			if (!divertingToEngage)
 			{
@@ -1635,7 +1668,8 @@ public sealed class Plugin : IDalamudPlugin
 				}
 
 				unmount.ClearArrivalLatch();
-				unmount.EnqueueIfEnabled(Config.AutoUnmountAtFlag);
+				// Engage unmount is independent of flag-arrival auto-unmount config.
+				unmount.EnqueueIfEnabled(true);
 				return;
 			}
 
@@ -1778,8 +1812,8 @@ public sealed class Plugin : IDalamudPlugin
 		}
 		catch (Exception ex)
 		{
+			// Do not Enqueue blindly — current instance unknown; avoid no-op / wrong swap.
 			pluginLog.Debug($"EnqueueChangeInstanceAfterTeleport soft-fail: {ex.Message}");
-			instanceChange.Enqueue(instance, territoryId);
 		}
 	}
 
@@ -2091,6 +2125,7 @@ public sealed class Plugin : IDalamudPlugin
 		framework.Update -= OnFrameworkUpdate;
 		clientState.TerritoryChanged -= OnTerritoryChanged;
 		chatMessageHandler.HuntFlagReceived -= OnHuntFlagReceived;
+		chatMessageHandler.ConductorTextReceived -= OnConductorTextReceived;
 		// RSR stop: RsrStopTrigger.Dispose → ImmediateClear.
 		ClearPendingHuntAlerts();
 		lastFlagIntakeMemory = HuntAlertsFlagDedupe.Clear(lastFlagIntakeMemory);
@@ -2104,6 +2139,7 @@ public sealed class Plugin : IDalamudPlugin
 		combat.Clear();
 		rsrEnable.Clear();
 		bossModEnable.Clear();
+		huntPfLeave.Clear();
 		huntPf.Dispose();
 		train.Reset();
 		chatMessageHandler.Dispose();

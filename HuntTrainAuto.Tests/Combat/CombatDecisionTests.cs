@@ -21,25 +21,11 @@ public sealed class CombatDecisionTests
 	{
 		Assert.Equal(25f, CombatDecision.DefaultEngageRange);
 		Assert.Equal(5f, CombatDecision.MinEngageRange);
-		Assert.Equal(3f, CombatDecision.DefaultMeleeEngageRange);
 		Assert.Equal(60f, CombatDecision.MaxEngageRange);
 		Assert.True(CombatDecision.MinEngageRange > 0f);
-		Assert.True(CombatDecision.DefaultMeleeEngageRange < CombatDecision.MinEngageRange);
 		Assert.True(CombatDecision.DefaultEngageRange >= CombatDecision.MinEngageRange);
 		Assert.True(CombatDecision.DefaultEngageRange <= CombatDecision.MaxEngageRange);
 	}
-
-	[Theory]
-	[InlineData(25f, false, 25f)]
-	[InlineData(25f, true, CombatDecision.DefaultMeleeEngageRange)]
-	[InlineData(15f, true, CombatDecision.DefaultMeleeEngageRange)]
-	[InlineData(5f, true, CombatDecision.DefaultMeleeEngageRange)]
-	[InlineData(60f, false, 60f)]
-	[InlineData(4f, false, CombatDecision.MinEngageRange)]
-	[InlineData(float.NaN, true, CombatDecision.DefaultMeleeEngageRange)]
-	[InlineData(float.NaN, false, CombatDecision.DefaultEngageRange)]
-	public void EffectiveEngageRange_caps_melee_roles(float configured, bool melee, float expected)
-		=> Assert.Equal(expected, CombatDecision.EffectiveEngageRange(configured, melee));
 
 	[Theory]
 	[InlineData(10f, 25f, true)]

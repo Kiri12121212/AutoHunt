@@ -402,6 +402,32 @@ public sealed class TeleportDecisionTests
 		Assert.Equal(2, result.Arrival!.Instance);
 	}
 
+	[Fact]
+	public void Evaluate_uses_flag_ReportedInstance_when_snapshot_hint_zero()
+	{
+		var flag = HuntFlag.FromMapLink(813u, 1u, 100, 200, "A", DateTimeOffset.UnixEpoch);
+		flag.ReportedInstance = 2;
+		var snapshot = new TeleportPlayerSnapshot
+		{
+			CurrentTerritory = 813,
+			CurrentInstance = 1,
+			TargetInstance = 0,
+			PlayerDistance = 20f,
+			Nearest = new NearestAetheryteResult(5u, "Near"),
+		};
+
+		var result = TeleportDecision.Evaluate(
+			enabled: true,
+			autoTeleport: true,
+			distanceThreshold: DefaultYalmThreshold,
+			autoSwitchInstanceToOne: false,
+			flag,
+			snapshot);
+
+		Assert.Equal(TeleportAction.SwitchInstance, result.Action);
+		Assert.Equal(2, result.Arrival!.Instance);
+	}
+
 	[Theory]
 	[InlineData(3, true, true, 3)]
 	[InlineData(3, true, false, 3)]

@@ -455,6 +455,28 @@ public sealed class ConfigWindow : Window, IDisposable
 
 		ImGui.EndDisabled();
 
+		var autoLeavePf = config.AutoLeaveHuntParty;
+		if (ImGui.Checkbox("Auto-leave hunt party when train ends", ref autoLeavePf))
+		{
+			config.AutoLeaveHuntParty = autoLeavePf;
+			saveConfig();
+		}
+
+		ImGui.BeginDisabled(!config.AutoLeaveHuntParty);
+		var idleLeave = config.HuntPartyIdleLeaveMs;
+		ImGui.SetNextItemWidth(200f);
+		if (ImGui.SliderInt(
+			    "Hunt party idle leave (ms)",
+			    ref idleLeave,
+			    HuntPfLeaveDecision.MinIdleLeaveMs,
+			    HuntPfLeaveDecision.MaxIdleLeaveMs))
+		{
+			config.HuntPartyIdleLeaveMs = HuntPfLeaveDecision.ClampIdleLeaveMs(idleLeave);
+			saveConfig();
+		}
+
+		ImGui.EndDisabled();
+
 		var arrival = config.FlagArrivalTolerance;
 		ImGui.SetNextItemWidth(200f);
 		if (ImGui.SliderFloat(
@@ -472,8 +494,8 @@ public sealed class ConfigWindow : Window, IDisposable
 	private void DrawEngageTab()
 	{
 		ImGui.TextWrapped(
-			"After the mark: path to the flag, then approach the mob on foot at engage range, unmount, and fight. " +
-			"Does not follow players.");
+			"After the mark: path to the flag (or divert to a nearby mob), land/unmount on the floor, " +
+			"then stop vnav at engage range and let BossMod AI position you. Does not follow players.");
 		ImGui.Spacing();
 
 		var engageRange = config.EngageRange;
@@ -490,8 +512,8 @@ public sealed class ConfigWindow : Window, IDisposable
 		}
 
 		ImGui.TextWrapped(
-			$"Tanks and melee DPS stop pathing at {CombatDecision.DefaultMeleeEngageRange:0} yalms " +
-			"(melee), even when this slider is higher — RSR will not walk you in.");
+			"Vnav PathStops at this distance. BossMod (Combat tab) handles melee close-in and dodge; " +
+			"RSR keeps the GCD.");
 
 		var aRankScan = config.ARankScanRange;
 		ImGui.SetNextItemWidth(200f);

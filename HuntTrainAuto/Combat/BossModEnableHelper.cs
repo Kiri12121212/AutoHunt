@@ -96,9 +96,16 @@ public sealed class BossModEnableHelper
 			}
 
 			var ok = bossMod.EnableAi(coexistWithRsr: true);
+			var readback = bossMod.TryGetAiEnabled();
+			if (readback is false)
+				ok = false;
 			aiStarted = BossModEnableDecision.NextAiStarted(kind, ok, aiStarted);
 			if (ok)
-				pluginLog.Information($"BossMod: AI on provider={bossMod.ActiveProvider}");
+			{
+				pluginLog.Information(
+					$"BossMod: AI on provider={bossMod.ActiveProvider}"
+					+ (readback is bool rb ? $" enabled={rb}" : string.Empty));
+			}
 			else
 				pluginLog.Debug("BossMod: EnableAi soft-fail; will retry while InCombatPhase");
 		}

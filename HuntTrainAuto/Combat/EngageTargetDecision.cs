@@ -210,11 +210,12 @@ public static class EngageTargetDecision
 			&& ShouldDivertFromFlagNav(distanceToMob, divertRange);
 
 	/// <summary>
-	/// Flush a combat-deferred conductor flag on the combat→idle falling edge.
+	/// Flush a combat-deferred flag once combat is idle (level-triggered).
+	/// Edge-only missed clears when combat.Clear() skipped the falling edge.
 	/// </summary>
 	public static bool ShouldFlushDeferredFlagAfterCombat(
 		bool wasInCombatPhase,
 		bool inCombatPhase,
 		bool hasDeferredFlag)
-		=> wasInCombatPhase && !inCombatPhase && hasDeferredFlag;
+		=> !inCombatPhase && hasDeferredFlag;
 }

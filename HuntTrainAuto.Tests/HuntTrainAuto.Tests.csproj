@@ -20,6 +20,7 @@
 	<ItemGroup>
 		<Compile Include="..\HuntTrainAuto\Chat\ConductorList.cs" Link="Chat\ConductorList.cs" />
 		<Compile Include="..\HuntTrainAuto\Chat\ConductorInstanceParse.cs" Link="Chat\ConductorInstanceParse.cs" />
+		<Compile Include="..\HuntTrainAuto\Chat\ConductorLastStopParse.cs" Link="Chat\ConductorLastStopParse.cs" />
 		<Compile Include="..\HuntTrainAuto\Chat\ChatCommands.cs" Link="Chat\ChatCommands.cs" />
 		<Compile Include="..\HuntTrainAuto\Chat\ChatSender.cs" Link="Chat\ChatSender.cs" />
 		<Compile Include="..\HuntTrainAuto\Chat\ChatSuppress.cs" Link="Chat\ChatSuppress.cs" />
@@ -62,6 +63,7 @@
 		<Compile Include="..\HuntTrainAuto\Combat\BossModCommands.cs" Link="Combat\BossModCommands.cs" />
 		<Compile Include="..\HuntTrainAuto\Combat\BossModEnableDecision.cs" Link="Combat\BossModEnableDecision.cs" />
 		<Compile Include="..\HuntTrainAuto\PartyFinder\HuntPfDecision.cs" Link="PartyFinder\HuntPfDecision.cs" />
+		<Compile Include="..\HuntTrainAuto\PartyFinder\HuntPfLeaveDecision.cs" Link="PartyFinder\HuntPfLeaveDecision.cs" />
 		<Compile Include="..\HuntTrainAuto\PartyFinder\HuntPfMatch.cs" Link="PartyFinder\HuntPfMatch.cs" />
 		<Compile Include="..\HuntTrainAuto\State\HuntTrainTransition.cs" Link="State\HuntTrainTransition.cs" />
 		<Compile Include="..\HuntTrainAuto\State\HuntTrainController.cs" Link="State\HuntTrainController.cs" />

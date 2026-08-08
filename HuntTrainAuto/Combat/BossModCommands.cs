@@ -30,6 +30,10 @@ public static class BossModCommands
 	public static IReadOnlyList<string> DisableAiConfigArgs { get; } =
 		["AIConfig", "Enabled", "false"];
 
+	/// <summary>Configuration get (no value) — returns current Enabled when supported.</summary>
+	public static IReadOnlyList<string> GetAiEnabledConfigArgs { get; } =
+		["AIConfig", "Enabled"];
+
 	/// <summary>
 	/// With RSR owning GCD: BM should not auto-target / cast.
 	/// Applies to VBM AIConfig and BMR Automovement AIConfig.

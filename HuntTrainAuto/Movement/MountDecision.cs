@@ -91,7 +91,14 @@ public static class MountDecision
 	/// <summary>HTA default <c>EzThrottler.Throttle("SummonMount")</c> interval.</summary>
 	public const int SummonCooldownMs = 500;
 
-	/// <summary>Soft session timeout so a stuck mount job cannot run forever.</summary>
+	/// <summary>
+	/// Soft timeout while stuck in WaitReady (screen / instance-change gates).
+	/// Shorter than <see cref="SessionTimeoutMs"/> so same-zone TP cannot pin Mount
+	/// (and block Navigate) for a full minute when CanBegin stays false.
+	/// </summary>
+	public const int WaitReadyTimeoutMs = 8_000;
+
+	/// <summary>Soft session timeout once Mounting has begun.</summary>
 	public const int SessionTimeoutMs = 60_000;
 
 	/// <summary>HTA <c>EnqueueIfEnabled</c> gate on <c>Config.UseMount</c>.</summary>
@@ -152,9 +159,25 @@ public static class MountDecision
 		return screenReady && playerReady && !instanceChangeActive;
 	}
 
-	/// <summary>Already mounted or config never-mount → success/no-op.</summary>
+	/// <summary>Already mounted / in-flight or config never-mount → success/no-op.</summary>
 	public static bool IsMountCompleteOrSkipped(bool mounted, int mountConfig)
 		=> mounted || mountConfig == NeverMount;
+
+	/// <summary>
+	/// Mounted or in-flight counts as travel-ready (same-zone TP often stays mounted).
+	/// </summary>
+	public static bool IsMountCompleteOrSkipped(bool mounted, bool inFlight, int mountConfig)
+		=> mounted || inFlight || mountConfig == NeverMount;
+
+	/// <summary>
+	/// Train FSM MountComplete: job idle, or goal already met (do not wait for Tick clear).
+	/// </summary>
+	public static bool IsTrainMountComplete(bool mountJobActive, bool mounted, bool inFlight, int mountConfig)
+		=> !mountJobActive || IsMountCompleteOrSkipped(mounted, inFlight, mountConfig);
+
+	/// <summary>Skip enqueue when already travel-ready — avoids WaitReady pin after same-zone TP.</summary>
+	public static bool ShouldSkipEnqueueAlreadyReady(bool mounted, bool inFlight)
+		=> mounted || inFlight;
 
 	/// <summary>HTA: force CheckMount throttle while in mount transition or casting.</summary>
 	public static bool NeedsTransitionWait(bool mountOrOrnamentTransition, bool casting)

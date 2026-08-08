@@ -85,6 +85,42 @@ public sealed class MountDecisionTests
 		=> Assert.Equal(expected, MountDecision.IsMountCompleteOrSkipped(mounted, mountConfig));
 
 	[Theory]
+	[InlineData(false, true, 0, true)]
+	[InlineData(false, false, 0, false)]
+	[InlineData(true, false, 0, true)]
+	public void IsMountCompleteOrSkipped_with_inflight(
+		bool mounted,
+		bool inFlight,
+		int mountConfig,
+		bool expected)
+		=> Assert.Equal(
+			expected,
+			MountDecision.IsMountCompleteOrSkipped(mounted, inFlight, mountConfig));
+
+	[Theory]
+	[InlineData(false, false, false, 0, true)]
+	[InlineData(true, false, false, 0, false)]
+	[InlineData(true, true, false, 0, true)] // job active but already mounted → complete
+	[InlineData(true, false, true, 0, true)] // job active but in flight → complete
+	[InlineData(true, false, false, -1, true)]
+	public void IsTrainMountComplete(
+		bool jobActive,
+		bool mounted,
+		bool inFlight,
+		int mountConfig,
+		bool expected)
+		=> Assert.Equal(
+			expected,
+			MountDecision.IsTrainMountComplete(jobActive, mounted, inFlight, mountConfig));
+
+	[Theory]
+	[InlineData(true, false, true)]
+	[InlineData(false, true, true)]
+	[InlineData(false, false, false)]
+	public void ShouldSkipEnqueueAlreadyReady(bool mounted, bool inFlight, bool expected)
+		=> Assert.Equal(expected, MountDecision.ShouldSkipEnqueueAlreadyReady(mounted, inFlight));
+
+	[Theory]
 	[InlineData(true, false, true)]
 	[InlineData(false, true, true)]
 	[InlineData(true, true, true)]
@@ -386,7 +422,7 @@ public sealed class MountDecisionTests
 		Assert.False(s.IsActive);
 		s.Enqueue(1000);
 		Assert.Equal(MountPhase.WaitReady, s.Phase);
-		Assert.Equal(1000 + MountDecision.SessionTimeoutMs, s.DeadlineMs);
+		Assert.Equal(1000 + MountDecision.WaitReadyTimeoutMs, s.DeadlineMs);
 		s.EnterMounting(5000);
 		Assert.Equal(MountPhase.Mounting, s.Phase);
 		Assert.Equal(5000 + MountDecision.SessionTimeoutMs, s.DeadlineMs);
@@ -396,12 +432,12 @@ public sealed class MountDecisionTests
 	}
 
 	[Fact]
-	public void MountSession_deadline_arms_on_enqueue_so_wait_ready_cannot_pin()
+	public void MountSession_wait_ready_deadline_is_short_so_cannot_pin_navigate()
 	{
 		var s = new MountSession();
 		s.Enqueue(0);
-		Assert.False(MountDecision.IsSessionTimedOut(s.DeadlineMs, MountDecision.SessionTimeoutMs - 1));
-		Assert.True(MountDecision.IsSessionTimedOut(s.DeadlineMs, MountDecision.SessionTimeoutMs));
+		Assert.False(MountDecision.IsSessionTimedOut(s.DeadlineMs, MountDecision.WaitReadyTimeoutMs - 1));
+		Assert.True(MountDecision.IsSessionTimedOut(s.DeadlineMs, MountDecision.WaitReadyTimeoutMs));
 		s.EnterMounting(10_000);
 		Assert.False(MountDecision.IsSessionTimedOut(s.DeadlineMs, 10_000));
 		Assert.True(MountDecision.IsSessionTimedOut(s.DeadlineMs, 10_000 + MountDecision.SessionTimeoutMs));

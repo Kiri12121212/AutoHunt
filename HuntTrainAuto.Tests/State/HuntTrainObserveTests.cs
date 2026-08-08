@@ -117,6 +117,17 @@ public sealed class HuntTrainObserveTests
 	}
 
 	[Fact]
+	public void BuildProgressSnapshot_mounted_completes_mount_even_when_job_active()
+	{
+		var snap = HuntTrainObserve.BuildProgressSnapshot(
+			pluginEnabled: true,
+			mountJobActive: true,
+			mounted: true);
+
+		Assert.True(snap.MountComplete);
+	}
+
+	[Fact]
 	public void BuildProgressSnapshot_master_off_aborts_active_via_Tick()
 	{
 		var snap = HuntTrainObserve.BuildProgressSnapshot(pluginEnabled: false);
