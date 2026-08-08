@@ -249,7 +249,7 @@ public sealed class UnmountDecisionTests
 		s.Enqueue(1000);
 		Assert.Equal(UnmountPhase.WaitReady, s.Phase);
 		Assert.True(s.IsActive);
-		Assert.Equal(0, s.DeadlineMs);
+		Assert.Equal(1000 + UnmountDecision.WaitReadyTimeoutMs, s.DeadlineMs);
 
 		s.EnterUnmounting(5000);
 		Assert.Equal(UnmountPhase.Unmounting, s.Phase);
@@ -267,11 +267,12 @@ public sealed class UnmountDecisionTests
 	}
 
 	[Fact]
-	public void UnmountSession_deadline_starts_on_unmounting_not_wait_ready()
+	public void UnmountSession_wait_ready_deadline_arms_on_enqueue()
 	{
 		var s = new UnmountSession();
 		s.Enqueue(0);
-		Assert.False(UnmountDecision.IsSessionTimedOut(s.DeadlineMs, 120_000));
+		Assert.False(UnmountDecision.IsSessionTimedOut(s.DeadlineMs, UnmountDecision.WaitReadyTimeoutMs - 1));
+		Assert.True(UnmountDecision.IsSessionTimedOut(s.DeadlineMs, UnmountDecision.WaitReadyTimeoutMs));
 
 		s.EnterUnmounting(10_000);
 		Assert.False(UnmountDecision.IsSessionTimedOut(s.DeadlineMs, 10_000));

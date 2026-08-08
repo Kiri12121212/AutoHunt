@@ -165,7 +165,7 @@ public sealed class MovementDecisionTests
 	{
 		Assert.False(MovementDecision.IsArrivedForMove(
 			new Vector3(1, 0, 0),
-			distanceToDestination: 3f,
+			distanceToDestination: MovementDecision.InFlightFloorTolerance + 0.01f,
 			lastPointTolerance: 5f,
 			useMesh: true,
 			inFlight: true));
@@ -184,7 +184,13 @@ public sealed class MovementDecisionTests
 			inFlight: true));
 		Assert.True(MovementDecision.IsArrivedForMove(
 			new Vector3(1, 0, 0),
-			distanceToDestination: 3f,
+			distanceToDestination: MovementDecision.InFlightFloorTolerance,
+			lastPointTolerance: 5f,
+			useMesh: true,
+			inFlight: true));
+		Assert.True(MovementDecision.IsArrivedForMove(
+			new Vector3(1, 0, 0),
+			distanceToDestination: 4f,
 			lastPointTolerance: 5f,
 			useMesh: true,
 			inFlight: false));

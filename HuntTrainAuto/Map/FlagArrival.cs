@@ -1,4 +1,5 @@
 #nullable enable
+using System;
 using System.Numerics;
 
 namespace HuntTrainAuto.Map;
@@ -22,8 +23,9 @@ public readonly struct FlagArrivalResult
 
 /// <summary>
 /// Pure hunt-flag arrival decisions (TASKS 4.10 / brief 4.5).
-/// Hunt flags are area markers — use <see cref="DefaultTolerance"/> (~5y) on <b>XZ</b>, not 3D
-/// (flying above the floor PointOnFloor must still count as arrived so Unmount can dismount-land).
+/// Hunt flags are area markers — use <see cref="DefaultTolerance"/> (~5y) on <b>XZ</b>.
+/// While <c>InFlight</c>, also require near-floor altitude so PathStop does not cancel descent
+/// high above the PointOnFloor (Navigate would then never finish → no Unmount).
 /// Unmount is owned by <see cref="UnmountRunner"/> — this only signals arrival / one-shot stop-path.
 /// </summary>
 public static class FlagArrival
@@ -32,9 +34,15 @@ public static class FlagArrival
 	public const float DefaultTolerance = 5f;
 
 	/// <summary>
+	/// Max |player.Y − floor.Y| while InFlight before PathStop + Unmount.
+	/// Matches <see cref="MovementDecision.InFlightFloorTolerance"/> (live hover ~0.3–0.6y).
+	/// </summary>
+	public const float InFlightMaxVerticalDelta = MovementDecision.InFlightFloorTolerance;
+
+	/// <summary>
 	/// Whether XZ distance to flag is within tolerance (mesh-style <see cref="MovementDecision.IsArrived"/>).
 	/// Missing / zero <paramref name="flagWorldPos"/> → not arrived.
-	/// <paramref name="inFlight"/> is accepted for call-site compatibility; XZ arrival applies either way.
+	/// While <paramref name="inFlight"/>, also requires near-floor altitude.
 	/// </summary>
 	public static bool IsArrived(
 		Vector3 playerPos,
@@ -42,12 +50,18 @@ public static class FlagArrival
 		float tolerance,
 		bool inFlight = false)
 	{
-		_ = inFlight;
 		if (flagWorldPos is not { } world || world == Vector3.Zero)
 			return false;
 
 		var distance = MovementDecision.DistanceXZ(playerPos, world);
-		return MovementDecision.IsArrived(world, distance, tolerance, useMesh: true);
+		if (!MovementDecision.IsArrived(world, distance, tolerance, useMesh: true))
+			return false;
+
+		if (!inFlight)
+			return true;
+
+		// Still high above floor PointOnFloor — keep Navigate flying down.
+		return MathF.Abs(playerPos.Y - world.Y) <= InFlightMaxVerticalDelta;
 	}
 
 	/// <summary>
@@ -64,7 +78,7 @@ public static class FlagArrival
 	/// <param name="flagWorldPos"><see cref="HuntFlag.WorldPos"/>; null until PointOnFloor.</param>
 	/// <param name="tolerance"><see cref="Configuration.FlagArrivalTolerance"/>.</param>
 	/// <param name="pathAlreadyStoppedForArrival">True after PathStop was issued for the current flag.</param>
-	/// <param name="inFlight">Unused for the distance check (XZ); kept for callers.</param>
+	/// <param name="inFlight">When true, require near-floor altitude as well as XZ.</param>
 	public static FlagArrivalResult Evaluate(
 		Vector3 playerPos,
 		Vector3? flagWorldPos,
@@ -72,7 +86,6 @@ public static class FlagArrival
 		bool pathAlreadyStoppedForArrival = false,
 		bool inFlight = false)
 	{
-		_ = inFlight;
 		if (flagWorldPos is not { } world || world == Vector3.Zero)
 		{
 			return new FlagArrivalResult
@@ -84,7 +97,7 @@ public static class FlagArrival
 		}
 
 		var distance = MovementDecision.DistanceXZ(playerPos, world);
-		var arrived = MovementDecision.IsArrived(world, distance, tolerance, useMesh: true);
+		var arrived = IsArrived(playerPos, world, tolerance, inFlight);
 		return new FlagArrivalResult
 		{
 			IsArrived = arrived,

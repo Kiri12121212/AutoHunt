@@ -30,6 +30,7 @@ public sealed class MovementHelper
 	private int meshPathfindAttempts;
 	private bool meshPathfindExhaustedLogged;
 	private bool lastPlayerOnMesh = true;
+	private bool meshPathfindHadNavProgress;
 
 	public MovementHelper(
 		IVnavmeshService vnav,
@@ -60,6 +61,7 @@ public sealed class MovementHelper
 	{
 		MeshPathfindRetryDecision.Reset(ref nextMeshPathfindAttemptMs, ref meshPathfindAttempts);
 		meshPathfindExhaustedLogged = false;
+		meshPathfindHadNavProgress = false;
 	}
 
 	/// <summary>
@@ -169,6 +171,7 @@ public sealed class MovementHelper
 		{
 			MeshPathfindRetryDecision.Reset(ref nextMeshPathfindAttemptMs, ref meshPathfindAttempts);
 			meshPathfindExhaustedLogged = false;
+			meshPathfindHadNavProgress = true;
 		}
 
 		// After territory swap: do not pathfind until the player projects onto the new mesh.
@@ -230,8 +233,13 @@ public sealed class MovementHelper
 	private bool TryStartMeshPath(Vector3 position, float tolerance, bool fly, bool playerOnMesh)
 	{
 		var now = Environment.TickCount64;
+		// Post-TP / mid-air with no prior nav: wait on-mesh (stops poly→0 Queueing storm).
+		var canStartOffMesh = MeshPathfindRetryDecision.CanStartPathfindOffMeshPolicy(
+			fly,
+			playerOnMesh,
+			meshPathfindHadNavProgress);
 		var retry = MeshPathfindRetryDecision.Decide(
-			canStartMeshPathfind: true,
+			canStartMeshPathfind: canStartOffMesh,
 			now,
 			nextMeshPathfindAttemptMs,
 			meshPathfindAttempts);

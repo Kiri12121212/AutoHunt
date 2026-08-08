@@ -53,9 +53,9 @@ public static class MovementDecision
 	/// <summary>
 	/// Arrival / PathStop / Unmount while still <c>InFlight</c> near the floor PointOnFloor.
 	/// Wider than <see cref="DefaultTolerance"/> — live hover often sits ~0.3–0.6y above the dest
-	/// and never clears <c>InFlight</c> without a dismount.
+	/// and never clears <c>InFlight</c> without a dismount. 3y leaves margin for vnav hover.
 	/// </summary>
-	public const float InFlightFloorTolerance = 1.5f;
+	public const float InFlightFloorTolerance = 3f;
 
 	/// <summary>GeneralAction id for Jump (flight takeoff).</summary>
 	public const uint JumpGeneralActionId = 2;

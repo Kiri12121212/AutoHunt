@@ -27,12 +27,24 @@ public sealed class FlagArrivalTests
 	}
 
 	[Fact]
-	public void IsArrived_uses_xz_while_in_flight()
+	public void IsArrived_in_flight_requires_near_floor_altitude()
 	{
 		var flag = new Vector3(1, 0, 0);
-		// Directly above floor PointOnFloor — 3D would be 10y, XZ is 0 → arrived (dismount-land).
-		Assert.True(FlagArrival.IsArrived(new Vector3(1, 10, 0), flag, 1f, inFlight: true));
+		// High above floor — XZ OK but must keep flying down (do not PathStop).
+		Assert.False(FlagArrival.IsArrived(new Vector3(1, 10, 0), flag, 1f, inFlight: true));
+		// Grounded / not in flight: XZ alone is enough.
 		Assert.True(FlagArrival.IsArrived(new Vector3(1, 10, 0), flag, 1f, inFlight: false));
+		// Near floor hover (live ~0.3–0.6y).
+		Assert.True(FlagArrival.IsArrived(
+			new Vector3(1, FlagArrival.InFlightMaxVerticalDelta, 0),
+			flag,
+			1f,
+			inFlight: true));
+		Assert.False(FlagArrival.IsArrived(
+			new Vector3(1, FlagArrival.InFlightMaxVerticalDelta + 0.01f, 0),
+			flag,
+			1f,
+			inFlight: true));
 		// XZ too far.
 		Assert.False(FlagArrival.IsArrived(new Vector3(5, 0, 0), flag, 1f, inFlight: true));
 	}
@@ -91,7 +103,7 @@ public sealed class FlagArrivalTests
 	}
 
 	[Fact]
-	public void Evaluate_in_flight_above_flag_arrives_on_xz()
+	public void Evaluate_in_flight_high_above_does_not_arrive()
 	{
 		var above = FlagArrival.Evaluate(
 			new Vector3(1, 12f, 0),
@@ -99,9 +111,18 @@ public sealed class FlagArrivalTests
 			1f,
 			pathAlreadyStoppedForArrival: false,
 			inFlight: true);
-		Assert.True(above.IsArrived);
-		Assert.True(above.ShouldStopPath);
+		Assert.False(above.IsArrived);
+		Assert.False(above.ShouldStopPath);
 		Assert.Equal(0f, above.Distance);
+
+		var nearFloor = FlagArrival.Evaluate(
+			new Vector3(1, 1f, 0),
+			new Vector3(1, 0, 0),
+			1f,
+			pathAlreadyStoppedForArrival: false,
+			inFlight: true);
+		Assert.True(nearFloor.IsArrived);
+		Assert.True(nearFloor.ShouldStopPath);
 
 		var far = FlagArrival.Evaluate(
 			new Vector3(5, 0, 0),

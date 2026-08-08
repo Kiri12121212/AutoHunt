@@ -89,4 +89,19 @@ public sealed class MeshPathfindRetryDecisionTests
 		=> Assert.Equal(
 			expected,
 			MeshPathfindRetryDecision.ShouldResetOnMeshAcquire(wasOn, nowOn));
+
+	[Theory]
+	[InlineData(false, true, false, true)] // ground on-mesh
+	[InlineData(false, false, false, false)] // ground off-mesh
+	[InlineData(true, false, false, false)] // fly off-mesh, no prior nav → wait (0dv8)
+	[InlineData(true, false, true, true)] // fly off-mesh after prior nav → repath (8sy1)
+	[InlineData(true, true, false, true)] // fly on-mesh
+	public void CanStartPathfindOffMeshPolicy(
+		bool fly,
+		bool onMesh,
+		bool hadProgress,
+		bool expected)
+		=> Assert.Equal(
+			expected,
+			MeshPathfindRetryDecision.CanStartPathfindOffMeshPolicy(fly, onMesh, hadProgress));
 }

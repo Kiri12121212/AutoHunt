@@ -102,4 +102,15 @@ public static class MeshPathfindRetryDecision
 	/// <summary>Fresh budget when the player first projects onto the mesh after being off it.</summary>
 	public static bool ShouldResetOnMeshAcquire(bool wasOnMesh, bool nowOnMesh)
 		=> !wasOnMesh && nowOnMesh;
+
+	/// <summary>
+	/// Gate PathfindAndMoveTo when off-mesh.
+	/// Ground: always wait on-mesh. Fly: wait until on-mesh unless this epoch already had
+	/// nav progress (mid-air repath after takeoff — 8sy1); never spam poly→0 right after zone load.
+	/// </summary>
+	public static bool CanStartPathfindOffMeshPolicy(
+		bool fly,
+		bool playerOnMesh,
+		bool hadNavProgressThisEpoch)
+		=> playerOnMesh || (fly && hadNavProgressThisEpoch);
 }

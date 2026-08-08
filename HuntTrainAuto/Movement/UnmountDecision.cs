@@ -45,7 +45,14 @@ public static class UnmountDecision
 	/// <summary>Interval between dismount attempts.</summary>
 	public const int DismountCooldownMs = 500;
 
-	/// <summary>Soft session timeout so a stuck unmount job cannot run forever.</summary>
+	/// <summary>
+	/// Soft timeout while stuck in WaitReady (path / screen / instance gates).
+	/// Shorter than <see cref="SessionTimeoutMs"/> — WaitReady used DeadlineMs=0 and could
+	/// pin forever after fly PathStop, blocking Navigate remount/descent.
+	/// </summary>
+	public const int WaitReadyTimeoutMs = 8_000;
+
+	/// <summary>Soft session timeout once Unmounting has begun.</summary>
 	public const int SessionTimeoutMs = 60_000;
 
 	/// <summary>

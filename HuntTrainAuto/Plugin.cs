@@ -1561,9 +1561,6 @@ public sealed class Plugin : IDalamudPlugin
 		{
 			if (divertingToEngage)
 				return;
-			// After FlagArrival PathStop / while Unmount runs, do not restart mesh path (8sy1).
-			if (flagArrival.PathStoppedForArrival || unmount.IsActive)
-				return;
 
 			var flag = activeHuntFlag;
 			var player = objectTable.LocalPlayer;
@@ -1579,6 +1576,27 @@ public sealed class Plugin : IDalamudPlugin
 
 			if (flag.WorldPos is not { } pos || pos == Vector3.Zero)
 				return;
+
+			var inFlightNav = condition[ConditionFlag.InFlight];
+			var tooHighForArrival = inFlightNav
+				&& Math.Abs(player.Position.Y - pos.Y) > FlagArrival.InFlightMaxVerticalDelta;
+
+			// Premature XZ PathStop / Unmount mid-air: drop latches and keep flying down (8sy1).
+			if (tooHighForArrival)
+			{
+				if (flagArrival.PathStoppedForArrival)
+					flagArrival.Clear();
+				if (unmount.IsActive)
+				{
+					unmount.Clear();
+					unmount.ClearArrivalLatch();
+				}
+			}
+			else if (flagArrival.PathStoppedForArrival || unmount.IsActive)
+			{
+				// Near floor (or grounded): do not restart mesh path over Unmount.
+				return;
+			}
 
 			movement.MovePreferFlyWhenMounted(
 				pos,

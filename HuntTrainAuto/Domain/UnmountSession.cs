@@ -28,7 +28,7 @@ public sealed class UnmountSession
 	/// <summary>Dismount attempt throttle deadline.</summary>
 	public long NextDismountMs { get; set; }
 
-	/// <summary>Soft timeout deadline; 0 when idle / WaitReady.</summary>
+	/// <summary>Soft timeout deadline; 0 when idle.</summary>
 	public long DeadlineMs { get; private set; }
 
 	/// <summary>
@@ -38,14 +38,16 @@ public sealed class UnmountSession
 	/// </summary>
 	public bool ReadyForGroundFollow { get; private set; }
 
-	/// <summary>Start or replace a pending unmount job. Deadline starts only when unmounting begins.</summary>
+	/// <summary>
+	/// Start or replace a pending unmount job.
+	/// Arms <see cref="UnmountDecision.WaitReadyTimeoutMs"/> so WaitReady cannot pin Navigate.
+	/// </summary>
 	public void Enqueue(long nowMs)
 	{
-		_ = nowMs;
 		Phase = UnmountPhase.WaitReady;
 		NextCheckMs = 0;
 		NextDismountMs = 0;
-		DeadlineMs = 0;
+		DeadlineMs = nowMs + UnmountDecision.WaitReadyTimeoutMs;
 	}
 
 	/// <summary>Begin UnmountIfCan; arms the soft session timeout (excludes WaitReady).</summary>
