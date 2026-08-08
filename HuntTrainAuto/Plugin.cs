@@ -28,6 +28,7 @@ public sealed class Plugin : IDalamudPlugin
 	private readonly WindowSystem windowSystem;
 	private readonly ConfigWindow configWindow;
 	private readonly AlertInfoWindow alertInfoWindow;
+	private readonly AlertChatLinker alertChatLinker;
 
 	/// <summary>Open <see cref="alertInfoWindow"/> on next Framework tick after HA map.</summary>
 	private bool pendingShowAlertInfo;
@@ -46,7 +47,6 @@ public sealed class Plugin : IDalamudPlugin
 	private readonly HuntPfHelper huntPf;
 	private readonly MovementHelper movement;
 	private readonly EngageTargetHelper engage;
-	private readonly FollowHelper follow;
 	private readonly CombatTransitionHelper combat;
 	private readonly RsrEnableHelper rsrEnable;
 	private readonly BossModEnableHelper bossModEnable;
@@ -56,6 +56,16 @@ public sealed class Plugin : IDalamudPlugin
 	private readonly HuntNotificator notificator;
 
 	private HuntFlag? activeHuntFlag;
+
+	/// <summary>
+	/// Conductor flag received while fighting an A-rank — flushed on combat exit (3wr1).
+	/// </summary>
+	private HuntFlag? deferredCombatFlag;
+
+	/// <summary>
+	/// Nearby engage mob diverted us off flag Navigate — land/unmount then engage (hgb1/55fa).
+	/// </summary>
+	private bool divertingToEngage;
 
 	/// <summary>In-flight same-zone vnav path-cost sample for time-aware TP.</summary>
 	private PendingSameZoneTravelCost? pendingSameZoneTravelCost;
@@ -148,7 +158,7 @@ public sealed class Plugin : IDalamudPlugin
 	public IBossModService BossModIpc { get; }
 
 	/// <summary>
-	/// Combat/follow phase latch (TASKS 5.8–5.9). Phase 6.2 edge-triggers
+	/// Combat/approach phase latch (TASKS 5.8–5.9). Phase 6.2 edge-triggers
 	/// RSR from <see cref="CombatSession.InCombatPhase"/>.
 	/// </summary>
 	public CombatSession CombatSession => combat.Session;
@@ -167,7 +177,7 @@ public sealed class Plugin : IDalamudPlugin
 	public HuntTrainPhase TrainPhase => train.Phase;
 
 	/// <summary>
-	/// Read-only Status panel snapshot (TASKS 8.6): phase, mount, follow target, nav.
+	/// Read-only Status panel snapshot (TASKS 8.6): phase, mount, nav.
 	/// Soft-fails individual probes; never throws to UI.
 	/// </summary>
 	public StatusSnapshot CaptureStatus()
@@ -176,20 +186,6 @@ public sealed class Plugin : IDalamudPlugin
 		try
 		{
 			mounted = condition[ConditionFlag.Mounted];
-		}
-		catch
-		{
-			// soft-fail
-		}
-
-		string? followName = null;
-		var followEnabled = false;
-		try
-		{
-			followEnabled = follow.Enabled;
-			var target = follow.FollowTarget;
-			if (target != null)
-				followName = target.Name.TextValue;
 		}
 		catch
 		{
@@ -231,8 +227,6 @@ public sealed class Plugin : IDalamudPlugin
 			Mounted = mounted,
 			MountPipeline = mount.Session.Phase,
 			UnmountPipeline = unmount.Session.Phase,
-			FollowTargetName = followName,
-			FollowEnabled = followEnabled,
 			NavPathRunning = pathRunning,
 			NavWaypoints = waypoints,
 			NavPathfindInProgress = pathfindInProgress,
@@ -338,6 +332,20 @@ public sealed class Plugin : IDalamudPlugin
 			() => huntAlertsIpc.LastTrainMessage,
 			chat,
 			() => openSettings());
+		alertChatLinker = new AlertChatLinker(
+			chatGui,
+			msg =>
+			{
+				try
+				{
+					alertInfoWindow.Show(msg);
+				}
+				catch
+				{
+					// soft-fail UI open from chat link
+				}
+			},
+			pluginLog);
 		configWindow = new ConfigWindow(
 			Config,
 			() => pluginInterface.SavePluginConfig(Config),
@@ -420,12 +428,6 @@ public sealed class Plugin : IDalamudPlugin
 			movement,
 			ResolveEngageRange,
 			() => Config.ARankScanRange);
-		// Retained for CombatTransitionHelper Clear API only — party follow is disabled.
-		follow = new FollowHelper(
-			VNavmeshIpc,
-			objectTable,
-			pluginLog,
-			() => Config.PartyFollowDistance);
 		combat = new CombatTransitionHelper(
 			objectTable,
 			partyList,
@@ -473,6 +475,19 @@ public sealed class Plugin : IDalamudPlugin
 		HuntAlertsFlagQueue.Enqueue(huntAlertsFlagQueue, flag);
 		if (Config.ShowHuntAlertsInfoWindow)
 			pendingShowAlertInfo = true;
+		if (Config.ShowHuntAlertsChatNotice)
+		{
+			try
+			{
+				var msg = huntAlertsIpc.LastTrainMessage;
+				if (msg != null)
+					alertChatLinker.Post(msg);
+			}
+			catch (Exception ex)
+			{
+				pluginLog.Debug($"HuntAlerts chat notice soft-fail: {ex.Message}");
+			}
+		}
 	}
 
 	/// <summary>
@@ -753,6 +768,17 @@ public sealed class Plugin : IDalamudPlugin
 				snapshot,
 				ChatMessageHandler.CreateTimeAwareSettings(Config));
 			chatMessageHandler.TeleportIntent.Set(decision);
+
+			var currentInst = snapshot?.CurrentInstance ?? -1;
+			var targetInst = decision.Arrival?.Instance
+				?? (targetInstanceHint > 0 ? targetInstanceHint : flag.ReportedInstance);
+			pluginLog.Information(
+				$"Teleport decision: {decision.Action} reported={flag.ReportedInstance} "
+				+ $"hint={targetInstanceHint} target={targetInst} current={currentInst}"
+				+ (decision.Action == TeleportAction.Skip
+					? $" skip={decision.SkipReason}"
+					: string.Empty));
+
 			if (decision.SkipReason != TeleportSkipReason.AwaitingTravelCost)
 				pendingSameZoneTravelCost = null;
 		}
@@ -862,9 +888,14 @@ public sealed class Plugin : IDalamudPlugin
 			    combat.InCombatPhase,
 			    engage.TargetIsARank))
 		{
-			pluginLog.Information("Conductor flag skipped (in combat vs A-rank)");
+			deferredCombatFlag = flag;
+			pluginLog.Information(
+				"Conductor flag deferred (in combat vs A-rank); will adopt after combat");
 			return;
 		}
+
+		deferredCombatFlag = null;
+		divertingToEngage = false;
 
 		var now = DateTimeOffset.UtcNow;
 		var pipelineActive = FlagRestartDecision.IsPipelineActive(
@@ -1031,7 +1062,7 @@ public sealed class Plugin : IDalamudPlugin
 	{
 		try
 		{
-			// ReadyForGroundFollow / Following: engage may still path to the find while
+			// ReadyForGroundFollow / Following: engage may still path to the mob while
 			// train is Idle after CombatEnded — treat as in-flight so near-dup suppress
 			// does not let a second same-spot flag ClearEngage / reset the path.
 			if (teleportPlan.HasActive
@@ -1040,8 +1071,7 @@ public sealed class Plugin : IDalamudPlugin
 				|| unmount.IsActive
 				|| unmount.ReadyForGroundFollow
 				|| combat.InCombatPhase
-				|| combat.Session.Phase == CombatPhase.Following
-				|| follow.Enabled)
+				|| combat.Session.Phase == CombatPhase.Following)
 				return true;
 
 			return VNavmeshIpc.PathIsRunning();
@@ -1073,8 +1103,6 @@ public sealed class Plugin : IDalamudPlugin
 			movement.ResetMeshPathfindRetry();
 		}
 
-		if (plan.ClearFollow)
-			follow.Clear();
 		if (plan.ClearInstanceChange)
 			instanceChange.Clear();
 		if (plan.ClearMount)
@@ -1087,7 +1115,10 @@ public sealed class Plugin : IDalamudPlugin
 		if (plan.ClearUnmount)
 			unmount.ClearAll();
 		if (plan.ClearEngage)
+		{
 			engage.Clear();
+			divertingToEngage = false;
+		}
 		if (plan.ClearCombat)
 			combat.Clear();
 		if (plan.ClearRsr)
@@ -1163,8 +1194,6 @@ public sealed class Plugin : IDalamudPlugin
 		if (plan.StopNavPath || plan.InvalidateFlagWorldPos)
 			movement.ResetMeshPathfindRetry();
 
-		if (plan.ClearFollow)
-			follow.Clear();
 		if (plan.ClearFlagArrival)
 		{
 			flagArrival.Clear();
@@ -1173,7 +1202,10 @@ public sealed class Plugin : IDalamudPlugin
 		if (plan.ClearUnmount)
 			unmount.ClearAll();
 		if (plan.ClearEngage)
+		{
 			engage.Clear();
+			divertingToEngage = false;
+		}
 		if (plan.ClearCombat)
 			combat.Clear();
 		if (plan.ClearRsr)
@@ -1197,7 +1229,7 @@ public sealed class Plugin : IDalamudPlugin
 		{
 			pluginLog.Debug(
 				plan.Kind == TerritoryCleanupKind.TpArrivalHandoff
-					? "TeleportPlan cleared (TP arrival handoff)"
+					? "TeleportPlan cleared (TP arrival handoff / BetweenAreas)"
 					: "TeleportPlan cleared (territory leave)");
 			teleportPlan.Clear();
 		}
@@ -1207,7 +1239,11 @@ public sealed class Plugin : IDalamudPlugin
 		if (plan.ClearMount)
 			mount.Clear();
 		if (plan.ClearActiveHuntFlag)
+		{
 			activeHuntFlag = null;
+			deferredCombatFlag = null;
+			divertingToEngage = false;
+		}
 		if (plan.ClearConductors)
 			ConductorList.Clear(Config.Conductors);
 		if (plan.ResetTrainController)
@@ -1279,19 +1315,17 @@ public sealed class Plugin : IDalamudPlugin
 		// Only hand off on BetweenAreas after Teleporter/Lifestream accepted an invoke.
 		// Clearing earlier (residual BetweenAreas, load flicker) drops the plan with no TP
 		// and falls through to a long same-zone fly-to.
+		// Same-zone TP never fires TerritoryChanged — must run full TpArrivalHandoff here
+		// (stop path, invalidate WorldPos, reset mesh retry, clear latches, mount).
 		if (TeleportGate.ShouldClearPlanOnBetweenAreas(
 			    condition[ConditionFlag.BetweenAreas],
 			    condition[ConditionFlag.BetweenAreas51],
 			    teleportPlan.HasActive,
-			    teleportPlan.TeleportInvoked)
-			&& teleportPlan.Active is { } betweenPlan)
+			    teleportPlan.TeleportInvoked))
 		{
-			if (TeleportGate.ShouldEnqueueInstanceChange(betweenPlan.Instance))
-				EnqueueChangeInstanceAfterTeleport(betweenPlan.Instance, betweenPlan.Territory);
-
-			mount.EnqueueIfEnabled(Config.UseMount);
-			pluginLog.Debug("TeleportPlan cleared (between areas)");
-			teleportPlan.Clear();
+			ApplyTerritoryCleanup(
+				clientState.TerritoryType,
+				TerritoryCleanupDecision.TpArrivalHandoff());
 		}
 
 		instanceChange.Tick();
@@ -1299,6 +1333,8 @@ public sealed class Plugin : IDalamudPlugin
 		{
 			// RSR stop: RsrStopTrigger.MasterOff → ImmediateClear (Tick skipped below).
 			ClearPendingHuntAlerts();
+			deferredCombatFlag = null;
+			divertingToEngage = false;
 			lastFlagIntakeMemory = HuntAlertsFlagDedupe.Clear(lastFlagIntakeMemory);
 			HuntAlertsFlagQueue.Clear(huntAlertsFlagQueue);
 			mount.Clear();
@@ -1330,12 +1366,30 @@ public sealed class Plugin : IDalamudPlugin
 		if (train.Phase == HuntTrainPhase.Navigate)
 			TickNavigateToFlag();
 
+		// Nearby A-rank / conductor fight: stop flag nav, land, unmount (hgb1/55fa).
+		TryDivertToNearbyEngage();
+
 		// Arrival/unmount before mount.Tick so AlreadyClose mount jobs are cleared before they remount.
 		var withinArrival = TickFlagArrivalAndUnmount();
+		// Remount while Mount/Navigate if dismounted (post-TP timeout / GA soft-fail recovery).
+		if (train.Phase is HuntTrainPhase.Mount or HuntTrainPhase.Navigate
+		    && MountDecision.ShouldEnqueueForFlagTravel(
+			    Config.UseMount,
+			    condition[ConditionFlag.Mounted],
+			    mount.IsActive,
+			    divertingToEngage,
+			    withinArrival,
+			    unmount.IsActive,
+			    unmount.ReadyForGroundFollow))
+			mount.EnqueueIfEnabled(Config.UseMount);
 		mount.Tick(Config.Mount);
 		// After unmount: join conductor fight or path to nearby A-rank (never follow players).
 		var playerDead = IsLocalPlayerDead();
-		if (unmount.ReadyForGroundFollow && !playerDead)
+		var mountedOrFlying = condition[ConditionFlag.Mounted] || condition[ConditionFlag.InFlight];
+		// Divert-to-engage on foot must not wait for a prior UnmountReady latch.
+		if ((unmount.ReadyForGroundFollow || divertingToEngage)
+			&& !playerDead
+			&& !mountedOrFlying)
 		{
 			engage.Tick(
 				combat.Session,
@@ -1347,7 +1401,10 @@ public sealed class Plugin : IDalamudPlugin
 		// Death / mob-dead / combat-end → CombatDecision Idle (RsrStopPath.CombatPhaseTick).
 		// Enter combat is owned by EngageTargetHelper.
 		var wasInCombatPhase = combat.InCombatPhase;
-		combat.Tick(follow, pluginEnabled: true);
+		combat.Tick(pluginEnabled: true);
+		if (combat.InCombatPhase)
+			divertingToEngage = false;
+		TryFlushDeferredCombatFlag(wasInCombatPhase, combat.InCombatPhase);
 		// Hunt PF join after combat tick so we skip mid-fight thrash.
 		if (unmount.ReadyForGroundFollow && !playerDead)
 		{
@@ -1381,34 +1438,18 @@ public sealed class Plugin : IDalamudPlugin
 	}
 
 	/// <summary>
-	/// Edge-record phase / mount / unmount / follow for the Debug tab (TASKS 9.2).
+	/// Edge-record phase / mount / unmount for the Debug tab (TASKS 9.2).
 	/// Soft-fails individual probes; never throws to Framework.
 	/// </summary>
 	private void ObserveDebugSignals()
 	{
 		try
 		{
-			string? followName = null;
-			var followEnabled = false;
-			try
-			{
-				followEnabled = follow.Enabled;
-				var target = follow.FollowTarget;
-				if (target != null)
-					followName = target.Name.TextValue;
-			}
-			catch
-			{
-				// soft-fail follow probe
-			}
-
 			debugProbe.Observe(
 				Config.EnableDebugLogging,
 				train.Phase,
 				mount.Session.Phase,
-				unmount.Session.Phase,
-				followName,
-				followEnabled);
+				unmount.Session.Phase);
 		}
 		catch (Exception ex)
 		{
@@ -1484,15 +1525,22 @@ public sealed class Plugin : IDalamudPlugin
 
 	/// <summary>
 	/// While <see cref="HuntTrainPhase.Navigate"/>: resolve flag world pos and path with MovementHelper.
-	/// Soft-fails when player/flag/world pos missing.
+	/// Soft-fails when player/flag/world pos missing. Skips when diverted to engage or wrong territory.
 	/// </summary>
 	private void TickNavigateToFlag()
 	{
 		try
 		{
+			if (divertingToEngage)
+				return;
+
 			var flag = activeHuntFlag;
 			var player = objectTable.LocalPlayer;
 			if (flag == null || player == null)
+				return;
+
+			// Stale flag after manual / deferred cross-map: do not pathfind on the wrong mesh.
+			if (flag.TerritoryTypeId != 0 && flag.TerritoryTypeId != clientState.TerritoryType)
 				return;
 
 			if (flag.WorldPos is null || flag.WorldPos == Vector3.Zero)
@@ -1509,6 +1557,130 @@ public sealed class Plugin : IDalamudPlugin
 		catch (Exception ex)
 		{
 			pluginLog.Debug($"TickNavigateToFlag soft-fail: {ex.Message}");
+		}
+	}
+
+	/// <summary>
+	/// When an A-rank / conductor fight is already close: PathStop flag nav, land, unmount (hgb1/55fa).
+	/// </summary>
+	private void TryDivertToNearbyEngage()
+	{
+		try
+		{
+			if (combat.InCombatPhase || IsLocalPlayerDead())
+				return;
+
+			if (train.Phase is not (
+				    HuntTrainPhase.Navigate
+				    or HuntTrainPhase.Mount
+				    or HuntTrainPhase.Unmount
+				    or HuntTrainPhase.FollowParty))
+				return;
+
+			var probe = engage.Probe(Config.Conductors);
+			if (!probe.Found)
+				return;
+
+			if (!EngageTargetDecision.ShouldDivertFromFlagNav(probe.Distance, Config.ARankScanRange))
+				return;
+
+			if (!divertingToEngage)
+			{
+				divertingToEngage = true;
+				try
+				{
+					movement.Stop();
+				}
+				catch
+				{
+					// soft-fail
+				}
+
+				pluginLog.Information(
+					$"Divert to engage ({probe.Kind}) dist={probe.Distance:0.0}; stop flag nav");
+			}
+
+			var mounted = condition[ConditionFlag.Mounted];
+			var inFlight = condition[ConditionFlag.InFlight];
+			var engageRange = CombatDecision.ClampEngageRange(ResolveEngageRange());
+			var player = objectTable.LocalPlayer;
+			var verticalDelta = player != null
+				? Math.Abs(player.Position.Y - probe.MobPosition.Y)
+				: float.PositiveInfinity;
+
+			if (!EngageTargetDecision.ShouldApproachMobFloorForEngage(
+				    mounted,
+				    inFlight,
+				    probe.Distance,
+				    Config.ARankScanRange))
+				return;
+
+			// Stop flag remount; fly/walk to the mob floor, then unmount (hgb1/55fa).
+			mount.Clear();
+
+			if (EngageTargetDecision.ShouldLandAndUnmountForEngage(
+				    mounted,
+				    inFlight,
+				    probe.Distance,
+				    engageRange,
+				    verticalDelta))
+			{
+				try
+				{
+					movement.Stop();
+				}
+				catch
+				{
+					// soft-fail PathStop
+				}
+
+				unmount.ClearArrivalLatch();
+				unmount.EnqueueIfEnabled(Config.AutoUnmountAtFlag);
+				return;
+			}
+
+			// Still approaching / high above: path to mob floor first.
+			movement.Move(
+				probe.MobPosition,
+				tolerance: 1f,
+				lastPointTolerance: Math.Max(2f, engageRange),
+				fly: inFlight || (mounted && movement.IsFlyingSupported()),
+				useMesh: true);
+		}
+		catch (Exception ex)
+		{
+			pluginLog.Debug($"TryDivertToNearbyEngage soft-fail: {ex.Message}");
+		}
+	}
+
+	/// <summary>Adopt combat-deferred conductor flag once A-rank combat ends (3wr1).</summary>
+	private void TryFlushDeferredCombatFlag(bool wasInCombatPhase, bool inCombatPhase)
+	{
+		try
+		{
+			if (!EngageTargetDecision.ShouldFlushDeferredFlagAfterCombat(
+				    wasInCombatPhase,
+				    inCombatPhase,
+				    deferredCombatFlag != null))
+				return;
+
+			var flag = deferredCombatFlag;
+			deferredCombatFlag = null;
+			if (flag == null)
+				return;
+
+			pluginLog.Information("Flushing conductor flag deferred during A-rank combat");
+			divertingToEngage = false;
+			PrepareTeleportIntent(flag, flag.ReportedInstance);
+			AdoptHuntFlag(flag, clearPendingDefer: true);
+			lastFlagIntakeMemory = HuntAlertsFlagDedupe.Remember(
+				flag,
+				HuntFlagIntakeSource.Chat,
+				DateTimeOffset.UtcNow);
+		}
+		catch (Exception ex)
+		{
+			pluginLog.Debug($"TryFlushDeferredCombatFlag soft-fail: {ex.Message}");
 		}
 	}
 
@@ -1586,9 +1758,30 @@ public sealed class Plugin : IDalamudPlugin
 	/// <summary>
 	/// Enqueue post-TP instance switch (HTA <c>TaskChangeInstanceAfterTeleport</c>).
 	/// Survives <see cref="TeleportPlan"/> clear; advanced on Framework ticks.
+	/// Skips when already on the requested instance (avoids no-op spam).
 	/// </summary>
 	private void EnqueueChangeInstanceAfterTeleport(int instance, uint territoryId)
-		=> instanceChange.Enqueue(instance, territoryId);
+	{
+		try
+		{
+			var current = LifestreamIpc.GetCurrentInstance();
+			if (!InstanceChangeDecision.ShouldEnqueueIfNeeded(instance, current))
+			{
+				pluginLog.Information(
+					$"Instance change skip enqueue (requested={instance}, current={current})");
+				return;
+			}
+
+			pluginLog.Information(
+				$"Instance change enqueued: instance {instance}, territory {territoryId} (current={current})");
+			instanceChange.Enqueue(instance, territoryId);
+		}
+		catch (Exception ex)
+		{
+			pluginLog.Debug($"EnqueueChangeInstanceAfterTeleport soft-fail: {ex.Message}");
+			instanceChange.Enqueue(instance, territoryId);
+		}
+	}
 
 	private TeleportPlayerSnapshot? TryGetPlayerSnapshot(HuntFlag flag)
 	{
@@ -1908,13 +2101,13 @@ public sealed class Plugin : IDalamudPlugin
 		flagArrival.Clear();
 		unmount.ClearAll();
 		engage.Clear();
-		follow.Clear();
 		combat.Clear();
 		rsrEnable.Clear();
 		bossModEnable.Clear();
 		huntPf.Dispose();
 		train.Reset();
 		chatMessageHandler.Dispose();
+		alertChatLinker.Dispose();
 		huntAlertsIpc.Dispose();
 		BossModIpc.Dispose();
 		RsrIpc.Dispose();

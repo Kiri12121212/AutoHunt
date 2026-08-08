@@ -2,9 +2,9 @@
     "Author": "Kiri12121212",
     "Name": "HuntTrainAuto",
     "InternalName": "HuntTrainAuto",
-    "AssemblyVersion": "0.1.4.0",
-    "Punchline": "Automated hunt train follower.",
-    "Description": "Follows a hunt train conductor: parses map flags, auto-teleports, mounts and navigates with vnavmesh, unmounts at the spot, follows party to the pull, and engages combat with Rotation Solver Reborn.",
+    "AssemblyVersion": "0.1.5.0",
+    "Punchline": "Automated hunt train runner.",
+    "Description": "Runs a hunt train from conductor marks: parses map flags, auto-teleports or walks, mounts and navigates with vnavmesh, approaches the mob at fight range on foot, unmounts, and engages with Rotation Solver Reborn.",
     "ApplicableVersion": "any",
     "RepoUrl": "https://github.com/Kiri12121212/AutoHunt",
     "Tags": [

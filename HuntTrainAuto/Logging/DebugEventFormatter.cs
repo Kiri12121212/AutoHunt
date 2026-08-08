@@ -15,7 +15,6 @@ public static class DebugEventFormatter
 		{
 			DebugEventKind.FlagReceived => "Flag",
 			DebugEventKind.PhaseChange => "State",
-			DebugEventKind.FollowTarget => "Follow",
 			DebugEventKind.Mount => "Mount",
 			DebugEventKind.Unmount => "Unmount",
 			_ => kind.ToString(),
@@ -34,9 +33,6 @@ public static class DebugEventFormatter
 			? "Conductor flag received"
 			: $"Conductor flag: {trimmed}";
 	}
-
-	public static string FormatFollowTarget(string? name, bool followEnabled)
-		=> $"target={StatusDisplay.FormatFollowTarget(name, followEnabled)}";
 
 	public static string FormatMountPhase(MountPhase phase)
 		=> phase switch

@@ -36,19 +36,22 @@ public sealed class MountSession
 
 	public bool WarnedNoMounts { get; set; }
 
-	/// <summary>Start or replace a pending mount job. Deadline starts only when mounting begins.</summary>
+	/// <summary>
+	/// Start or replace a pending mount job.
+	/// Arms <see cref="DeadlineMs"/> immediately so WaitReady cannot pin forever when
+	/// Lifestream busy / BetweenAreas / instance-change blocks <c>CanBeginMountAttempt</c>.
+	/// </summary>
 	public void Enqueue(long nowMs)
 	{
-		_ = nowMs;
 		Phase = MountPhase.WaitReady;
 		NextCheckMs = 0;
 		NextSummonMs = 0;
-		DeadlineMs = 0;
+		DeadlineMs = nowMs + MountDecision.SessionTimeoutMs;
 		WarnedFallback = false;
 		WarnedNoMounts = false;
 	}
 
-	/// <summary>Begin MountIfCan; arms the soft session timeout (excludes WaitReady / instance wait).</summary>
+	/// <summary>Begin MountIfCan; refresh soft session timeout from the mounting start.</summary>
 	public void EnterMounting(long nowMs)
 	{
 		Phase = MountPhase.Mounting;

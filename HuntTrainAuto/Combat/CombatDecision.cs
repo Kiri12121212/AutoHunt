@@ -3,32 +3,32 @@
 namespace HuntTrainAuto.Combat;
 
 /// <summary>
-/// Local follow/combat phase for TASKS 5.8–5.9 (orchestrator Phase 7 is separate).
+/// Local approach/combat phase for TASKS 5.8–5.9 (orchestrator Phase 7 is separate).
 /// Phase 6 observes <see cref="Combat"/> via <see cref="CombatSession.InCombatPhase"/>.
 /// </summary>
 public enum CombatPhase
 {
-	/// <summary>Not following for engage purposes; follow-capable after unmount latch.</summary>
+	/// <summary>Not approaching a mob for engage.</summary>
 	Idle,
 
-	/// <summary>Ground-following party toward the pull.</summary>
+	/// <summary>Ground-pathing toward the engage mob (post-unmount / divert).</summary>
 	Following,
 
-	/// <summary>Party engaged — follow cleared; RSR may start (Phase 6).</summary>
+	/// <summary>Engaged — RSR may start (Phase 6).</summary>
 	Combat,
 }
 
 /// <summary>Result of <see cref="CombatDecision.Decide"/>.</summary>
 public enum CombatTransitionKind
 {
-	/// <summary>No phase change; keep following when in <see cref="CombatPhase.Following"/>.</summary>
+	/// <summary>No phase change.</summary>
 	StayFollow,
 
-	/// <summary>Stop follow and enter <see cref="CombatPhase.Combat"/> (no RSR here).</summary>
+	/// <summary>Enter <see cref="CombatPhase.Combat"/> (no RSR here).</summary>
 	EnterCombat,
 
 	/// <summary>
-	/// Stop follow and return to <see cref="CombatPhase.Idle"/>
+	/// Return to <see cref="CombatPhase.Idle"/>
 	/// (combat end, death, master off, abort).
 	/// </summary>
 	StopFollow,
@@ -41,12 +41,8 @@ public enum CombatTransitionKind
 /// <para><b>Vanilla detection assumptions (no ECommons):</b></para>
 /// <list type="bullet">
 /// <item><description>
-/// Follow-target / ally combat = character <c>StatusFlags.InCombat</c>
+/// Ally / local combat = character <c>StatusFlags.InCombat</c>
 /// (or local <c>ConditionFlag.InCombat</c> for the player).
-/// </description></item>
-/// <item><description>
-/// Engaged pull = follow target's <c>TargetObject</c> when it is a
-/// <c>BattleNpc</c> (distance measured player → that mob).
 /// </description></item>
 /// <item><description>
 /// "Hunt mob targeted by party" = party member (or local) who is <b>in combat</b>
@@ -56,7 +52,8 @@ public enum CombatTransitionKind
 /// </description></item>
 /// <item><description>
 /// Must not EnterCombat merely from flag arrival / unmount —
-/// caller only evaluates while following (or already in Combat).
+/// caller only evaluates while approaching (or already in Combat).
+/// EnterCombat from the mob path is owned by <see cref="EngageTargetHelper"/>.
 /// </description></item>
 /// </list>
 /// </remarks>
@@ -66,21 +63,6 @@ public readonly struct CombatEngageSnapshot
 
 	/// <summary>Player dead / unconscious (HP ≤ 0 or Unconscious).</summary>
 	public bool PlayerDead { get; init; }
-
-	/// <summary><see cref="FollowHelper.Enabled"/> — following party.</summary>
-	public bool FollowEnabled { get; init; }
-
-	/// <summary>Follow target object is valid this tick.</summary>
-	public bool FollowTargetPresent { get; init; }
-
-	/// <summary>Follow target has InCombat status.</summary>
-	public bool FollowTargetInCombat { get; init; }
-
-	/// <summary>Player → follow target distance (yalms); null if unknown.</summary>
-	public float? DistanceToFollowTarget { get; init; }
-
-	/// <summary>Player → follow target's BattleNpc target; null if none.</summary>
-	public float? DistanceToEngagedPull { get; init; }
 
 	/// <summary>A party member (or local) targets a BattleNpc.</summary>
 	public bool PartyTargetsHuntMob { get; init; }
@@ -95,8 +77,8 @@ public readonly struct CombatEngageSnapshot
 	public bool AnyPartyAllyInCombat { get; init; }
 
 	/// <summary>
-	/// Follow target that triggered EnterCombat is still InCombat
-	/// (latched EntityId — survives <see cref="FollowHelper.Clear"/>).
+	/// Mob that triggered EnterCombat is still InCombat
+	/// (latched EntityId).
 	/// </summary>
 	public bool LatchedEngageTargetInCombat { get; init; }
 
@@ -163,11 +145,9 @@ public static class CombatDecision
 			&& d <= engageRange;
 
 	/// <summary>
-	/// Enter combat when party is engaged nearby:
-	/// follow target in combat and within range of target or their pull,
-	/// OR party member in combat targets a BattleNpc within engage range
-	/// (tab-target alone is not enough — requires verified engage),
-	/// OR local player already in combat while following (stop stacking path).
+	/// Enter combat when the player is already fighting, or a party member
+	/// in combat targets a BattleNpc within engage range.
+	/// Primary EnterCombat path is <see cref="EngageTargetHelper"/> (mob approach).
 	/// </summary>
 	public static bool ShouldEnterCombat(in CombatEngageSnapshot snap)
 	{
@@ -176,19 +156,9 @@ public static class CombatDecision
 		if (snap.PlayerInCombat)
 			return true;
 
-		if (snap.FollowTargetInCombat
-			&& (IsWithinEngageRange(snap.DistanceToFollowTarget, range)
-				|| IsWithinEngageRange(snap.DistanceToEngagedPull, range)))
-		{
-			return true;
-		}
-
-		// Party/local BattleNpc target only with verified engage (ally/follow/player in combat).
 		if (snap.PartyTargetsHuntMob
 			&& IsWithinEngageRange(snap.DistanceToPartyHuntMob, range)
-			&& (snap.AnyPartyAllyInCombat
-				|| snap.FollowTargetInCombat
-				|| snap.PlayerInCombat))
+			&& (snap.AnyPartyAllyInCombat || snap.PlayerInCombat))
 		{
 			return true;
 		}
@@ -198,12 +168,11 @@ public static class CombatDecision
 
 	/// <summary>
 	/// Combat ended when nobody relevant is fighting and no party hunt target remains.
-	/// Includes latched follow-target combat (conductor may be outside the party list).
+	/// Includes latched engage mob (may be outside the party list).
 	/// </summary>
 	public static bool IsCombatEnded(in CombatEngageSnapshot snap)
 		=> !snap.PlayerInCombat
 			&& !snap.AnyPartyAllyInCombat
-			&& !snap.FollowTargetInCombat
 			&& !snap.LatchedEngageTargetInCombat
 			&& !snap.PartyTargetsHuntMob;
 
@@ -216,7 +185,6 @@ public static class CombatDecision
 		if (!snap.PluginEnabled)
 		{
 			return phase is CombatPhase.Following or CombatPhase.Combat
-				|| snap.FollowEnabled
 				? CombatTransitionKind.StopFollow
 				: CombatTransitionKind.StayFollow;
 		}
@@ -224,7 +192,6 @@ public static class CombatDecision
 		if (snap.PlayerDead)
 		{
 			return phase is CombatPhase.Following or CombatPhase.Combat
-				|| snap.FollowEnabled
 				? CombatTransitionKind.StopFollow
 				: CombatTransitionKind.StayFollow;
 		}
@@ -239,7 +206,7 @@ public static class CombatDecision
 				? CombatTransitionKind.EnterCombat
 				: CombatTransitionKind.StayFollow,
 
-			// Idle: never EnterCombat — require Following first (post-unmount follow).
+			// Idle: never EnterCombat — require Following first (post-unmount approach).
 			_ => CombatTransitionKind.StayFollow,
 		};
 	}
@@ -253,17 +220,4 @@ public static class CombatDecision
 			CombatTransitionKind.StayFollow => phase,
 			_ => phase,
 		};
-
-	/// <summary>
-	/// Sync Idle → Following when follow is enabled (caller saw SetFollow succeed).
-	/// No-op when already Following/Combat or follow off.
-	/// </summary>
-	public static CombatPhase SyncFollowing(CombatPhase phase, bool followEnabled)
-	{
-		if (!followEnabled)
-			return phase;
-		if (phase == CombatPhase.Idle)
-			return CombatPhase.Following;
-		return phase;
-	}
 }

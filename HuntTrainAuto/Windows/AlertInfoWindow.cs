@@ -19,6 +19,7 @@ public sealed class AlertInfoWindow : Window, IDisposable
 	private readonly Func<HuntTrainMessage?> getMessage;
 	private readonly IChatOutput chat;
 	private readonly Action? openConfig;
+	private HuntTrainMessage? overrideMessage;
 	private string defaultRelayChannel = AlertRelay.DefaultChannel;
 
 	public AlertInfoWindow(
@@ -51,19 +52,31 @@ public sealed class AlertInfoWindow : Window, IDisposable
 	/// <summary>Show this window for the current retained HuntAlerts payload.</summary>
 	public void ShowLatest()
 	{
+		overrideMessage = null;
+		IsOpen = true;
+	}
+
+	/// <summary>Show this window for a specific cached HuntAlerts payload (chat link click).</summary>
+	public void Show(HuntTrainMessage message)
+	{
+		ArgumentNullException.ThrowIfNull(message);
+		overrideMessage = message;
 		IsOpen = true;
 	}
 
 	public override void Draw()
 	{
-		HuntTrainMessage? entry = null;
-		try
+		HuntTrainMessage? entry = overrideMessage;
+		if (entry == null)
 		{
-			entry = getMessage();
-		}
-		catch
-		{
-			// soft-fail
+			try
+			{
+				entry = getMessage();
+			}
+			catch
+			{
+				// soft-fail
+			}
 		}
 
 		if (entry == null)

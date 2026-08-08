@@ -9,13 +9,13 @@ public sealed class ConfigTabsTests
 	public void Labels_match_phase8_and_debug_tabs()
 	{
 		Assert.Equal(
-			["Status", "Settings", "Mount", "Follow", "Combat", "Integrations", "Debug"],
+			["Status", "Settings", "Mount", "Engage", "Combat", "Integrations", "Debug"],
 			ConfigTabs.Labels);
 		Assert.Equal(7, ConfigTabs.Labels.Length);
 		Assert.Equal(0, ConfigTabs.Status);
 		Assert.Equal(1, ConfigTabs.Settings);
 		Assert.Equal(2, ConfigTabs.Mount);
-		Assert.Equal(3, ConfigTabs.Follow);
+		Assert.Equal(3, ConfigTabs.Engage);
 		Assert.Equal(4, ConfigTabs.Combat);
 		Assert.Equal(5, ConfigTabs.Integrations);
 		Assert.Equal(6, ConfigTabs.Debug);

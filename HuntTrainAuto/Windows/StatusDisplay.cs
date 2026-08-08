@@ -17,11 +17,6 @@ public readonly struct StatusSnapshot
 
 	public UnmountPhase UnmountPipeline { get; init; }
 
-	/// <summary>Conductor/party follow target name when set; null/empty when idle.</summary>
-	public string? FollowTargetName { get; init; }
-
-	public bool FollowEnabled { get; init; }
-
 	public bool NavPathRunning { get; init; }
 
 	public int NavWaypoints { get; init; }
@@ -43,9 +38,6 @@ public readonly struct StatusSnapshot
 /// </summary>
 public static class StatusDisplay
 {
-	public const string IdleFollowLabel = "(none)";
-	public const string EnabledNoTargetLabel = "(enabled, no target)";
-
 	public static string FormatPhase(HuntTrainPhase phase)
 		=> phase switch
 		{
@@ -54,7 +46,7 @@ public static class StatusDisplay
 			HuntTrainPhase.Mount => "Mount",
 			HuntTrainPhase.Navigate => "Navigate",
 			HuntTrainPhase.Unmount => "Unmount",
-			HuntTrainPhase.FollowParty => "Follow party",
+			HuntTrainPhase.FollowParty => "Approach target",
 			HuntTrainPhase.Combat => "Combat",
 			_ => phase.ToString(),
 		};
@@ -76,15 +68,6 @@ public static class StatusDisplay
 		if (mountPipeline == MountPhase.WaitReady)
 			return "Waiting to mount";
 		return mounted ? "Mounted" : "Not mounted";
-	}
-
-	public static string FormatFollowTarget(string? name, bool followEnabled)
-	{
-		if (!string.IsNullOrWhiteSpace(name))
-			return name.Trim();
-		if (followEnabled)
-			return EnabledNoTargetLabel;
-		return IdleFollowLabel;
 	}
 
 	public static string FormatNavProgress(bool pathRunning, int waypoints, bool pathfindInProgress)
@@ -109,9 +92,6 @@ public static class StatusDisplay
 		MountPhase mountPipeline,
 		UnmountPhase unmountPipeline)
 		=> $"Mount: {FormatMountStatus(mounted, mountPipeline, unmountPipeline)}";
-
-	public static string FormatFollowLine(string? name, bool followEnabled)
-		=> $"Follow target: {FormatFollowTarget(name, followEnabled)}";
 
 	public static string FormatNavLine(bool pathRunning, int waypoints, bool pathfindInProgress)
 		=> $"Nav: {FormatNavProgress(pathRunning, waypoints, pathfindInProgress)}";

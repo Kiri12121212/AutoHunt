@@ -49,8 +49,8 @@ public static class UnmountDecision
 	public const int SessionTimeoutMs = 60_000;
 
 	/// <summary>
-	/// After unmount success, subsequent party-follow nav should use <c>canFly: false</c>
-	/// (phase 5 FollowHelper). Exposed here so callers need not hard-code the preference.
+	/// After unmount success, ground approach to the mob should use <c>canFly: false</c>.
+	/// Exposed here so callers need not hard-code the preference.
 	/// </summary>
 	public const bool PreferCanFlyForGroundFollow = false;
 

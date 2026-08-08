@@ -100,10 +100,10 @@ public sealed class ConfigWindow : Window, IDisposable
 			ImGui.EndTabItem();
 		}
 
-		if (ImGui.BeginTabItem(ConfigTabs.Labels[ConfigTabs.Follow]))
+		if (ImGui.BeginTabItem(ConfigTabs.Labels[ConfigTabs.Engage]))
 		{
-			selectedTab = ConfigTabs.Follow;
-			DrawFollowTab();
+			selectedTab = ConfigTabs.Engage;
+			DrawEngageTab();
 			ImGui.EndTabItem();
 		}
 
@@ -192,7 +192,6 @@ public sealed class ConfigWindow : Window, IDisposable
 			snap.Mounted,
 			snap.MountPipeline,
 			snap.UnmountPipeline));
-		ImGui.Text(StatusDisplay.FormatFollowLine(snap.FollowTargetName, snap.FollowEnabled));
 		ImGui.Text(StatusDisplay.FormatNavLine(
 			snap.NavPathRunning,
 			snap.NavWaypoints,
@@ -394,6 +393,13 @@ public sealed class ConfigWindow : Window, IDisposable
 			config.ShowHuntAlertsInfoWindow = showHaInfo;
 			saveConfig();
 		}
+
+		var showHaChat = config.ShowHuntAlertsChatNotice;
+		if (ImGui.Checkbox("Chat notice on HuntAlerts map (click for info)", ref showHaChat))
+		{
+			config.ShowHuntAlertsChatNotice = showHaChat;
+			saveConfig();
+		}
 	}
 
 	private void DrawMountTab()
@@ -463,27 +469,12 @@ public sealed class ConfigWindow : Window, IDisposable
 		}
 	}
 
-	private void DrawFollowTab()
+	private void DrawEngageTab()
 	{
-		var followConductorFirst = config.FollowConductorFirst;
-		if (ImGui.Checkbox("Follow conductor first (else party leader)", ref followConductorFirst))
-		{
-			config.FollowConductorFirst = followConductorFirst;
-			saveConfig();
-		}
-
-		var followDistance = config.PartyFollowDistance;
-		ImGui.SetNextItemWidth(200f);
-		if (ImGui.SliderFloat(
-			    "Party follow distance (yalms)",
-			    ref followDistance,
-			    FollowDecision.MinFollowDistance,
-			    FollowDecision.MaxFollowDistance,
-			    "%.1f"))
-		{
-			config.PartyFollowDistance = FollowDecision.ClampFollowDistance(followDistance);
-			saveConfig();
-		}
+		ImGui.TextWrapped(
+			"After the mark: path to the flag, then approach the mob on foot at engage range, unmount, and fight. " +
+			"Does not follow players.");
+		ImGui.Spacing();
 
 		var engageRange = config.EngageRange;
 		ImGui.SetNextItemWidth(200f);

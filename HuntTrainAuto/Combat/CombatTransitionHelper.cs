@@ -12,7 +12,8 @@ namespace HuntTrainAuto.Combat;
 /// <summary>
 /// Thin Framework wiring for combat transition (TASKS 5.8–5.9 / brief 5.4).
 /// Builds <see cref="CombatEngageSnapshot"/> → <see cref="CombatDecision"/> →
-/// clear follow / update <see cref="CombatSession"/>. Soft-fails; never throws to Framework.
+/// update <see cref="CombatSession"/>. Soft-fails; never throws to Framework.
+/// EnterCombat is owned by <see cref="EngageTargetHelper"/>; this helper exits combat.
 /// RSR enable is owned by <see cref="RsrEnableHelper"/> (Phase 6.2).
 /// </summary>
 public sealed class CombatTransitionHelper
@@ -44,86 +45,43 @@ public sealed class CombatTransitionHelper
 	/// <summary>Convenience: <see cref="CombatSession.InCombatPhase"/>.</summary>
 	public bool InCombatPhase => session.InCombatPhase;
 
-	/// <summary>True when follow resolve should run (not combat phase).</summary>
-	public bool AllowsFollow => session.AllowsFollow;
-
 	/// <summary>Abort to Idle (new flag / territory / dispose / master off).</summary>
 	public void Clear() => session.Clear();
 
 	/// <summary>
-	/// One Framework tick: sync Following, decide transition, stop follow on EnterCombat/StopFollow.
+	/// One Framework tick: decide transition (exit combat / death / master off).
+	/// EnterCombat is owned by <see cref="EngageTargetHelper"/>.
 	/// </summary>
-	public void Tick(FollowHelper follow, bool pluginEnabled)
+	public void Tick(bool pluginEnabled)
 	{
 		try
 		{
-			TickCore(follow, pluginEnabled);
+			TickCore(pluginEnabled);
 		}
 		catch (Exception ex)
 		{
 			pluginLog.Debug($"CombatTransitionHelper soft-fail: {ex.Message}");
-			try
-			{
-				follow.Clear();
-			}
-			catch (Exception clearEx)
-			{
-				pluginLog.Debug($"CombatTransitionHelper clear soft-fail: {clearEx.Message}");
-			}
 		}
 	}
 
-	private void TickCore(FollowHelper follow, bool pluginEnabled)
+	private void TickCore(bool pluginEnabled)
 	{
-		var phase = CombatDecision.SyncFollowing(session.Phase, follow.Enabled);
-		if (phase != session.Phase && phase == CombatPhase.Following)
-			session.EnterFollowing();
-
-		var snap = BuildSnapshot(follow, pluginEnabled);
+		var snap = BuildSnapshot(pluginEnabled);
 		var kind = CombatDecision.Decide(session.Phase, snap);
 
-		uint? latchId = null;
-		if (kind == CombatTransitionKind.EnterCombat)
-			latchId = TryEntityId(follow.FollowTarget);
-
-		if (kind is CombatTransitionKind.EnterCombat or CombatTransitionKind.StopFollow)
-		{
-			if (follow.Enabled || follow.FollowTarget != null)
-				follow.Clear();
-		}
-
-		if (kind == CombatTransitionKind.EnterCombat)
-			pluginLog.Debug("Combat transition: EnterCombat (follow cleared)");
-		else if (kind == CombatTransitionKind.StopFollow && session.Phase != CombatPhase.Idle)
+		if (kind == CombatTransitionKind.StopFollow && session.Phase != CombatPhase.Idle)
 			pluginLog.Debug($"Combat transition: StopFollow from {session.Phase}");
 
-		session.Apply(kind, latchId);
+		session.Apply(kind);
 	}
 
-	private CombatEngageSnapshot BuildSnapshot(FollowHelper follow, bool pluginEnabled)
+	private CombatEngageSnapshot BuildSnapshot(bool pluginEnabled)
 	{
 		var player = objectTable.LocalPlayer;
 		var playerDead = IsPlayerDead(player);
 		var playerInCombat = !playerDead && (
 			condition[ConditionFlag.InCombat]
 			|| (player != null && IsInCombat(player)));
-
-		float? distFollow = null;
-		float? distPull = null;
-		var followPresent = false;
-		var followInCombat = false;
-
-		var target = follow.FollowTarget;
-		if (player != null && target != null && TryIsValid(target))
-		{
-			followPresent = true;
-			distFollow = Vector3.Distance(player.Position, target.Position);
-			if (target is ICharacter followChara)
-				followInCombat = IsInCombat(followChara);
-
-			if (TryGetBattleNpcTarget(target, out var pull) && pull != null)
-				distPull = Vector3.Distance(player.Position, pull.Position);
-		}
 
 		var partyTargets = false;
 		float? distPartyMob = null;
@@ -141,11 +99,6 @@ public sealed class CombatTransitionHelper
 		{
 			PluginEnabled = pluginEnabled,
 			PlayerDead = playerDead,
-			FollowEnabled = follow.Enabled,
-			FollowTargetPresent = followPresent,
-			FollowTargetInCombat = followInCombat,
-			DistanceToFollowTarget = distFollow,
-			DistanceToEngagedPull = distPull,
 			PartyTargetsHuntMob = partyTargets,
 			DistanceToPartyHuntMob = distPartyMob,
 			PlayerInCombat = playerInCombat,

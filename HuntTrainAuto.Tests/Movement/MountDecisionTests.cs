@@ -26,6 +26,29 @@ public sealed class MountDecisionTests
 			MountDecision.ShouldEnqueueOnCombatEnd(wasInCombatPhase, inCombatPhase, useMount));
 
 	[Theory]
+	[InlineData(true, false, false, false, false, false, false, true)]
+	[InlineData(false, false, false, false, false, false, false, false)]
+	[InlineData(true, true, false, false, false, false, false, false)]
+	[InlineData(true, false, true, false, false, false, false, false)]
+	[InlineData(true, false, false, true, false, false, false, false)]
+	[InlineData(true, false, false, false, true, false, false, false)]
+	[InlineData(true, false, false, false, false, true, false, false)]
+	[InlineData(true, false, false, false, false, false, true, false)]
+	public void ShouldEnqueueForFlagTravel(
+		bool useMount,
+		bool mounted,
+		bool mountJobActive,
+		bool diverting,
+		bool withinArrival,
+		bool unmountActive,
+		bool readyForGround,
+		bool expected)
+		=> Assert.Equal(
+			expected,
+			MountDecision.ShouldEnqueueForFlagTravel(
+				useMount, mounted, mountJobActive, diverting, withinArrival, unmountActive, readyForGround));
+
+	[Theory]
 	[InlineData(true, false, true)]
 	[InlineData(true, true, false)]
 	[InlineData(false, false, false)]
@@ -37,10 +60,11 @@ public sealed class MountDecisionTests
 
 	[Theory]
 	[InlineData(false, true, true, false, true)]
-	[InlineData(true, true, true, false, false)]
+	[InlineData(true, true, true, false, true)] // stale LS busy ignored when instance idle
 	[InlineData(false, false, true, false, false)]
 	[InlineData(false, true, false, false, false)]
 	[InlineData(false, true, true, true, false)]
+	[InlineData(true, true, true, true, false)] // instance-change still blocks
 	public void CanBeginMountAttempt(
 		bool lifestreamBusy,
 		bool screenReady,
@@ -213,7 +237,7 @@ public sealed class MountDecisionTests
 	}
 
 	[Fact]
-	public void DecideMountTick_done_when_action_not_usable()
+	public void DecideMountTick_wait_when_action_not_usable()
 	{
 		var r = MountDecision.DecideMountTick(
 			mounted: false,
@@ -225,7 +249,8 @@ public sealed class MountDecisionTests
 			resolve: RandomResolve(),
 			animationLocked: false,
 			summonThrottleReady: true);
-		Assert.Equal(MountTickKind.Done, r.Kind);
+		Assert.Equal(MountTickKind.Wait, r.Kind);
+		Assert.True(r.ForceCheckThrottle);
 	}
 
 	[Fact]
@@ -361,7 +386,7 @@ public sealed class MountDecisionTests
 		Assert.False(s.IsActive);
 		s.Enqueue(1000);
 		Assert.Equal(MountPhase.WaitReady, s.Phase);
-		Assert.Equal(0, s.DeadlineMs);
+		Assert.Equal(1000 + MountDecision.SessionTimeoutMs, s.DeadlineMs);
 		s.EnterMounting(5000);
 		Assert.Equal(MountPhase.Mounting, s.Phase);
 		Assert.Equal(5000 + MountDecision.SessionTimeoutMs, s.DeadlineMs);
@@ -371,11 +396,12 @@ public sealed class MountDecisionTests
 	}
 
 	[Fact]
-	public void MountSession_deadline_starts_on_mounting_not_wait_ready()
+	public void MountSession_deadline_arms_on_enqueue_so_wait_ready_cannot_pin()
 	{
 		var s = new MountSession();
 		s.Enqueue(0);
-		Assert.False(MountDecision.IsSessionTimedOut(s.DeadlineMs, 120_000));
+		Assert.False(MountDecision.IsSessionTimedOut(s.DeadlineMs, MountDecision.SessionTimeoutMs - 1));
+		Assert.True(MountDecision.IsSessionTimedOut(s.DeadlineMs, MountDecision.SessionTimeoutMs));
 		s.EnterMounting(10_000);
 		Assert.False(MountDecision.IsSessionTimedOut(s.DeadlineMs, 10_000));
 		Assert.True(MountDecision.IsSessionTimedOut(s.DeadlineMs, 10_000 + MountDecision.SessionTimeoutMs));

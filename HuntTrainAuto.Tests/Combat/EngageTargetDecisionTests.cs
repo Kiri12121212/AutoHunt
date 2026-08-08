@@ -142,6 +142,69 @@ public sealed class EngageTargetDecisionTests
 			expected,
 			EngageTargetDecision.ShouldSuppressChatWhileFightingARank(inCombat, targetIsA));
 
+	[Theory]
+	[InlineData(10f, 50f, true)]
+	[InlineData(50f, 50f, true)]
+	[InlineData(51f, 50f, false)]
+	[InlineData(-1f, 50f, false)]
+	public void ShouldDivertFromFlagNav(float dist, float range, bool expected)
+		=> Assert.Equal(expected, EngageTargetDecision.ShouldDivertFromFlagNav(dist, range));
+
+	[Theory]
+	[InlineData(true, false, 3f, 5f, 0f, true)]
+	[InlineData(false, true, 3f, 5f, 0.5f, true)]
+	[InlineData(false, true, 3f, 5f, 10f, false)] // still high above mob floor
+	[InlineData(false, false, 3f, 5f, 0f, false)]
+	[InlineData(true, false, 20f, 5f, 0f, false)]
+	public void ShouldLandAndUnmountForEngage(
+		bool mounted,
+		bool inFlight,
+		float dist,
+		float engageRange,
+		float verticalDelta,
+		bool expected)
+		=> Assert.Equal(
+			expected,
+			EngageTargetDecision.ShouldLandAndUnmountForEngage(
+				mounted,
+				inFlight,
+				dist,
+				engageRange,
+				verticalDelta));
+
+	[Theory]
+	[InlineData(true, false, 10f, 50f, true)]
+	[InlineData(false, true, 10f, 50f, true)]
+	[InlineData(false, false, 10f, 50f, false)]
+	[InlineData(true, false, 60f, 50f, false)]
+	public void ShouldApproachMobFloorForEngage(
+		bool mounted,
+		bool inFlight,
+		float dist,
+		float divertRange,
+		bool expected)
+		=> Assert.Equal(
+			expected,
+			EngageTargetDecision.ShouldApproachMobFloorForEngage(
+				mounted,
+				inFlight,
+				dist,
+				divertRange));
+
+	[Theory]
+	[InlineData(true, false, true, true)]
+	[InlineData(true, true, true, false)]
+	[InlineData(false, false, true, false)]
+	[InlineData(true, false, false, false)]
+	public void ShouldFlushDeferredFlagAfterCombat(
+		bool wasInCombat,
+		bool inCombat,
+		bool hasDeferred,
+		bool expected)
+		=> Assert.Equal(
+			expected,
+			EngageTargetDecision.ShouldFlushDeferredFlagAfterCombat(wasInCombat, inCombat, hasDeferred));
+
 	[Fact]
 	public void ARankHuntIndex_only_rank_a()
 	{

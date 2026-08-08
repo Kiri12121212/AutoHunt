@@ -13,7 +13,6 @@ public sealed class DebugEventProbe
 	private HuntTrainPhase lastPhase = HuntTrainPhase.Idle;
 	private MountPhase lastMount = MountPhase.Idle;
 	private UnmountPhase lastUnmount = UnmountPhase.Idle;
-	private string? lastFollowKey;
 	private bool initialized;
 
 	public DebugEventProbe(DebugEventLog log)
@@ -36,16 +35,13 @@ public sealed class DebugEventProbe
 		bool debugEnabled,
 		HuntTrainPhase phase,
 		MountPhase mountPhase,
-		UnmountPhase unmountPhase,
-		string? followTargetName,
-		bool followEnabled)
+		UnmountPhase unmountPhase)
 	{
 		if (!DebugEventFormatter.ShouldRecord(debugEnabled))
 		{
 			lastPhase = phase;
 			lastMount = mountPhase;
 			lastUnmount = unmountPhase;
-			lastFollowKey = FollowKey(followTargetName, followEnabled);
 			initialized = true;
 			return;
 		}
@@ -55,7 +51,6 @@ public sealed class DebugEventProbe
 			lastPhase = phase;
 			lastMount = mountPhase;
 			lastUnmount = unmountPhase;
-			lastFollowKey = FollowKey(followTargetName, followEnabled);
 			initialized = true;
 			return;
 		}
@@ -77,20 +72,5 @@ public sealed class DebugEventProbe
 			log.Record(DebugEventKind.Unmount, DebugEventFormatter.FormatUnmountChange(lastUnmount, unmountPhase));
 			lastUnmount = unmountPhase;
 		}
-
-		var followKey = FollowKey(followTargetName, followEnabled);
-		if (!string.Equals(followKey, lastFollowKey, StringComparison.Ordinal))
-		{
-			log.Record(
-				DebugEventKind.FollowTarget,
-				DebugEventFormatter.FormatFollowTarget(followTargetName, followEnabled));
-			lastFollowKey = followKey;
-		}
-	}
-
-	private static string FollowKey(string? name, bool enabled)
-	{
-		var trimmed = name?.Trim() ?? string.Empty;
-		return enabled ? $"1|{trimmed}" : $"0|{trimmed}";
 	}
 }

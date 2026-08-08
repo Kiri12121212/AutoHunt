@@ -51,8 +51,6 @@
 		<Compile Include="..\HuntTrainAuto\Movement\UnmountDecision.cs" Link="Movement\UnmountDecision.cs" />
 		<Compile Include="..\HuntTrainAuto\Movement\MovementDecision.cs" Link="Movement\MovementDecision.cs" />
 		<Compile Include="..\HuntTrainAuto\Movement\MeshPathfindRetryDecision.cs" Link="Movement\MeshPathfindRetryDecision.cs" />
-		<Compile Include="..\HuntTrainAuto\Combat\FollowDecision.cs" Link="Combat\FollowDecision.cs" />
-		<Compile Include="..\HuntTrainAuto\Combat\FollowTargetDecision.cs" Link="Combat\FollowTargetDecision.cs" />
 		<Compile Include="..\HuntTrainAuto\Combat\CombatDecision.cs" Link="Combat\CombatDecision.cs" />
 		<Compile Include="..\HuntTrainAuto\Combat\EngageTargetDecision.cs" Link="Combat\EngageTargetDecision.cs" />
 		<Compile Include="..\HuntTrainAuto\Combat\RsrEnums.cs" Link="Combat\RsrEnums.cs" />
@@ -75,6 +73,7 @@
 		<Compile Include="..\HuntTrainAuto\Windows\ConfigTabs.cs" Link="Windows\ConfigTabs.cs" />
 		<Compile Include="..\HuntTrainAuto\Windows\StatusDisplay.cs" Link="Windows\StatusDisplay.cs" />
 		<Compile Include="..\HuntTrainAuto\Windows\AlertInfoDisplay.cs" Link="Windows\AlertInfoDisplay.cs" />
+		<Compile Include="..\HuntTrainAuto\Windows\AlertChatNotice.cs" Link="Windows\AlertChatNotice.cs" />
 		<Compile Include="..\HuntTrainAuto\Windows\AlertRelay.cs" Link="Windows\AlertRelay.cs" />
 		<Compile Include="..\HuntTrainAuto\Notifications\NotificationDecision.cs" Link="Notifications\NotificationDecision.cs" />
 		<Compile Include="..\HuntTrainAuto\HuntAlerts\HuntAlertsFilter.cs" Link="HuntAlerts\HuntAlertsFilter.cs" />

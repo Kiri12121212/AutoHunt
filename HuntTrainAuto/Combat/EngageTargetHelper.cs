@@ -11,6 +11,29 @@ using Lumina.Excel.Sheets;
 
 namespace HuntTrainAuto.Combat;
 
+/// <summary>Soft probe result for divert / land-unmount (no side effects).</summary>
+public readonly struct EngageProbeResult
+{
+	public static EngageProbeResult None { get; } = new()
+	{
+		Found = false,
+		Kind = EngageTargetKind.None,
+		Distance = float.PositiveInfinity,
+		MobPosition = Vector3.Zero,
+		IsARank = false,
+	};
+
+	public required bool Found { get; init; }
+
+	public required EngageTargetKind Kind { get; init; }
+
+	public required float Distance { get; init; }
+
+	public required Vector3 MobPosition { get; init; }
+
+	public required bool IsARank { get; init; }
+}
+
 /// <summary>
 /// After flag unmount: join conductor's fight, else a party ally's fight, else nearest A-rank.
 /// Does <b>not</b> follow players. Soft-fails; never throws to Framework.
@@ -61,6 +84,42 @@ public sealed class EngageTargetHelper
 	/// (any engage kind). Used to ignore chat flags mid-fight.
 	/// </summary>
 	public bool TargetIsARank => lastTargetIsARank;
+
+	/// <summary>
+	/// Soft probe for a nearby engage mob without pathing or EnterCombat.
+	/// Used to divert flag Navigate → land / unmount when the pull is already close.
+	/// </summary>
+	public EngageProbeResult Probe(IList<string> conductors)
+	{
+		try
+		{
+			var player = objectTable.LocalPlayer;
+			if (player == null)
+				return EngageProbeResult.None;
+
+			EnsureARankIndex();
+			BuildCandidates(player, conductors);
+
+			var pick = EngageTargetDecision.Resolve(candidates, getARankScanRange());
+			if (!pick.Found || pick.Index < 0 || pick.Index >= candidateObjects.Count)
+				return EngageProbeResult.None;
+
+			var mob = candidateObjects[pick.Index];
+			return new EngageProbeResult
+			{
+				Found = true,
+				Kind = pick.Kind,
+				Distance = Vector3.Distance(player.Position, mob.Position),
+				MobPosition = mob.Position,
+				IsARank = candidates[pick.Index].IsARank,
+			};
+		}
+		catch (Exception ex)
+		{
+			pluginLog.Debug($"EngageTargetHelper.Probe soft-fail: {ex.Message}");
+			return EngageProbeResult.None;
+		}
+	}
 
 	/// <summary>Clear path / lock (new flag, territory, master off, dispose).</summary>
 	public void Clear()

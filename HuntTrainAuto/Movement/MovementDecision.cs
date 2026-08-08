@@ -129,6 +129,12 @@ public static class MovementDecision
 		=> numWaypoints == 1;
 
 	/// <summary>
+	/// Max |player.Y − PointOnFloor.Y| to treat the player as on-mesh for ground pathfind.
+	/// Larger gaps mean mid-air / falling (poly→0 spam after zone load).
+	/// </summary>
+	public const float PlayerOnMeshMaxYDelta = 6f;
+
+	/// <summary>
 	/// Soft-wait before starting a mesh pathfind (AD ready / nav / in-progress / waypoints / running guards).
 	/// <paramref name="playerOnMesh"/>: after territory swap, wait until the local player projects
 	/// onto the loaded mesh (avoids <c>poly → 0</c> spam while still falling / off-mesh).

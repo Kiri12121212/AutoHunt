@@ -15,7 +15,7 @@ public enum TerritoryCleanupKind
 
 	/// <summary>
 	/// Active teleport plan cleared into a hunting territory: instance-change + mount handoff.
-	/// Clears engage/combat/RSR/follow/path latches; does not reset the train controller or clear conductors/flag.
+	/// Clears engage/combat/RSR/path latches; does not reset the train controller or clear conductors/flag.
 	/// </summary>
 	TpArrivalHandoff,
 
@@ -59,7 +59,6 @@ public readonly struct TerritoryCleanupPlan
 	public bool ClearEngage { get; init; }
 	public bool ClearCombat { get; init; }
 	public bool ClearRsr { get; init; }
-	public bool ClearFollow { get; init; }
 
 	/// <summary>
 	/// Soft-stop vnavmesh path. Prefer this over forcing dismount mid-zone-load —
@@ -137,7 +136,6 @@ public static class TerritoryCleanupDecision
 			// Path may still be running from the previous zone; stop without aborting handoff.
 			StopNavPath = true,
 			InvalidateFlagWorldPos = true,
-			ClearFollow = true,
 			ClearEngage = true,
 			ClearCombat = true,
 			ClearRsr = true,
@@ -160,7 +158,6 @@ public static class TerritoryCleanupDecision
 			ClearEngage = true,
 			ClearCombat = true,
 			ClearRsr = true,
-			ClearFollow = true,
 			// Dismount-safe: stop path + clear jobs; do not force dismount mid-load.
 			StopNavPath = true,
 			ClearConductors = true,

@@ -117,16 +117,40 @@ public static class MountDecision
 		=> isArrived && !readyForGroundFollow;
 
 	/// <summary>
-	/// HTA wait-for-player before <c>MountIfCan</c>:
-	/// <c>!Lifestream.IsBusy &amp;&amp; IsScreenReady &amp;&amp; Player.Interactable</c>,
-	/// plus our instance-change runner must be idle.
+	/// Remount while still traveling to the flag (Mount/Navigate) if dismounted and no job.
+	/// Recovers mount-timeout / post-TP WaitReady abandon so fly-to can start.
+	/// Skips engage divert, flag arrival, and unmount (ground approach).
+	/// </summary>
+	public static bool ShouldEnqueueForFlagTravel(
+		bool useMount,
+		bool mounted,
+		bool mountJobActive,
+		bool divertingToEngage,
+		bool withinFlagArrival = false,
+		bool unmountActive = false,
+		bool readyForGroundFollow = false)
+		=> useMount
+			&& !mounted
+			&& !mountJobActive
+			&& !divertingToEngage
+			&& !withinFlagArrival
+			&& !unmountActive
+			&& !readyForGroundFollow;
+
+	/// <summary>
+	/// Wait-for-player before <c>MountIfCan</c>: screen + player ready, instance-change idle.
+	/// <paramref name="lifestreamBusy"/> is ignored — <c>InstanceChangeRunner</c> owns LS exclusivity.
+	/// Stale <c>IsBusy</c> after same-zone Teleporter TP was pinning WaitReady and blocking Navigate.
 	/// </summary>
 	public static bool CanBeginMountAttempt(
 		bool lifestreamBusy,
 		bool screenReady,
 		bool playerReady,
 		bool instanceChangeActive)
-		=> !lifestreamBusy && screenReady && playerReady && !instanceChangeActive;
+	{
+		_ = lifestreamBusy;
+		return screenReady && playerReady && !instanceChangeActive;
+	}
 
 	/// <summary>Already mounted or config never-mount → success/no-op.</summary>
 	public static bool IsMountCompleteOrSkipped(bool mounted, int mountConfig)
@@ -233,9 +257,15 @@ public static class MountDecision
 			};
 		}
 
+		// Transient GA status (post-combat, animation, AM null) — retry, do not abandon.
+		// Done-abandon dropped combat-end remount after a single falling-edge enqueue.
 		if (!mountActionUsable)
 		{
-			return new MountTickResult { Kind = MountTickKind.Done };
+			return new MountTickResult
+			{
+				Kind = MountTickKind.Wait,
+				ForceCheckThrottle = true,
+			};
 		}
 
 		if (resolve.Kind == MountResolveKind.NoUnlocked)

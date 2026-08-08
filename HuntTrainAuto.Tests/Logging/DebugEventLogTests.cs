@@ -52,7 +52,7 @@ public sealed class DebugEventLogTests
 	{
 		var log = new DebugEventLog(capacity: 0);
 		Assert.Equal(1, log.Capacity);
-		log.Record(DebugEventKind.FollowTarget, "only");
+		log.Record(DebugEventKind.Mount, "only");
 		Assert.Equal(1, log.Count);
 	}
 }

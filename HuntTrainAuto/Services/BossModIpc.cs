@@ -117,12 +117,16 @@ public sealed class BossModIpc : IBossModService
 
 	private bool EnableBmr()
 	{
-		// BMR has no AIConfig.Enabled — runtime Beh via /bmrai on.
+		// Prefer Configuration when present (newer BMR); always also /bmrai on for Beh.
+		_ = TryConfigurationBmr(BossModCommands.EnableAiConfigArgs);
 		return chat.TryExecuteCommand(BossModCommands.BmrEnableChatCommand);
 	}
 
 	private bool DisableBmr()
-		=> chat.TryExecuteCommand(BossModCommands.BmrDisableChatCommand);
+	{
+		_ = TryConfigurationBmr(BossModCommands.DisableAiConfigArgs);
+		return chat.TryExecuteCommand(BossModCommands.BmrDisableChatCommand);
+	}
 
 	private void ApplyCoexistenceSettings(BossModProviderKind provider)
 	{

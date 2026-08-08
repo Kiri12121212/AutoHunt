@@ -21,6 +21,13 @@ public static class InstanceChangeDecision
 	public static bool ShouldEnqueue(int requestedInstance)
 		=> requestedInstance > 0;
 
+	/// <summary>
+	/// Enqueue only when a positive target differs from the live current instance.
+	/// Avoids no-op jobs when the plan already matches (wrong-target bugs still log upstream).
+	/// </summary>
+	public static bool ShouldEnqueueIfNeeded(int requestedInstance, int currentInstance)
+		=> NeedsInstanceChange(requestedInstance, currentInstance, numberOfInstances: 0);
+
 	/// <summary>True when already on the requested instance.</summary>
 	public static bool IsAlreadyOnInstance(int requestedInstance, int currentInstance)
 		=> requestedInstance > 0 && currentInstance == requestedInstance;

@@ -52,41 +52,9 @@ public sealed class CombatDecisionTests
 	[Fact]
 	public void ShouldEnterCombat_false_when_only_arrived_no_engage()
 	{
-		// Flag arrival / unmount / follow idle — no combat signals.
-		var snap = Snap(followEnabled: true, distanceToFollow: 2f);
+		// Flag arrival / unmount / approach idle — no combat signals.
+		var snap = Snap();
 		Assert.False(CombatDecision.ShouldEnterCombat(snap));
-	}
-
-	[Fact]
-	public void ShouldEnterCombat_when_follow_target_in_combat_within_range()
-	{
-		var snap = Snap(
-			followTargetInCombat: true,
-			distanceToFollow: 10f,
-			engageRange: 25f);
-		Assert.True(CombatDecision.ShouldEnterCombat(snap));
-	}
-
-	[Fact]
-	public void ShouldEnterCombat_false_when_follow_in_combat_but_too_far()
-	{
-		var snap = Snap(
-			followTargetInCombat: true,
-			distanceToFollow: 40f,
-			distanceToPull: 40f,
-			engageRange: 25f);
-		Assert.False(CombatDecision.ShouldEnterCombat(snap));
-	}
-
-	[Fact]
-	public void ShouldEnterCombat_when_within_range_of_engaged_pull()
-	{
-		var snap = Snap(
-			followTargetInCombat: true,
-			distanceToFollow: 40f,
-			distanceToPull: 15f,
-			engageRange: 25f);
-		Assert.True(CombatDecision.ShouldEnterCombat(snap));
 	}
 
 	[Fact]
@@ -144,15 +112,15 @@ public sealed class CombatDecisionTests
 	}
 
 	[Fact]
-	public void IsCombatEnded_false_while_latched_follow_target_fighting()
+	public void IsCombatEnded_false_while_latched_engage_mob_fighting()
 	{
 		Assert.False(CombatDecision.IsCombatEnded(Snap(latchedEngageInCombat: true)));
 	}
 
 	[Fact]
-	public void Decide_Combat_stays_while_latched_conductor_fighting()
+	public void Decide_Combat_stays_while_latched_mob_fighting()
 	{
-		// After EnterCombat, FollowHelper is cleared — latch keeps phase until conductor drops combat.
+		// After EnterCombat, latch keeps phase until the mob drops combat.
 		var snap = Snap(latchedEngageInCombat: true);
 		Assert.Equal(
 			CombatTransitionKind.StayFollow,
@@ -176,8 +144,6 @@ public sealed class CombatDecisionTests
 	public void Decide_Idle_never_enters_combat()
 	{
 		var snap = Snap(
-			followTargetInCombat: true,
-			distanceToFollow: 5f,
 			playerInCombat: true,
 			partyTargetsHuntMob: true,
 			distanceToPartyMob: 5f,
@@ -190,7 +156,10 @@ public sealed class CombatDecisionTests
 	[Fact]
 	public void Decide_Following_enters_combat_on_engage()
 	{
-		var snap = Snap(followTargetInCombat: true, distanceToFollow: 8f);
+		var snap = Snap(
+			partyTargetsHuntMob: true,
+			distanceToPartyMob: 8f,
+			anyAllyInCombat: true);
 		Assert.Equal(
 			CombatTransitionKind.EnterCombat,
 			CombatDecision.Decide(CombatPhase.Following, snap));
@@ -199,7 +168,7 @@ public sealed class CombatDecisionTests
 	[Fact]
 	public void Decide_Following_stays_when_no_engage()
 	{
-		var snap = Snap(followEnabled: true, distanceToFollow: 3f);
+		var snap = Snap();
 		Assert.Equal(
 			CombatTransitionKind.StayFollow,
 			CombatDecision.Decide(CombatPhase.Following, snap));
@@ -223,9 +192,9 @@ public sealed class CombatDecisionTests
 	}
 
 	[Fact]
-	public void Decide_death_stops_follow_or_combat()
+	public void Decide_death_stops_approach_or_combat()
 	{
-		var dead = Snap(playerDead: true, followEnabled: true);
+		var dead = Snap(playerDead: true);
 		Assert.Equal(
 			CombatTransitionKind.StopFollow,
 			CombatDecision.Decide(CombatPhase.Following, dead));
@@ -237,7 +206,7 @@ public sealed class CombatDecisionTests
 	[Fact]
 	public void Decide_plugin_off_stops_active_phases()
 	{
-		var off = Snap(pluginEnabled: false, followEnabled: true);
+		var off = Snap(pluginEnabled: false);
 		Assert.Equal(
 			CombatTransitionKind.StopFollow,
 			CombatDecision.Decide(CombatPhase.Following, off));
@@ -261,48 +230,25 @@ public sealed class CombatDecisionTests
 	}
 
 	[Fact]
-	public void SyncFollowing_Idle_to_Following_when_follow_on()
-	{
-		Assert.Equal(
-			CombatPhase.Following,
-			CombatDecision.SyncFollowing(CombatPhase.Idle, followEnabled: true));
-		Assert.Equal(
-			CombatPhase.Idle,
-			CombatDecision.SyncFollowing(CombatPhase.Idle, followEnabled: false));
-		Assert.Equal(
-			CombatPhase.Combat,
-			CombatDecision.SyncFollowing(CombatPhase.Combat, followEnabled: true));
-	}
-
-	[Fact]
 	public void CombatSession_phase_signal_for_phase6()
 	{
 		var session = new CombatSession();
 		Assert.False(session.InCombatPhase);
-		Assert.True(session.AllowsFollow);
 
 		session.EnterFollowing();
 		Assert.Equal(CombatPhase.Following, session.Phase);
-		Assert.True(session.AllowsFollow);
 
 		session.Apply(CombatTransitionKind.EnterCombat);
 		Assert.True(session.InCombatPhase);
-		Assert.False(session.AllowsFollow);
 
 		session.Apply(CombatTransitionKind.StopFollow);
 		Assert.Equal(CombatPhase.Idle, session.Phase);
 		Assert.False(session.InCombatPhase);
-		Assert.True(session.AllowsFollow);
 	}
 
 	private static CombatEngageSnapshot Snap(
 		bool pluginEnabled = true,
 		bool playerDead = false,
-		bool followEnabled = false,
-		bool followTargetPresent = true,
-		bool followTargetInCombat = false,
-		float? distanceToFollow = null,
-		float? distanceToPull = null,
 		bool partyTargetsHuntMob = false,
 		float? distanceToPartyMob = null,
 		bool playerInCombat = false,
@@ -313,11 +259,6 @@ public sealed class CombatDecisionTests
 		{
 			PluginEnabled = pluginEnabled,
 			PlayerDead = playerDead,
-			FollowEnabled = followEnabled,
-			FollowTargetPresent = followTargetPresent,
-			FollowTargetInCombat = followTargetInCombat,
-			DistanceToFollowTarget = distanceToFollow,
-			DistanceToEngagedPull = distanceToPull,
 			PartyTargetsHuntMob = partyTargetsHuntMob,
 			DistanceToPartyHuntMob = distanceToPartyMob,
 			PlayerInCombat = playerInCombat,

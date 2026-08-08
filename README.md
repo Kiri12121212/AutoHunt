@@ -12,11 +12,11 @@ Logic references (not dependencies):
 When a conductor posts a map flag:
 
 1. Parse the flag from chat
-2. Teleport if needed
-3. Mount and vnavmesh to the flag
-4. Unmount at the spot
-5. Follow the party to the pull
-6. Engage with Rotation Solver Reborn
+2. Teleport or walk to the mark
+3. Mount and vnavmesh toward the flag
+4. When the target is close: approach on foot at fight range, unmount
+5. Engage with Rotation Solver Reborn
+6. After the fight: remount and wait for the next mark
 
 ## Required plugins (runtime)
 

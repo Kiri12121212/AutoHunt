@@ -12,6 +12,14 @@ public sealed class InstanceChangeDecisionTests
 		=> Assert.Equal(expected, InstanceChangeDecision.ShouldEnqueue(instance));
 
 	[Theory]
+	[InlineData(2, 1, true)]
+	[InlineData(2, 2, false)]
+	[InlineData(0, 1, false)]
+	[InlineData(1, 0, true)]
+	public void ShouldEnqueueIfNeeded(int requested, int current, bool expected)
+		=> Assert.Equal(expected, InstanceChangeDecision.ShouldEnqueueIfNeeded(requested, current));
+
+	[Theory]
 	[InlineData(2, 2, true)]
 	[InlineData(2, 1, false)]
 	[InlineData(0, 0, false)]

@@ -3,7 +3,7 @@
 namespace HuntTrainAuto.Domain;
 
 /// <summary>
-/// Local combat/follow phase latch (TASKS 5.8–5.9).
+/// Local combat/approach phase latch (TASKS 5.8–5.9).
 /// Phase 6.2 reads <see cref="InCombatPhase"/> / <see cref="Phase"/> — no RSR calls here.
 /// </summary>
 public sealed class CombatSession
@@ -11,16 +11,13 @@ public sealed class CombatSession
 	public CombatPhase Phase { get; private set; } = CombatPhase.Idle;
 
 	/// <summary>
-	/// EntityId of the follow target at EnterCombat (conductor may be outside party).
+	/// EntityId of the engage mob at EnterCombat.
 	/// Cleared on return to Idle. Used so combat-end does not fire the tick after Clear().
 	/// </summary>
 	public uint? LatchedEngageEntityId { get; private set; }
 
-	/// <summary>True while party-engage combat phase is active (signal for Phase 6 RSR).</summary>
+	/// <summary>True while combat phase is active (signal for Phase 6 RSR).</summary>
 	public bool InCombatPhase => Phase == CombatPhase.Combat;
-
-	/// <summary>Follow resolve/tick allowed when not in combat phase.</summary>
-	public bool AllowsFollow => Phase != CombatPhase.Combat;
 
 	public void EnterFollowing()
 	{

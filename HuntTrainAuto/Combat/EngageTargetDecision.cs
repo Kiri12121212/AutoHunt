@@ -153,9 +153,68 @@ public static class EngageTargetDecision
 	/// <summary>
 	/// Skip conductor chat flag intake while fighting an A-rank so a map-link
 	/// does not abort mid-pull. Approach / non-A combat still accept chat.
+	/// Callers should <b>defer</b> (not drop) the flag and flush after combat.
 	/// </summary>
 	public static bool ShouldSuppressChatWhileFightingARank(
 		bool inCombatPhase,
 		bool targetIsARank)
 		=> inCombatPhase && targetIsARank;
+
+	/// <summary>
+	/// Abort flag Navigate and divert toward this mob (scan range).
+	/// </summary>
+	public static bool ShouldDivertFromFlagNav(float distanceToMob, float divertRange)
+		=> distanceToMob >= 0f
+			&& !float.IsNaN(distanceToMob)
+			&& !float.IsInfinity(distanceToMob)
+			&& distanceToMob <= ClampARankScanRange(divertRange);
+
+	/// <summary>
+	/// Max |player.Y − mob.Y| while still InFlight before PathStop + Unmount.
+	/// Higher = still descending toward the mob floor.
+	/// </summary>
+	public const float EngageUnmountMaxVerticalDelta = 3f;
+
+	/// <summary>
+	/// Mob is close enough to PathStop + Unmount (within engage range, mounted/flying,
+	/// and near the mob's floor altitude when still in flight).
+	/// </summary>
+	public static bool ShouldLandAndUnmountForEngage(
+		bool mounted,
+		bool inFlight,
+		float distanceToMob,
+		float engageRange,
+		float verticalDeltaToMob = 0f)
+	{
+		if (!(mounted || inFlight))
+			return false;
+		if (!ShouldEnterCombatOnMob(distanceToMob, engageRange))
+			return false;
+		// Still high above the mob: keep flying down; do not dismount mid-air.
+		if (inFlight
+			&& verticalDeltaToMob > EngageUnmountMaxVerticalDelta)
+			return false;
+		return true;
+	}
+
+	/// <summary>
+	/// Mounted/flying and mob in divert range → keep approaching the mob floor
+	/// (caller issues Move) until <see cref="ShouldLandAndUnmountForEngage"/>.
+	/// </summary>
+	public static bool ShouldApproachMobFloorForEngage(
+		bool mounted,
+		bool inFlight,
+		float distanceToMob,
+		float divertRange)
+		=> (mounted || inFlight)
+			&& ShouldDivertFromFlagNav(distanceToMob, divertRange);
+
+	/// <summary>
+	/// Flush a combat-deferred conductor flag on the combat→idle falling edge.
+	/// </summary>
+	public static bool ShouldFlushDeferredFlagAfterCombat(
+		bool wasInCombatPhase,
+		bool inCombatPhase,
+		bool hasDeferredFlag)
+		=> wasInCombatPhase && !inCombatPhase && hasDeferredFlag;
 }

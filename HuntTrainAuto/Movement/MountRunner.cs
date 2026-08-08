@@ -18,7 +18,6 @@ namespace HuntTrainAuto.Movement;
 public sealed class MountRunner
 {
 	private readonly MountSession session = new();
-	private readonly ILifestreamService lifestream;
 	private readonly IChatOutput chat;
 	private readonly IObjectTable objectTable;
 	private readonly ICondition condition;
@@ -35,7 +34,8 @@ public sealed class MountRunner
 		IPluginLog pluginLog,
 		Func<bool> isInstanceChangeActive)
 	{
-		this.lifestream = lifestream;
+		// Lifestream retained in ctor for call-site stability; instance-change owns LS busy.
+		_ = lifestream;
 		this.chat = chat;
 		this.objectTable = objectTable;
 		this.condition = condition;
@@ -86,6 +86,15 @@ public sealed class MountRunner
 			return;
 		}
 
+		// Same-zone TP often keeps Mounted — complete before CanBegin gates.
+		// Otherwise BetweenAreas / instance-change can pin WaitReady and block Navigate.
+		var mounted = condition[ConditionFlag.Mounted];
+		if (MountDecision.IsMountCompleteOrSkipped(mounted, mountConfig))
+		{
+			session.Clear();
+			return;
+		}
+
 		var player = objectTable.LocalPlayer;
 		var playerReady = TeleportGate.IsPlayerReady(
 			player != null,
@@ -98,7 +107,7 @@ public sealed class MountRunner
 			condition[ConditionFlag.WatchingCutscene]);
 
 		if (!MountDecision.CanBeginMountAttempt(
-			lifestream.IsBusy(),
+			lifestreamBusy: false, // instance-change runner owns LS exclusivity
 			screenReady,
 			playerReady,
 			isInstanceChangeActive()))

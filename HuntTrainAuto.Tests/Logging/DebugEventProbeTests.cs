@@ -9,8 +9,8 @@ public sealed class DebugEventProbeTests
 	{
 		var log = new DebugEventLog();
 		var probe = new DebugEventProbe(log);
-		probe.Observe(false, HuntTrainPhase.Teleport, MountPhase.Idle, UnmountPhase.Idle, null, false);
-		probe.Observe(false, HuntTrainPhase.Mount, MountPhase.Mounting, UnmountPhase.Idle, "A", true);
+		probe.Observe(false, HuntTrainPhase.Teleport, MountPhase.Idle, UnmountPhase.Idle);
+		probe.Observe(false, HuntTrainPhase.Mount, MountPhase.Mounting, UnmountPhase.Idle);
 		Assert.Equal(0, log.Count);
 	}
 
@@ -19,10 +19,10 @@ public sealed class DebugEventProbeTests
 	{
 		var log = new DebugEventLog();
 		var probe = new DebugEventProbe(log);
-		probe.Observe(true, HuntTrainPhase.Idle, MountPhase.Idle, UnmountPhase.Idle, null, false);
+		probe.Observe(true, HuntTrainPhase.Idle, MountPhase.Idle, UnmountPhase.Idle);
 		Assert.Equal(0, log.Count);
 
-		probe.Observe(true, HuntTrainPhase.Teleport, MountPhase.WaitReady, UnmountPhase.Idle, null, false);
+		probe.Observe(true, HuntTrainPhase.Teleport, MountPhase.WaitReady, UnmountPhase.Idle);
 		Assert.Equal(2, log.Count);
 		var snap = log.SnapshotNewestFirst();
 		Assert.Contains(snap, e => e.Kind == DebugEventKind.PhaseChange);
@@ -42,26 +42,15 @@ public sealed class DebugEventProbeTests
 	}
 
 	[Fact]
-	public void Observe_records_follow_target_change()
-	{
-		var log = new DebugEventLog();
-		var probe = new DebugEventProbe(log);
-		probe.Observe(true, HuntTrainPhase.FollowParty, MountPhase.Idle, UnmountPhase.Idle, null, false);
-		probe.Observe(true, HuntTrainPhase.FollowParty, MountPhase.Idle, UnmountPhase.Idle, "Conductor", true);
-		Assert.Equal(1, log.Count);
-		Assert.Equal(DebugEventKind.FollowTarget, log.SnapshotNewestFirst()[0].Kind);
-	}
-
-	[Fact]
 	public void Observe_records_flag_restart_idle_intermediate()
 	{
 		// Mid-pipeline AbortThenRestart: probe after Reset (Idle) then after Start* Apply.
 		var log = new DebugEventLog();
 		var probe = new DebugEventProbe(log);
-		probe.Observe(true, HuntTrainPhase.Combat, MountPhase.Idle, UnmountPhase.Idle, null, false);
+		probe.Observe(true, HuntTrainPhase.Combat, MountPhase.Idle, UnmountPhase.Idle);
 
-		probe.Observe(true, HuntTrainPhase.Idle, MountPhase.Idle, UnmountPhase.Idle, null, false);
-		probe.Observe(true, HuntTrainPhase.Teleport, MountPhase.Idle, UnmountPhase.Idle, null, false);
+		probe.Observe(true, HuntTrainPhase.Idle, MountPhase.Idle, UnmountPhase.Idle);
+		probe.Observe(true, HuntTrainPhase.Teleport, MountPhase.Idle, UnmountPhase.Idle);
 
 		Assert.Equal(2, log.Count);
 		var snap = log.SnapshotNewestFirst();

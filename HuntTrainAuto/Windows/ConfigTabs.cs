@@ -11,7 +11,7 @@ public static class ConfigTabs
 	public const int Status = 0;
 	public const int Settings = 1;
 	public const int Mount = 2;
-	public const int Follow = 3;
+	public const int Engage = 3;
 	public const int Combat = 4;
 	public const int Integrations = 5;
 	public const int Debug = 6;
@@ -21,7 +21,7 @@ public static class ConfigTabs
 		"Status",
 		"Settings",
 		"Mount",
-		"Follow",
+		"Engage",
 		"Combat",
 		"Integrations",
 		"Debug",

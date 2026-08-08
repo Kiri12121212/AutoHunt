@@ -14,7 +14,7 @@ public enum FlagRestartKind
 	StartFromIdle = 0,
 
 	/// <summary>
-	/// Active phase and/or in-flight nav/follow/combat/RSR/mount/TP:
+	/// Active phase and/or in-flight nav/engage/combat/RSR/mount/TP:
 	/// stop path + clear jobs + reset to Idle, then Apply Start* for the new flag.
 	/// </summary>
 	AbortThenRestart,
@@ -31,7 +31,6 @@ public readonly struct FlagRestartPlan
 	/// <summary>Soft-stop vnavmesh path from the previous flag leg.</summary>
 	public bool StopNavPath { get; init; }
 
-	public bool ClearFollow { get; init; }
 	public bool ClearInstanceChange { get; init; }
 	public bool ClearMount { get; init; }
 	public bool ClearFlagArrival { get; init; }
@@ -57,7 +56,7 @@ public static class FlagRestartDecision
 {
 	/// <summary>
 	/// True when the train phase is non-Idle or callers report leftover in-flight work
-	/// (nav / follow / combat / RSR / mount / TP / instance / unmount).
+	/// (nav / engage / combat / RSR / mount / TP / instance / unmount).
 	/// </summary>
 	public static bool IsPipelineActive(HuntTrainPhase phase, bool hasInFlightWork)
 		=> phase != HuntTrainPhase.Idle || hasInFlightWork;
@@ -123,7 +122,6 @@ public static class FlagRestartDecision
 		{
 			Kind = FlagRestartKind.AbortThenRestart,
 			StopNavPath = true,
-			ClearFollow = true,
 			ClearInstanceChange = true,
 			ClearMount = true,
 			ClearFlagArrival = true,

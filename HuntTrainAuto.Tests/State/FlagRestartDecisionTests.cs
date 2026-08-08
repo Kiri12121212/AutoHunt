@@ -37,7 +37,6 @@ public sealed class FlagRestartDecisionTests
 		Assert.Equal(FlagRestartKind.StartFromIdle, plan.Kind);
 		Assert.Equal(HuntTrainEvent.StartTeleport, plan.StartEvent);
 		Assert.False(plan.StopNavPath);
-		Assert.False(plan.ClearFollow);
 		Assert.False(plan.ResetTrainController);
 		AssertJobClears(plan);
 	}
@@ -71,7 +70,6 @@ public sealed class FlagRestartDecisionTests
 		Assert.Equal(FlagRestartKind.AbortThenRestart, plan.Kind);
 		Assert.Equal(HuntTrainEvent.StartNavigate, plan.StartEvent);
 		Assert.True(plan.StopNavPath);
-		Assert.True(plan.ClearFollow);
 		Assert.True(plan.ResetTrainController);
 		AssertJobClears(plan);
 	}
@@ -90,7 +88,6 @@ public sealed class FlagRestartDecisionTests
 		Assert.Equal(FlagRestartKind.AbortThenRestart, plan.Kind);
 		Assert.Equal(HuntTrainEvent.StartTeleport, plan.StartEvent);
 		Assert.True(plan.StopNavPath);
-		Assert.True(plan.ClearFollow);
 		Assert.True(plan.ResetTrainController);
 	}
 

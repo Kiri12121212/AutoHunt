@@ -11,7 +11,7 @@ public sealed class StatusDisplayTests
 	[InlineData(HuntTrainPhase.Mount, "Mount")]
 	[InlineData(HuntTrainPhase.Navigate, "Navigate")]
 	[InlineData(HuntTrainPhase.Unmount, "Unmount")]
-	[InlineData(HuntTrainPhase.FollowParty, "Follow party")]
+	[InlineData(HuntTrainPhase.FollowParty, "Approach target")]
 	[InlineData(HuntTrainPhase.Combat, "Combat")]
 	public void FormatPhase_labels_pipeline(HuntTrainPhase phase, string expected)
 		=> Assert.Equal(expected, StatusDisplay.FormatPhase(phase));
@@ -42,22 +42,6 @@ public sealed class StatusDisplayTests
 		=> Assert.Equal(
 			"Mount: Mounted",
 			StatusDisplay.FormatMountLine(true, MountPhase.Idle, UnmountPhase.Idle));
-
-	[Theory]
-	[InlineData(null, false, "(none)")]
-	[InlineData("", false, "(none)")]
-	[InlineData("   ", false, "(none)")]
-	[InlineData(null, true, "(enabled, no target)")]
-	[InlineData("Alice", false, "Alice")]
-	[InlineData("  Bob  ", true, "Bob")]
-	public void FormatFollowTarget_idle_or_name(string? name, bool enabled, string expected)
-		=> Assert.Equal(expected, StatusDisplay.FormatFollowTarget(name, enabled));
-
-	[Fact]
-	public void FormatFollowLine_prefixes_target()
-		=> Assert.Equal(
-			"Follow target: (none)",
-			StatusDisplay.FormatFollowLine(null, false));
 
 	[Theory]
 	[InlineData(false, 0, false, "Idle")]
@@ -109,7 +93,6 @@ public sealed class StatusDisplayTests
 			() => throw new InvalidOperationException("ui probe"));
 		Assert.Equal(HuntTrainPhase.Idle, snap.Phase);
 		Assert.False(snap.Mounted);
-		Assert.False(snap.FollowEnabled);
 		Assert.False(snap.NavPathRunning);
 	}
 }

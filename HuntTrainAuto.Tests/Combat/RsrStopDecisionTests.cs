@@ -116,7 +116,6 @@ public sealed class RsrStopDecisionTests
 		{
 			PluginEnabled = true,
 			PlayerDead = true,
-			FollowEnabled = false,
 			EngageRange = CombatDecision.DefaultEngageRange,
 		};
 
@@ -125,10 +124,8 @@ public sealed class RsrStopDecisionTests
 		{
 			PluginEnabled = true,
 			PlayerDead = false,
-			FollowEnabled = false,
 			PlayerInCombat = false,
 			AnyPartyAllyInCombat = false,
-			FollowTargetInCombat = false,
 			LatchedEngageTargetInCombat = false,
 			PartyTargetsHuntMob = false,
 			EngageRange = CombatDecision.DefaultEngageRange,

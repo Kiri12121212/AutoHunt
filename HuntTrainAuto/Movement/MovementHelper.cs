@@ -260,7 +260,9 @@ public sealed class MovementHelper
 	}
 
 	/// <summary>
-	/// True when the local player projects onto the loaded navmesh floor.
+	/// True when the local player projects onto the loaded navmesh floor
+	/// within a vertical tolerance (rejects mid-air / falling PointOnFloor hits that
+	/// still yield a floor under the player but pathfind starts at poly 0).
 	/// Soft-fails false (wait) when mesh / IPC unavailable.
 	/// </summary>
 	private bool IsPlayerOnMesh(Vector3 playerPos)
@@ -271,7 +273,12 @@ public sealed class MovementHelper
 				playerPos,
 				allowUnlandable: true,
 				halfExtentXZ: FlagWorldPosition.DefaultHalfExtentXZ);
-			return floor != null;
+			if (floor == null)
+				return false;
+
+			// Mid-air / load: PointOnFloor can return a ground hit far below the player
+			// while the start poly for pathfind is still 0.
+			return Math.Abs(floor.Value.Y - playerPos.Y) <= MovementDecision.PlayerOnMeshMaxYDelta;
 		}
 		catch
 		{

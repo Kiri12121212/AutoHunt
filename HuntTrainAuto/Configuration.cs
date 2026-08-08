@@ -93,7 +93,7 @@ public sealed class Configuration : IPluginConfiguration
 
 	/// <summary>
 	/// Auto-dismount at flag area after arrival (TaskUnmount / GeneralAction 1 or <c>/dismount</c>).
-	/// Default true. After success, subsequent follow nav should use <c>canFly: false</c>.
+	/// Default true. After success, ground approach to the mob uses <c>canFly: false</c>.
 	/// </summary>
 	public bool AutoUnmountAtFlag { get; set; } = true;
 
@@ -109,14 +109,6 @@ public sealed class Configuration : IPluginConfiguration
 	/// Clamped via <see cref="HuntPfDecision.ClampRetryIntervalMs"/>.
 	/// </summary>
 	public int HuntPfRetryIntervalMs { get; set; } = HuntPfDecision.DefaultRetryIntervalMs;
-
-	/// <summary>
-	/// Party-stack follow distance (yalms). Default <see cref="FollowDecision.DefaultFollowDistance"/>.
-	/// Effective value is clamped to
-	/// [<see cref="FollowDecision.MinFollowDistance"/>, <see cref="FollowDecision.MaxFollowDistance"/>].
-	/// </summary>
-	public float PartyFollowDistance { get; set; } = FollowDecision.DefaultFollowDistance;
-	public bool FollowConductorFirst { get; set; } = true;
 
 	/// <summary>
 	/// Scan radius (yalms) for nearby A-rank NotoriousMonsters after unmount.
@@ -174,7 +166,13 @@ public sealed class Configuration : IPluginConfiguration
 	/// </summary>
 	public bool ShowHuntAlertsInfoWindow { get; set; } = true;
 
-	/// <summary>Record phase / follow / mount edges into the Debug tab ring buffer (TASKS 9.2).</summary>
+	/// <summary>
+	/// Print a HuntAlerts-style clickable chat line when a HuntAlerts payload maps successfully.
+	/// Click opens the alert info window for that notification.
+	/// </summary>
+	public bool ShowHuntAlertsChatNotice { get; set; } = true;
+
+	/// <summary>Record phase / mount / unmount edges into the Debug tab ring buffer (TASKS 9.2).</summary>
 	public bool EnableDebugLogging { get; set; } = true;
 
 	/// <summary>

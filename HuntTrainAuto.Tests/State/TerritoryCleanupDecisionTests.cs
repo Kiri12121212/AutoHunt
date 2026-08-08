@@ -57,7 +57,6 @@ public sealed class TerritoryCleanupDecisionTests
 		Assert.True(plan.EnqueueMount);
 		Assert.True(plan.StopNavPath);
 		Assert.True(plan.InvalidateFlagWorldPos);
-		Assert.True(plan.ClearFollow);
 		Assert.True(plan.ClearEngage);
 		Assert.True(plan.ClearCombat);
 		Assert.True(plan.ClearRsr);
@@ -136,7 +135,6 @@ public sealed class TerritoryCleanupDecisionTests
 		Assert.True(plan.ClearEngage);
 		Assert.True(plan.ClearCombat);
 		Assert.True(plan.ClearRsr);
-		Assert.True(plan.ClearFollow);
 		Assert.True(plan.StopNavPath);
 		Assert.True(plan.ClearConductors);
 		Assert.True(plan.ResetTrainController);
