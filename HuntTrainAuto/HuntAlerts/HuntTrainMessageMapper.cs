@@ -69,13 +69,57 @@ public static class HuntTrainMessageMapper
 		float mapCoordFudge = DefaultMapCoordFudge,
 		IReadOnlyList<string>? trainGroupFilter = null,
 		uint? expansionVersion = null)
+		=> TryMap(
+			message,
+			huntAlertsIntegration,
+			rankFilter,
+			worldBlacklist,
+			out flag,
+			out _,
+			mapId,
+			sizeFactor,
+			offsetX,
+			offsetY,
+			timestamp,
+			mapCoordFudge,
+			trainGroupFilter,
+			expansionVersion);
+
+	/// <summary>
+	/// Same as <see cref="TryMap(HuntTrainMessage?,bool,IReadOnlyList{HuntMarkRank}?,IReadOnlyList{string}?,out HuntFlag,uint,float,int,int,DateTimeOffset?,float,IReadOnlyList{string}?,uint?)"/>
+	/// but reports a short <paramref name="rejectReason"/> when mapping fails (for logs / UI).
+	/// </summary>
+	public static bool TryMap(
+		HuntTrainMessage? message,
+		bool huntAlertsIntegration,
+		IReadOnlyList<HuntMarkRank>? rankFilter,
+		IReadOnlyList<string>? worldBlacklist,
+		out HuntFlag flag,
+		out string rejectReason,
+		uint mapId = 0,
+		float sizeFactor = DefaultSizeFactor,
+		int offsetX = 0,
+		int offsetY = 0,
+		DateTimeOffset? timestamp = null,
+		float mapCoordFudge = DefaultMapCoordFudge,
+		IReadOnlyList<string>? trainGroupFilter = null,
+		uint? expansionVersion = null)
 	{
 		flag = null!;
+		rejectReason = "";
 		if (message == null)
+		{
+			rejectReason = "null message";
 			return false;
+		}
 
 		if (!HuntAlertsFilter.TryMapHuntType(message.huntType, out var rank))
+		{
+			rejectReason = string.IsNullOrWhiteSpace(message.huntType)
+				? "missing huntType"
+				: $"unknown huntType '{message.huntType.Trim()}'";
 			return false;
+		}
 
 		if (!HuntAlertsFilter.ShouldAccept(
 			    huntAlertsIntegration,
@@ -86,13 +130,32 @@ public static class HuntTrainMessageMapper
 			    trainGroupFilter: trainGroupFilter,
 			    huntKind: message.huntKind,
 			    exVersion: expansionVersion))
+		{
+			if (!huntAlertsIntegration)
+				rejectReason = "integration off";
+			else if (!HuntAlertsFilter.IsRankAllowed(rankFilter, rank))
+				rejectReason = $"rank filter blocked {rank}";
+			else if (HuntAlertsFilter.IsWorldBlacklisted(worldBlacklist, message.huntWorld))
+				rejectReason = $"world blacklisted '{message.huntWorld}'";
+			else if (!HuntAlertsFilter.IsTrainGroupAllowed(
+				         trainGroupFilter, message.huntKind, expansionVersion))
+				rejectReason = $"expansion filter blocked kind='{message.huntKind}' ex={expansionVersion?.ToString() ?? "?"}";
+			else
+				rejectReason = "filtered";
 			return false;
+		}
 
 		if (message.startTerritoryTypeId == 0)
+		{
+			rejectReason = "missing startTerritoryTypeId";
 			return false;
+		}
 
 		if (!TryResolveMapCoords(message, out var mapX, out var mapY))
+		{
+			rejectReason = "missing map coords";
 			return false;
+		}
 
 		if (sizeFactor <= 0f)
 			sizeFactor = DefaultSizeFactor;

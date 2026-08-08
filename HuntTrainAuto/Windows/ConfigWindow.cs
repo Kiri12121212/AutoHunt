@@ -21,6 +21,7 @@ public sealed class ConfigWindow : Window, IDisposable
 	private readonly Func<bool> rsrAvailable;
 	private readonly Func<HuntAlertsPluginStatus> huntAlertsStatus;
 	private readonly Func<HuntAlertsLastAlert?> getHuntAlertsLastAlert;
+	private readonly Func<string?> getHuntAlertsLastIntake;
 	private readonly Func<StatusSnapshot> getStatus;
 	private readonly DebugEventLog debugLog;
 	private string conductorInput = string.Empty;
@@ -37,7 +38,8 @@ public sealed class ConfigWindow : Window, IDisposable
 		Func<HuntAlertsPluginStatus> huntAlertsStatus,
 		Func<HuntAlertsLastAlert?> getHuntAlertsLastAlert,
 		Func<StatusSnapshot> getStatus,
-		DebugEventLog debugLog) : base("HuntTrainAuto")
+		DebugEventLog debugLog,
+		Func<string?>? getHuntAlertsLastIntake = null) : base("HuntTrainAuto")
 	{
 		this.config = config;
 		this.saveConfig = saveConfig;
@@ -47,6 +49,7 @@ public sealed class ConfigWindow : Window, IDisposable
 		this.rsrAvailable = rsrAvailable;
 		this.huntAlertsStatus = huntAlertsStatus;
 		this.getHuntAlertsLastAlert = getHuntAlertsLastAlert;
+		this.getHuntAlertsLastIntake = getHuntAlertsLastIntake ?? (() => null);
 		this.getStatus = getStatus;
 		this.debugLog = debugLog;
 		SizeConstraints = new WindowSizeConstraints
@@ -432,6 +435,8 @@ public sealed class ConfigWindow : Window, IDisposable
 
 		ImGui.TextDisabled(HuntAlertsAvailability.FormatLastAlertStatus(
 			SafeGetHuntAlertsLastAlert()));
+		ImGui.TextDisabled(HuntAlertsAvailability.FormatLastIntakeStatus(
+			SafeGetHuntAlertsLastIntake()));
 		ImGui.TextWrapped(
 			"When a hunt mark notification is received from HuntAlerts, automatically teleport to the target world and zone.");
 	}
@@ -473,6 +478,18 @@ public sealed class ConfigWindow : Window, IDisposable
 		try
 		{
 			return getHuntAlertsLastAlert();
+		}
+		catch
+		{
+			return null;
+		}
+	}
+
+	private string? SafeGetHuntAlertsLastIntake()
+	{
+		try
+		{
+			return getHuntAlertsLastIntake();
 		}
 		catch
 		{

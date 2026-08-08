@@ -261,7 +261,9 @@ public sealed class HuntTrainMessageMapperTests
 			huntAlertsIntegration: false,
 			rankFilter: null,
 			worldBlacklist: null,
-			out _));
+			out _,
+			out var reason));
+		Assert.Equal("integration off", reason);
 	}
 
 	[Fact]
@@ -272,7 +274,9 @@ public sealed class HuntTrainMessageMapperTests
 			huntAlertsIntegration: true,
 			rankFilter: null,
 			worldBlacklist: null,
-			out _));
+			out _,
+			out var reason));
+		Assert.Equal("unknown huntType 'b_rank'", reason);
 	}
 
 	[Fact]
@@ -346,7 +350,9 @@ public sealed class HuntTrainMessageMapperTests
 			huntAlertsIntegration: true,
 			rankFilter: null,
 			worldBlacklist: null,
-			out _));
+			out _,
+			out var reason));
+		Assert.Equal("missing startTerritoryTypeId", reason);
 	}
 
 	[Fact]
@@ -358,7 +364,9 @@ public sealed class HuntTrainMessageMapperTests
 			huntAlertsIntegration: true,
 			rankFilter: null,
 			worldBlacklist: null,
-			out _));
+			out _,
+			out var reason));
+		Assert.Equal("missing map coords", reason);
 	}
 
 	[Fact]
