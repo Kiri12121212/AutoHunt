@@ -5,6 +5,8 @@ namespace HuntTrainAuto.Tests.Teleport;
 
 public sealed class TeleportDecisionTests
 {
+	private const float DefaultYalmThreshold = 150f;
+
 	private static ArrivalData Arrival(uint aetheryte = 42, uint territory = 813, int instance = 0)
 		=> ArrivalData.CreateOrNull(aetheryte, territory, instance)!;
 
@@ -17,7 +19,7 @@ public sealed class TeleportDecisionTests
 			currentTerritory: 100,
 			flagTerritory: 813,
 			playerDistance: 50f,
-			distanceThreshold: 3f,
+			distanceThreshold: DefaultYalmThreshold,
 			currentInstance: 0,
 			targetInstance: 0,
 			arrival: Arrival());
@@ -37,7 +39,7 @@ public sealed class TeleportDecisionTests
 			currentTerritory: 100,
 			flagTerritory: 813,
 			playerDistance: 50f,
-			distanceThreshold: 3f,
+			distanceThreshold: DefaultYalmThreshold,
 			currentInstance: 0,
 			targetInstance: 0,
 			arrival: Arrival());
@@ -56,7 +58,7 @@ public sealed class TeleportDecisionTests
 			currentTerritory: 100,
 			flagTerritory: 813,
 			playerDistance: null,
-			distanceThreshold: 3f,
+			distanceThreshold: DefaultYalmThreshold,
 			currentInstance: 0,
 			targetInstance: 1,
 			arrival: arrival);
@@ -75,7 +77,7 @@ public sealed class TeleportDecisionTests
 			currentTerritory: 100,
 			flagTerritory: 813,
 			playerDistance: null,
-			distanceThreshold: 3f,
+			distanceThreshold: DefaultYalmThreshold,
 			currentInstance: 0,
 			targetInstance: 0,
 			arrival: null);
@@ -85,7 +87,7 @@ public sealed class TeleportDecisionTests
 	}
 
 	[Fact]
-	public void Decide_switches_instance_when_same_zone_target_differs()
+	public void Decide_switches_instance_when_same_zone_far_and_target_differs()
 	{
 		var arrival = Arrival(instance: 0);
 		var result = TeleportDecision.Decide(
@@ -93,8 +95,8 @@ public sealed class TeleportDecisionTests
 			autoTeleport: true,
 			currentTerritory: 813,
 			flagTerritory: 813,
-			playerDistance: 1f,
-			distanceThreshold: 3f,
+			playerDistance: 200f,
+			distanceThreshold: DefaultYalmThreshold,
 			currentInstance: 1,
 			targetInstance: 2,
 			arrival: arrival);
@@ -107,20 +109,22 @@ public sealed class TeleportDecisionTests
 	}
 
 	[Fact]
-	public void Decide_instance_switch_takes_priority_over_close_distance()
+	public void Decide_AlreadyClose_beats_instance_hint_when_close()
 	{
 		var result = TeleportDecision.Decide(
 			enabled: true,
 			autoTeleport: true,
 			currentTerritory: 813,
 			flagTerritory: 813,
-			playerDistance: 0.5f,
-			distanceThreshold: 3f,
+			playerDistance: 40f,
+			distanceThreshold: DefaultYalmThreshold,
 			currentInstance: 1,
 			targetInstance: 3,
 			arrival: Arrival());
 
-		Assert.Equal(TeleportAction.SwitchInstance, result.Action);
+		Assert.Equal(TeleportAction.Skip, result.Action);
+		Assert.Equal(TeleportSkipReason.AlreadyClose, result.SkipReason);
+		Assert.False(result.ShouldTeleport);
 	}
 
 	[Theory]
@@ -145,8 +149,8 @@ public sealed class TeleportDecisionTests
 			autoTeleport: true,
 			currentTerritory: 813,
 			flagTerritory: 813,
-			playerDistance: 3f,
-			distanceThreshold: 3f,
+			playerDistance: DefaultYalmThreshold,
+			distanceThreshold: DefaultYalmThreshold,
 			currentInstance: 1,
 			targetInstance: 0,
 			arrival: Arrival());
@@ -163,8 +167,8 @@ public sealed class TeleportDecisionTests
 			autoTeleport: true,
 			currentTerritory: 813,
 			flagTerritory: 813,
-			playerDistance: 2.9f,
-			distanceThreshold: 3f,
+			playerDistance: 149.9f,
+			distanceThreshold: DefaultYalmThreshold,
 			currentInstance: 0,
 			targetInstance: 0,
 			arrival: Arrival());
@@ -181,8 +185,8 @@ public sealed class TeleportDecisionTests
 			autoTeleport: true,
 			currentTerritory: 813,
 			flagTerritory: 813,
-			playerDistance: 3.1f,
-			distanceThreshold: 3f,
+			playerDistance: 150.1f,
+			distanceThreshold: DefaultYalmThreshold,
 			currentInstance: 0,
 			targetInstance: 0,
 			arrival: arrival);
@@ -199,8 +203,8 @@ public sealed class TeleportDecisionTests
 			autoTeleport: true,
 			currentTerritory: 813,
 			flagTerritory: 813,
-			playerDistance: 50f,
-			distanceThreshold: 3f,
+			playerDistance: 500f,
+			distanceThreshold: DefaultYalmThreshold,
 			currentInstance: 0,
 			targetInstance: 0,
 			arrival: null);
@@ -217,13 +221,30 @@ public sealed class TeleportDecisionTests
 			currentTerritory: 813,
 			flagTerritory: 813,
 			playerDistance: null,
-			distanceThreshold: 3f,
+			distanceThreshold: DefaultYalmThreshold,
 			currentInstance: 0,
 			targetInstance: 0,
 			arrival: Arrival());
 
 		Assert.Equal(TeleportAction.Skip, result.Action);
 		Assert.Equal(TeleportSkipReason.PlayerStateUnavailable, result.SkipReason);
+	}
+
+	[Fact]
+	public void Decide_unknown_distance_still_switches_instance()
+	{
+		var result = TeleportDecision.Decide(
+			enabled: true,
+			autoTeleport: true,
+			currentTerritory: 813,
+			flagTerritory: 813,
+			playerDistance: null,
+			distanceThreshold: DefaultYalmThreshold,
+			currentInstance: 1,
+			targetInstance: 2,
+			arrival: Arrival());
+
+		Assert.Equal(TeleportAction.SwitchInstance, result.Action);
 	}
 
 	[Theory]
@@ -241,7 +262,7 @@ public sealed class TeleportDecisionTests
 		var result = TeleportDecision.Evaluate(
 			enabled: true,
 			autoTeleport: true,
-			distanceThreshold: 3f,
+			distanceThreshold: DefaultYalmThreshold,
 			autoSwitchInstanceToOne: false,
 			flag,
 			snapshot: null);
@@ -267,7 +288,7 @@ public sealed class TeleportDecisionTests
 		var result = TeleportDecision.Evaluate(
 			enabled: true,
 			autoTeleport: true,
-			distanceThreshold: 3f,
+			distanceThreshold: DefaultYalmThreshold,
 			autoSwitchInstanceToOne: true,
 			flag,
 			snapshot);
@@ -293,7 +314,7 @@ public sealed class TeleportDecisionTests
 		var result = TeleportDecision.Evaluate(
 			enabled: true,
 			autoTeleport: true,
-			distanceThreshold: 3f,
+			distanceThreshold: DefaultYalmThreshold,
 			autoSwitchInstanceToOne: true,
 			flag,
 			snapshot);
@@ -310,14 +331,14 @@ public sealed class TeleportDecisionTests
 			CurrentTerritory = 813,
 			CurrentInstance = 1,
 			TargetInstance = 0,
-			PlayerDistance = 1f,
+			PlayerDistance = 40f,
 			Nearest = new NearestAetheryteResult(5u, "Near"),
 		};
 
 		var result = TeleportDecision.Evaluate(
 			enabled: true,
 			autoTeleport: true,
-			distanceThreshold: 3f,
+			distanceThreshold: DefaultYalmThreshold,
 			autoSwitchInstanceToOne: false,
 			flag,
 			snapshot);
@@ -328,27 +349,50 @@ public sealed class TeleportDecisionTests
 	}
 
 	[Fact]
-	public void Evaluate_throws_when_flag_null()
+	public void Evaluate_same_zone_close_with_instance_hint_skips_AlreadyClose()
 	{
-		Assert.Throws<ArgumentNullException>(() => TeleportDecision.Evaluate(
-			true, true, 3f, false, null!, null));
+		var flag = HuntFlag.FromMapLink(813u, 1u, 100, 200, "A", DateTimeOffset.UnixEpoch);
+		var snapshot = new TeleportPlayerSnapshot
+		{
+			CurrentTerritory = 813,
+			CurrentInstance = 1,
+			TargetInstance = 2,
+			PlayerDistance = 20f,
+			Nearest = new NearestAetheryteResult(5u, "Near"),
+		};
+
+		var result = TeleportDecision.Evaluate(
+			enabled: true,
+			autoTeleport: true,
+			distanceThreshold: DefaultYalmThreshold,
+			autoSwitchInstanceToOne: false,
+			flag,
+			snapshot);
+
+		Assert.Equal(TeleportSkipReason.AlreadyClose, result.SkipReason);
+		Assert.False(result.ShouldTeleport);
 	}
 
 	[Fact]
-	public void Hta_default_distance_threshold_is_three()
+	public void Evaluate_throws_when_flag_null()
 	{
-		// Documented choice: HTA Config.AutoTeleportAetheryteDistanceDiff = 3f
-		// (mirrored on Configuration.AutoTeleportAetheryteDistanceDiff).
-		const float htaDefault = 3f;
-		Assert.Equal(htaDefault, 3f);
+		Assert.Throws<ArgumentNullException>(() => TeleportDecision.Evaluate(
+			true, true, DefaultYalmThreshold, false, null!, null));
+	}
+
+	[Fact]
+	public void Default_yalm_threshold_is_150()
+	{
+		Assert.Equal(150f, ConfigTabs.DefaultAutoTeleportSkipDistance);
+		Assert.Equal(500f, ConfigTabs.MaxAutoTeleportSkipDistance);
 
 		var result = TeleportDecision.Decide(
 			enabled: true,
 			autoTeleport: true,
 			currentTerritory: 813,
 			flagTerritory: 813,
-			playerDistance: htaDefault,
-			distanceThreshold: htaDefault,
+			playerDistance: DefaultYalmThreshold,
+			distanceThreshold: DefaultYalmThreshold,
 			currentInstance: 0,
 			targetInstance: 0,
 			arrival: Arrival());

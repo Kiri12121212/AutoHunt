@@ -7,7 +7,8 @@ namespace HuntTrainAuto;
 [Serializable]
 public sealed class Configuration : IPluginConfiguration
 {
-	public int Version { get; set; } = 1;
+	/// <summary>Bump when persisted fields need one-time migration (see Plugin ctor).</summary>
+	public int Version { get; set; } = 2;
 
 	public bool Enabled { get; set; } = true;
 	public List<string> Conductors { get; set; } = [];
@@ -23,11 +24,11 @@ public sealed class Configuration : IPluginConfiguration
 	public bool AutoTeleport { get; set; } = true;
 
 	/// <summary>
-	/// Same-zone skip threshold: if player distance to flag ≤ this, skip TP (mount/nav later).
-	/// HTA default is 3f (<c>Config.AutoTeleportAetheryteDistanceDiff</c>); kept for parity.
-	/// Units must match the distance passed into <see cref="TeleportDecision.Decide"/>.
+	/// Same-zone skip threshold in yalms: if player↔flag world XZ ≤ this, skip aetheryte TP
+	/// (mount/nav later). Default 150 ≈ former HTA 3 map-units on sizeFactor 100 maps.
+	/// Config Version &lt; 2 stored map units; Plugin migrates on load (×50, clamp).
 	/// </summary>
-	public float AutoTeleportAetheryteDistanceDiff { get; set; } = 3f;
+	public float AutoTeleportAetheryteDistanceDiff { get; set; } = 150f;
 
 	/// <summary>
 	/// When teleporting to another zone, set arrival instance to 1 (HTA parity).

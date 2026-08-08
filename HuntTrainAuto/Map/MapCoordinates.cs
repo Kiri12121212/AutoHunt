@@ -62,4 +62,12 @@ public static class MapCoordinates
 		var dy = y1 - y2;
 		return MathF.Sqrt((dx * dx) + (dy * dy));
 	}
+
+	/// <summary>Euclidean world XZ distance in yalms (ignores Y).</summary>
+	public static float WorldXZDistance(float x1, float z1, float x2, float z2)
+	{
+		var dx = x1 - x2;
+		var dz = z1 - z2;
+		return MathF.Sqrt((dx * dx) + (dz * dz));
+	}
 }

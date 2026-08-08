@@ -117,4 +117,25 @@ public sealed class MapCoordinatesTests
 	{
 		Assert.Equal(0f, MapCoordinates.MapDistance(12.3f, 4.5f, 12.3f, 4.5f));
 	}
+
+	[Fact]
+	public void WorldXZDistance_same_point_is_zero()
+	{
+		Assert.Equal(0f, MapCoordinates.WorldXZDistance(10f, -3f, 10f, -3f));
+	}
+
+	[Fact]
+	public void WorldXZDistance_is_euclidean_xz_yalms()
+	{
+		Assert.Equal(5f, MapCoordinates.WorldXZDistance(0f, 0f, 3f, 4f));
+		Assert.Equal(150f, MapCoordinates.WorldXZDistance(0f, 0f, 150f, 0f));
+	}
+
+	[Fact]
+	public void WorldXZDistance_from_flag_raw_matches_WorldXZFromRaw()
+	{
+		var flagXz = FlagWorldPosition.WorldXZFromRaw(100_000, 200_000);
+		var d = MapCoordinates.WorldXZDistance(90f, 180f, flagXz.X, flagXz.Y);
+		Assert.Equal(MathF.Sqrt((10f * 10f) + (20f * 20f)), d, precision: 3);
+	}
 }
