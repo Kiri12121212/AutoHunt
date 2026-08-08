@@ -26,6 +26,7 @@ public sealed class DependencyAvailabilityTests
 		Assert.Equal("Lifestream", DependencyAvailability.LifestreamDisplayName);
 		Assert.Equal("vnavmesh", DependencyAvailability.VnavmeshDisplayName);
 		Assert.Equal("Rotation Solver Reborn", DependencyAvailability.RsrDisplayName);
+		Assert.Equal("BossMod", DependencyAvailability.BossModDisplayName);
 		Assert.Equal("HuntAlerts", DependencyAvailability.HuntAlertsDisplayName);
 	}
 

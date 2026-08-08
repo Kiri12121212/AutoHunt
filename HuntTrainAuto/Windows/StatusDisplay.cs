@@ -27,6 +27,15 @@ public readonly struct StatusSnapshot
 	public int NavWaypoints { get; init; }
 
 	public bool NavPathfindInProgress { get; init; }
+
+	/// <summary>BossMod or BossModReborn loaded (preferred provider).</summary>
+	public bool BossModAvailable { get; init; }
+
+	/// <summary>Display name of active BM provider when available.</summary>
+	public string? BossModProviderName { get; init; }
+
+	/// <summary>True after HTA successfully enabled BM AI this combat latch.</summary>
+	public bool BossModAiActive { get; init; }
 }
 
 /// <summary>
@@ -106,6 +115,18 @@ public static class StatusDisplay
 
 	public static string FormatNavLine(bool pathRunning, int waypoints, bool pathfindInProgress)
 		=> $"Nav: {FormatNavProgress(pathRunning, waypoints, pathfindInProgress)}";
+
+	public static string FormatBossModAvailable(bool available, string? providerName)
+	{
+		if (!available)
+			return "BossMod: missing";
+		if (!string.IsNullOrWhiteSpace(providerName))
+			return $"BossMod: available ({providerName.Trim()})";
+		return "BossMod: available";
+	}
+
+	public static string FormatBossModAi(bool active)
+		=> active ? "BossMod AI: active" : "BossMod AI: idle";
 
 	/// <summary>Invoke <paramref name="get"/>; any throw → default idle snapshot.</summary>
 	public static StatusSnapshot SafeCapture(Func<StatusSnapshot> get)

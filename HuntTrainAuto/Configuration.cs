@@ -138,6 +138,18 @@ public sealed class Configuration : IPluginConfiguration
 	/// </summary>
 	public RsrTargetingType RsrTargetingNonTank { get; set; } = RsrSettingsDecision.DefaultNonTankTargeting;
 
+	/// <summary>
+	/// Enable BossMod / BossModReborn Automovement AI in hunt combat (dodge / safe zones).
+	/// RSR remains GCD rotation; BM owns movement. Default on.
+	/// </summary>
+	public bool BossModIntegration { get; set; } = true;
+
+	/// <summary>
+	/// When both BossMod and BossModReborn are loaded, which to drive.
+	/// Both share the <c>BossMod.*</c> CallGate prefix — prefer only one installed.
+	/// </summary>
+	public BossModPreference BossModPreference { get; set; } = BossModPreference.PreferBmr;
+
 	/// <summary>Dalamud toast when a conductor hunt flag is received (TASKS 9.1).</summary>
 	public bool EnableNotifications { get; set; } = true;
 

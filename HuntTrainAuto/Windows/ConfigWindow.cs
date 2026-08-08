@@ -19,6 +19,7 @@ public sealed class ConfigWindow : Window, IDisposable
 	private readonly Func<bool> lifestreamAvailable;
 	private readonly Func<bool> vnavmeshAvailable;
 	private readonly Func<bool> rsrAvailable;
+	private readonly Func<bool> bossModAvailable;
 	private readonly Func<HuntAlertsPluginStatus> huntAlertsStatus;
 	private readonly Func<HuntAlertsLastAlert?> getHuntAlertsLastAlert;
 	private readonly Func<string?> getHuntAlertsLastIntake;
@@ -35,6 +36,7 @@ public sealed class ConfigWindow : Window, IDisposable
 		Func<bool> lifestreamAvailable,
 		Func<bool> vnavmeshAvailable,
 		Func<bool> rsrAvailable,
+		Func<bool> bossModAvailable,
 		Func<HuntAlertsPluginStatus> huntAlertsStatus,
 		Func<HuntAlertsLastAlert?> getHuntAlertsLastAlert,
 		Func<StatusSnapshot> getStatus,
@@ -47,6 +49,7 @@ public sealed class ConfigWindow : Window, IDisposable
 		this.lifestreamAvailable = lifestreamAvailable;
 		this.vnavmeshAvailable = vnavmeshAvailable;
 		this.rsrAvailable = rsrAvailable;
+		this.bossModAvailable = bossModAvailable;
 		this.huntAlertsStatus = huntAlertsStatus;
 		this.getHuntAlertsLastAlert = getHuntAlertsLastAlert;
 		this.getHuntAlertsLastIntake = getHuntAlertsLastIntake ?? (() => null);
@@ -186,6 +189,10 @@ public sealed class ConfigWindow : Window, IDisposable
 			snap.NavPathRunning,
 			snap.NavWaypoints,
 			snap.NavPathfindInProgress));
+		ImGui.Text(StatusDisplay.FormatBossModAvailable(
+			snap.BossModAvailable,
+			snap.BossModProviderName));
+		ImGui.Text(StatusDisplay.FormatBossModAi(snap.BossModAiActive));
 	}
 
 	private void DrawSettingsTab()
@@ -465,11 +472,27 @@ public sealed class ConfigWindow : Window, IDisposable
 
 	private void DrawCombatTab()
 	{
-		ImGui.TextWrapped("Rotation Solver Reborn settings applied on engage.");
+		ImGui.TextWrapped(
+			"RSR = GCD rotation. BossMod AI = hunt dodge / safe-zone movement. " +
+			"HTA sets BM ForbidActions while enabling AI so they do not fight for casts.");
 		ImGui.Spacing();
 		DrawRsrHostileCombo();
 		DrawRsrTargetingCombo("Tank targeting", config.RsrTargetingTank, v => config.RsrTargetingTank = v);
 		DrawRsrTargetingCombo("Non-tank targeting", config.RsrTargetingNonTank, v => config.RsrTargetingNonTank = v);
+
+		ImGui.Spacing();
+		ImGui.Separator();
+		ImGui.Spacing();
+		var bm = config.BossModIntegration;
+		if (ImGui.Checkbox("Enable BossMod AI in combat", ref bm))
+		{
+			config.BossModIntegration = bm;
+			saveConfig();
+		}
+
+		ImGui.BeginDisabled(!config.BossModIntegration);
+		DrawBossModPreferenceCombo();
+		ImGui.EndDisabled();
 	}
 
 	private void DrawIntegrationsTab()
@@ -479,6 +502,7 @@ public sealed class ConfigWindow : Window, IDisposable
 		DrawDependencyLine(DependencyAvailability.LifestreamDisplayName, lifestreamAvailable);
 		DrawDependencyLine(DependencyAvailability.VnavmeshDisplayName, vnavmeshAvailable);
 		DrawDependencyLine(DependencyAvailability.RsrDisplayName, rsrAvailable);
+		DrawDependencyLine(DependencyAvailability.BossModDisplayName, bossModAvailable);
 		DrawHuntAlertsAvailabilityLine();
 
 		ImGui.Spacing();
@@ -651,6 +675,39 @@ public sealed class ConfigWindow : Window, IDisposable
 			if (ImGui.Selectable(value.ToString(), selected))
 			{
 				set(RsrSettingsDecision.ClampTargetingType(value, current));
+				saveConfig();
+			}
+
+			if (selected)
+				ImGui.SetItemDefaultFocus();
+		}
+
+		ImGui.EndCombo();
+	}
+
+	private void DrawBossModPreferenceCombo()
+	{
+		ImGui.SetNextItemWidth(280f);
+		var current = BossModCommands.ClampPreference(config.BossModPreference);
+		var preview = current switch
+		{
+			BossModPreference.PreferVbm => "Prefer Boss Mod (vbm)",
+			_ => "Prefer BossMod Reborn (BMR)",
+		};
+		if (!ImGui.BeginCombo("BossMod preference (if both loaded)", preview))
+			return;
+
+		foreach (BossModPreference value in Enum.GetValues<BossModPreference>())
+		{
+			var label = value switch
+			{
+				BossModPreference.PreferVbm => "Prefer Boss Mod (vbm)",
+				_ => "Prefer BossMod Reborn (BMR)",
+			};
+			var selected = value == current;
+			if (ImGui.Selectable(label, selected))
+			{
+				config.BossModPreference = BossModCommands.ClampPreference(value);
 				saveConfig();
 			}
 

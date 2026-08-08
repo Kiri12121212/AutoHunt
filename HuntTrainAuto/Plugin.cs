@@ -44,6 +44,7 @@ public sealed class Plugin : IDalamudPlugin
 	private readonly FollowHelper follow;
 	private readonly CombatTransitionHelper combat;
 	private readonly RsrEnableHelper rsrEnable;
+	private readonly BossModEnableHelper bossModEnable;
 	private readonly HuntTrainController train = new();
 	private readonly DebugEventLog debugLog = new();
 	private readonly DebugEventProbe debugProbe;
@@ -139,6 +140,7 @@ public sealed class Plugin : IDalamudPlugin
 
 	/// <summary>Rotation Solver Reborn IPC; enable gated by phase 6.2.</summary>
 	public IRsrService RsrIpc { get; }
+	public IBossModService BossModIpc { get; }
 
 	/// <summary>
 	/// Combat/follow phase latch (TASKS 5.8–5.9). Phase 6.2 edge-triggers
@@ -203,6 +205,21 @@ public sealed class Plugin : IDalamudPlugin
 			// soft-fail
 		}
 
+		var bossModAvailable = false;
+		string? bossModProvider = null;
+		var bossModAiActive = false;
+		try
+		{
+			bossModAvailable = BossModIpc.IsAvailable;
+			if (bossModAvailable)
+				bossModProvider = BossModCommands.DisplayName(BossModIpc.ActiveProvider);
+			bossModAiActive = bossModEnable.AiStarted;
+		}
+		catch
+		{
+			// soft-fail
+		}
+
 		return new StatusSnapshot
 		{
 			Phase = train.Phase,
@@ -214,6 +231,9 @@ public sealed class Plugin : IDalamudPlugin
 			NavPathRunning = pathRunning,
 			NavWaypoints = waypoints,
 			NavPathfindInProgress = pathfindInProgress,
+			BossModAvailable = bossModAvailable,
+			BossModProviderName = bossModProvider,
+			BossModAiActive = bossModAiActive,
 		};
 	}
 
@@ -269,6 +289,7 @@ public sealed class Plugin : IDalamudPlugin
 		Config.RsrTargetingNonTank = RsrSettingsDecision.ClampTargetingType(
 			Config.RsrTargetingNonTank,
 			RsrSettingsDecision.DefaultNonTankTargeting);
+		Config.BossModPreference = BossModCommands.ClampPreference(Config.BossModPreference);
 		if (migratedSkipDistance)
 			pluginInterface.SavePluginConfig(Config);
 
@@ -278,6 +299,11 @@ public sealed class Plugin : IDalamudPlugin
 		LifestreamIpc = new LifestreamIpc(pluginInterface);
 		VNavmeshIpc = new VNavmeshIpc(pluginInterface);
 		RsrIpc = new RsrIpc(pluginInterface);
+		chat = new GameChat();
+		BossModIpc = new BossModIpc(
+			pluginInterface,
+			chat,
+			() => Config.BossModPreference);
 
 		debugProbe = new DebugEventProbe(debugLog);
 		notificator = new HuntNotificator(
@@ -307,6 +333,7 @@ public sealed class Plugin : IDalamudPlugin
 			() => LifestreamIpc.IsAvailable,
 			() => VNavmeshIpc.IsAvailable,
 			() => RsrIpc.IsAvailable,
+			() => BossModIpc.IsAvailable,
 			() => huntAlertsIpc.PluginStatus,
 			() => huntAlertsIpc.LastMappedAlert,
 			CaptureStatus,
@@ -314,7 +341,6 @@ public sealed class Plugin : IDalamudPlugin
 			() => huntAlertsIpc.LastIntakeStatus);
 		windowSystem.AddWindow(configWindow);
 
-		chat = new GameChat();
 		chat2Ipc = new Chat2Ipc(
 			pluginInterface,
 			Config,
@@ -383,6 +409,10 @@ public sealed class Plugin : IDalamudPlugin
 			pluginLog,
 			ResolveEngageRange);
 		rsrEnable = new RsrEnableHelper(RsrIpc, pluginLog, ResolveRsrRotationSettings);
+		bossModEnable = new BossModEnableHelper(
+			BossModIpc,
+			pluginLog,
+			() => Config.BossModIntegration);
 
 		chatMessageHandler = new ChatMessageHandler(chatGui, gameGui, Config);
 		chatMessageHandler.TryGetPlayerSnapshot = TryGetPlayerSnapshot;
@@ -984,6 +1014,7 @@ public sealed class Plugin : IDalamudPlugin
 		{
 			// RSR stop: RsrStopTrigger.FlagChange → ImmediateClear.
 			rsrEnable.Clear();
+			bossModEnable.Clear();
 		}
 
 		if (plan.ResetTrainController)
@@ -1067,6 +1098,7 @@ public sealed class Plugin : IDalamudPlugin
 			// RSR stop: RsrStopTrigger.TerritoryLeave → ImmediateClear (leave);
 			// TP-arrival also clears any stale rotation latch from the previous zone.
 			rsrEnable.Clear();
+			bossModEnable.Clear();
 		}
 
 		if (plan.EnqueueInstanceChangeIfNeeded && activePlan is { } tp)
@@ -1178,6 +1210,7 @@ public sealed class Plugin : IDalamudPlugin
 			engage.Clear();
 			combat.Clear();
 			rsrEnable.Clear();
+			bossModEnable.Clear();
 			train.Reset();
 			ObserveDebugSignals();
 			return;
@@ -1226,6 +1259,8 @@ public sealed class Plugin : IDalamudPlugin
 			mount.EnqueueIfEnabled(Config.UseMount);
 		// RSR start only in combat phase; Stop on phase exit (death / combat end) via DecideTick.
 		rsrEnable.Tick(combat.InCombatPhase);
+		// BossMod AI (dodge) same lifecycle; RSR keeps GCD, BM owns movement.
+		bossModEnable.Tick(combat.InCombatPhase);
 
 		// Advance HuntTrainController from live runner signals (one event per tick).
 		train.Tick(HuntTrainObserve.BuildProgressSnapshot(
@@ -1712,9 +1747,11 @@ public sealed class Plugin : IDalamudPlugin
 		follow.Clear();
 		combat.Clear();
 		rsrEnable.Clear();
+		bossModEnable.Clear();
 		train.Reset();
 		chatMessageHandler.Dispose();
 		huntAlertsIpc.Dispose();
+		BossModIpc.Dispose();
 		RsrIpc.Dispose();
 		VNavmeshIpc.Dispose();
 		LifestreamIpc.Dispose();

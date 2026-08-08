@@ -78,6 +78,19 @@ public sealed class StatusDisplayTests
 			"Nav: Idle",
 			StatusDisplay.FormatNavLine(false, 0, false));
 
+	[Theory]
+	[InlineData(false, null, "BossMod: missing")]
+	[InlineData(true, null, "BossMod: available")]
+	[InlineData(true, "BossMod Reborn", "BossMod: available (BossMod Reborn)")]
+	public void FormatBossModAvailable_labels(bool available, string? name, string expected)
+		=> Assert.Equal(expected, StatusDisplay.FormatBossModAvailable(available, name));
+
+	[Theory]
+	[InlineData(false, "BossMod AI: idle")]
+	[InlineData(true, "BossMod AI: active")]
+	public void FormatBossModAi_labels(bool active, string expected)
+		=> Assert.Equal(expected, StatusDisplay.FormatBossModAi(active));
+
 	[Fact]
 	public void SafeCapture_returns_probe_result()
 	{

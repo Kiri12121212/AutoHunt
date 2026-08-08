@@ -60,6 +60,9 @@
 		<Compile Include="..\HuntTrainAuto\Combat\RsrSettingsDecision.cs" Link="Combat\RsrSettingsDecision.cs" />
 		<Compile Include="..\HuntTrainAuto\Combat\RsrEnableDecision.cs" Link="Combat\RsrEnableDecision.cs" />
 		<Compile Include="..\HuntTrainAuto\Combat\RsrStopDecision.cs" Link="Combat\RsrStopDecision.cs" />
+		<Compile Include="..\HuntTrainAuto\Combat\BossModEnums.cs" Link="Combat\BossModEnums.cs" />
+		<Compile Include="..\HuntTrainAuto\Combat\BossModCommands.cs" Link="Combat\BossModCommands.cs" />
+		<Compile Include="..\HuntTrainAuto\Combat\BossModEnableDecision.cs" Link="Combat\BossModEnableDecision.cs" />
 		<Compile Include="..\HuntTrainAuto\State\HuntTrainTransition.cs" Link="State\HuntTrainTransition.cs" />
 		<Compile Include="..\HuntTrainAuto\State\HuntTrainController.cs" Link="State\HuntTrainController.cs" />
 		<Compile Include="..\HuntTrainAuto\State\HuntTrainObserve.cs" Link="State\HuntTrainObserve.cs" />
