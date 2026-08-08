@@ -38,8 +38,8 @@ public readonly struct HuntFlagDedupeMemory
 }
 
 /// <summary>
-/// Same-flag / near-duplicate suppression for HuntAlerts intake (TASKS 10.5) plus
-/// windowed chat↔HuntAlerts cross-source dedupe (TASKS 10.7).
+/// Same-flag / near-duplicate suppression for chat and HuntAlerts intake (TASKS 10.5)
+/// plus windowed chat↔HuntAlerts cross-source dedupe (TASKS 10.7).
 /// </summary>
 public static class HuntAlertsFlagDedupe
 {
@@ -74,8 +74,8 @@ public static class HuntAlertsFlagDedupe
 	}
 
 	/// <summary>
-	/// Suppress HuntAlerts intake when the flag is a near-duplicate of the active flag
-	/// and the train pipeline is already running (avoid abort-restart churn).
+	/// Suppress chat or HuntAlerts intake when the flag is a near-duplicate of the active
+	/// flag and the train pipeline is already running (avoid abort-restart churn mid-TP).
 	/// Concurrent distinct flags still enter and abort-then-restart via FlagRestartDecision.
 	/// Pass <paramref name="forceAccept"/> for deferred flush / world hand-off — that path
 	/// must still strip Arrival trust and recompute nearest aetheryte (near-dup pipeline
@@ -96,8 +96,8 @@ public static class HuntAlertsFlagDedupe
 	/// True when integration is on, memory is from the <em>other</em> source, the accept
 	/// is still inside <paramref name="window"/>, and <paramref name="incoming"/> is a
 	/// near-duplicate — first source wins; the other channel must not double-start.
-	/// Same-source repeats are not suppressed here (HA near-dup uses <see cref="ShouldSuppress"/>;
-	/// conductor re-flags still proceed).
+	/// Same-source repeats are not suppressed here (near-dup pipeline uses
+	/// <see cref="ShouldSuppress"/> on both chat and HuntAlerts).
 	/// When integration is off or <paramref name="window"/> is non-positive → no-op (false).
 	/// Deferred flush must still call this (no forceAccept bypass) so chat-won hunts
 	/// cannot restart after a pending hand-off.
@@ -167,6 +167,39 @@ public static class HuntAlertsFlagDedupe
 	/// </summary>
 	public static HuntFlagDedupeMemory? Clear(HuntFlagDedupeMemory? _)
 		=> null;
+
+	/// <summary>
+	/// Conductor chat intake gate: near-dup while pipeline is active, or cross-source window.
+	/// True → skip adopt (no second Engaging / AbortThenRestart mid-hop).
+	/// Distinct flags and Idle near-dups still proceed.
+	/// </summary>
+	public static bool ShouldSuppressChatIntake(
+		HuntFlag? activeFlag,
+		HuntFlag incoming,
+		bool pipelineActive,
+		HuntFlagDedupeMemory? crossSourceMemory,
+		DateTimeOffset now,
+		bool huntAlertsIntegration,
+		TimeSpan? crossSourceWindow = null,
+		float distanceThreshold = NearDuplicateDistanceThreshold)
+	{
+		if (ShouldSuppress(
+			    activeFlag,
+			    incoming,
+			    pipelineActive,
+			    forceAccept: false,
+			    distanceThreshold))
+			return true;
+
+		return ShouldSuppressCrossSource(
+			crossSourceMemory,
+			incoming,
+			HuntFlagIntakeSource.Chat,
+			now,
+			huntAlertsIntegration,
+			crossSourceWindow,
+			distanceThreshold);
+	}
 
 	/// <summary>
 	/// <c>AbortVisitThenEnter</c> gate: when false, near-dup or cross-source would suppress

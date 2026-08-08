@@ -788,15 +788,26 @@ public sealed class Plugin : IDalamudPlugin
 	private void OnHuntFlagReceived(HuntFlag flag)
 	{
 		var now = DateTimeOffset.UtcNow;
-		if (HuntAlertsFlagDedupe.ShouldSuppressCrossSource(
-			    lastFlagIntakeMemory,
+		var pipelineActive = FlagRestartDecision.IsPipelineActive(
+			train.Phase,
+			HasInFlightPipelineWork());
+		var nearDupPipeline = HuntAlertsFlagDedupe.ShouldSuppress(
+			activeHuntFlag,
+			flag,
+			pipelineActive);
+
+		if (HuntAlertsFlagDedupe.ShouldSuppressChatIntake(
+			    activeHuntFlag,
 			    flag,
-			    HuntFlagIntakeSource.Chat,
+			    pipelineActive,
+			    lastFlagIntakeMemory,
 			    now,
 			    Config.HuntAlertsIntegration))
 		{
 			pluginLog.Information(
-				"Conductor flag skipped (cross-source chat↔HA window dedupe)");
+				nearDupPipeline
+					? "Conductor flag skipped (near-duplicate, pipeline active)"
+					: "Conductor flag skipped (cross-source chat↔HA window dedupe)");
 			return;
 		}
 

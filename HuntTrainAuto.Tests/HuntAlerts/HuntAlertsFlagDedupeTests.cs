@@ -60,6 +60,68 @@ public sealed class HuntAlertsFlagDedupeTests
 	}
 
 	[Fact]
+	public void ShouldSuppressChatIntake_true_for_near_dup_while_pipeline_active()
+	{
+		// Mid-hop duplicate map-link / dual chat fire: first adopt left pipeline active.
+		var active = Flag(813, 0, 0);
+		var repeat = Flag(813, 500, 0);
+		var mem = Mem(active, HuntFlagIntakeSource.Chat);
+
+		Assert.True(HuntAlertsFlagDedupe.ShouldSuppressChatIntake(
+			active,
+			repeat,
+			pipelineActive: true,
+			mem,
+			T0 + TimeSpan.FromMilliseconds(350),
+			huntAlertsIntegration: true));
+	}
+
+	[Fact]
+	public void ShouldSuppressChatIntake_false_for_near_dup_when_idle()
+	{
+		var active = Flag(813, 0, 0);
+		var repeat = Flag(813, 500, 0);
+
+		Assert.False(HuntAlertsFlagDedupe.ShouldSuppressChatIntake(
+			active,
+			repeat,
+			pipelineActive: false,
+			crossSourceMemory: null,
+			T0,
+			huntAlertsIntegration: true));
+	}
+
+	[Fact]
+	public void ShouldSuppressChatIntake_false_for_distinct_flag_while_pipeline_active()
+	{
+		var active = Flag(813, 0, 0);
+		var nextHop = Flag(813, 20_000, 0);
+
+		Assert.False(HuntAlertsFlagDedupe.ShouldSuppressChatIntake(
+			active,
+			nextHop,
+			pipelineActive: true,
+			crossSourceMemory: null,
+			T0,
+			huntAlertsIntegration: true));
+	}
+
+	[Fact]
+	public void ShouldSuppressChatIntake_true_for_cross_source_ha_then_chat()
+	{
+		var flag = Flag(813, 0, 0);
+		var mem = Mem(flag, HuntFlagIntakeSource.HuntAlerts);
+
+		Assert.True(HuntAlertsFlagDedupe.ShouldSuppressChatIntake(
+			activeFlag: null,
+			flag,
+			pipelineActive: false,
+			mem,
+			T0 + TimeSpan.FromSeconds(1),
+			huntAlertsIntegration: true));
+	}
+
+	[Fact]
 	public void ShouldSuppress_false_when_forceAccept_even_if_near_dup_pipeline_active()
 	{
 		var active = Flag(813, 0, 0);
