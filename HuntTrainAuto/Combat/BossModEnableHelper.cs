@@ -98,7 +98,7 @@ public sealed class BossModEnableHelper
 			var ok = bossMod.EnableAi(coexistWithRsr: true);
 			aiStarted = BossModEnableDecision.NextAiStarted(kind, ok, aiStarted);
 			if (ok)
-				pluginLog.Debug($"BossMod: AI on provider={bossMod.ActiveProvider}");
+				pluginLog.Information($"BossMod: AI on provider={bossMod.ActiveProvider}");
 			else
 				pluginLog.Debug("BossMod: EnableAi soft-fail; will retry while InCombatPhase");
 		}
@@ -107,7 +107,7 @@ public sealed class BossModEnableHelper
 			var ok = bossMod.DisableAi();
 			aiStarted = BossModEnableDecision.NextAiStarted(kind, ok, aiStarted);
 			if (ok)
-				pluginLog.Debug("BossMod: AI off (combat phase exit / integration off)");
+				pluginLog.Information("BossMod: AI off (combat phase exit / integration off)");
 			else
 				pluginLog.Debug("BossMod: DisableAi soft-fail; will retry while latch held");
 		}

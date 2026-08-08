@@ -208,7 +208,7 @@ public sealed class InstanceChangeRunner
 	{
 		if (session.AutomoveStarted)
 			StopAutomove();
-		pluginLog.Debug($"Instance change complete: {session.Instance}");
+		pluginLog.Information($"Instance change complete: {session.Instance}");
 		session.Clear();
 	}
 

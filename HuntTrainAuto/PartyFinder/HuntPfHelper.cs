@@ -117,9 +117,14 @@ public sealed class HuntPfHelper : IDisposable
 			return;
 
 		var inParty = IsInParty();
+		var wasJoined = joinedLatch;
 		joinedLatch = HuntPfDecision.NextJoinedLatch(inParty, joinedLatch);
 		if (joinedLatch)
+		{
+			if (!wasJoined)
+				pluginLog.Information("Hunt PF: joined party (latch)");
 			return;
+		}
 
 		// Throttle before addon walks / cache scans — ReadyForGroundFollow can last minutes.
 		if (!HuntPfDecision.IsActionReady(nowMs, nextActionMs))
@@ -192,7 +197,7 @@ public sealed class HuntPfHelper : IDisposable
 				nextActionMs = HuntPfDecision.NextActionAt(nowMs, getRetryIntervalMs());
 				if (clicked)
 				{
-					pluginLog.Debug($"Hunt PF: ClickJoin listing={openedListingId}");
+					pluginLog.Information($"Hunt PF: ClickJoin listing={openedListingId}");
 				}
 				else
 				{

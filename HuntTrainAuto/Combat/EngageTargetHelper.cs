@@ -151,7 +151,8 @@ public sealed class EngageTargetHelper
 		{
 			movement.Stop();
 			combat.Apply(CombatTransitionKind.EnterCombat, entityId);
-			pluginLog.Debug($"Engage: EnterCombat via {pick.Kind}");
+			pluginLog.Information(
+				$"Engage: EnterCombat via {pick.Kind} dist={dist:0.0} range={engageRange:0.0}");
 			return true;
 		}
 
