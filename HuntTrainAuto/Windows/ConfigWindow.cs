@@ -23,6 +23,8 @@ public sealed class ConfigWindow : Window, IDisposable
 	private readonly Func<HuntAlertsPluginStatus> huntAlertsStatus;
 	private readonly Func<HuntAlertsLastAlert?> getHuntAlertsLastAlert;
 	private readonly Func<string?> getHuntAlertsLastIntake;
+	private readonly Func<HuntTrainMessage?> getHuntAlertsLastMessage;
+	private readonly Action? openAlertInfo;
 	private readonly Func<StatusSnapshot> getStatus;
 	private readonly DebugEventLog debugLog;
 	private string conductorInput = string.Empty;
@@ -41,7 +43,9 @@ public sealed class ConfigWindow : Window, IDisposable
 		Func<HuntAlertsLastAlert?> getHuntAlertsLastAlert,
 		Func<StatusSnapshot> getStatus,
 		DebugEventLog debugLog,
-		Func<string?>? getHuntAlertsLastIntake = null) : base(PluginVersion.WindowTitle)
+		Func<string?>? getHuntAlertsLastIntake = null,
+		Func<HuntTrainMessage?>? getHuntAlertsLastMessage = null,
+		Action? openAlertInfo = null) : base(PluginVersion.WindowTitle)
 	{
 		this.config = config;
 		this.saveConfig = saveConfig;
@@ -53,6 +57,8 @@ public sealed class ConfigWindow : Window, IDisposable
 		this.huntAlertsStatus = huntAlertsStatus;
 		this.getHuntAlertsLastAlert = getHuntAlertsLastAlert;
 		this.getHuntAlertsLastIntake = getHuntAlertsLastIntake ?? (() => null);
+		this.getHuntAlertsLastMessage = getHuntAlertsLastMessage ?? (() => null);
+		this.openAlertInfo = openAlertInfo;
 		this.getStatus = getStatus;
 		this.debugLog = debugLog;
 		SizeConstraints = new WindowSizeConstraints
@@ -195,6 +201,15 @@ public sealed class ConfigWindow : Window, IDisposable
 			snap.BossModAvailable,
 			snap.BossModProviderName));
 		ImGui.Text(StatusDisplay.FormatBossModAi(snap.BossModAiActive));
+
+		ImGui.Spacing();
+		ImGui.Separator();
+		ImGui.Spacing();
+		ImGui.Text("HuntAlerts");
+		var lastMessage = SafeGetHuntAlertsLastMessage();
+		ImGui.TextWrapped(AlertInfoDisplay.FormatStatusSummary(lastMessage));
+		if (lastMessage != null && openAlertInfo != null && ImGui.Button("Open alert info"))
+			openAlertInfo();
 	}
 
 	private void DrawSettingsTab()
@@ -370,6 +385,13 @@ public sealed class ConfigWindow : Window, IDisposable
 		if (ImGui.Checkbox("Play sound on conductor flag", ref enableSound))
 		{
 			config.EnableNotificationSound = enableSound;
+			saveConfig();
+		}
+
+		var showHaInfo = config.ShowHuntAlertsInfoWindow;
+		if (ImGui.Checkbox("Open alert info on HuntAlerts map", ref showHaInfo))
+		{
+			config.ShowHuntAlertsInfoWindow = showHaInfo;
 			saveConfig();
 		}
 	}
@@ -564,6 +586,8 @@ public sealed class ConfigWindow : Window, IDisposable
 			SafeGetHuntAlertsLastAlert()));
 		ImGui.TextDisabled(HuntAlertsAvailability.FormatLastIntakeStatus(
 			SafeGetHuntAlertsLastIntake()));
+		if (openAlertInfo != null && ImGui.Button("Open HuntAlerts alert info"))
+			openAlertInfo();
 		ImGui.TextWrapped(
 			"When a hunt mark notification is received from HuntAlerts, automatically teleport to the target world and zone.");
 	}
@@ -617,6 +641,18 @@ public sealed class ConfigWindow : Window, IDisposable
 		try
 		{
 			return getHuntAlertsLastIntake();
+		}
+		catch
+		{
+			return null;
+		}
+	}
+
+	private HuntTrainMessage? SafeGetHuntAlertsLastMessage()
+	{
+		try
+		{
+			return getHuntAlertsLastMessage();
 		}
 		catch
 		{

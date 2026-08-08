@@ -61,6 +61,44 @@ public sealed class HuntTrainMessageCoerceTests
 	}
 
 	[Fact]
+	public void TryCoerce_copies_posted_and_creature()
+	{
+		var foreign = new ForeignHuntPayload
+		{
+			huntType = HuntAlertsFilter.HuntTypeSRank,
+			huntWorld = "Zodiark",
+			Posted_Time = "11:36 PM",
+			PostedEpoch = 1_700_000_000,
+			creatureName = "Ker",
+			startTerritoryTypeId = 1191,
+		};
+
+		Assert.True(HuntTrainMessageCoerce.TryCoerce(foreign, out var msg));
+		Assert.Equal("11:36 PM", msg.Posted_Time);
+		Assert.Equal(1_700_000_000, msg.PostedEpoch);
+		Assert.Equal("Ker", msg.creatureName);
+	}
+
+	[Fact]
+	public void Clone_copies_ui_fields()
+	{
+		var src = new HuntTrainMessage
+		{
+			Message = "body",
+			huntType = HuntAlertsFilter.HuntTypeATrain,
+			Posted_Time = "1:00 PM",
+			PostedEpoch = 42,
+			creatureName = "x",
+		};
+		var clone = src.Clone();
+		Assert.NotSame(src, clone);
+		Assert.Equal(src.Message, clone.Message);
+		Assert.Equal(src.Posted_Time, clone.Posted_Time);
+		Assert.Equal(src.PostedEpoch, clone.PostedEpoch);
+		Assert.Equal(src.creatureName, clone.creatureName);
+	}
+
+	[Fact]
 	public void TryCoerce_copies_public_properties_from_foreign_shape()
 	{
 		var foreign = new ForeignHuntProps
@@ -144,6 +182,9 @@ public sealed class HuntTrainMessageCoerceTests
 		public uint startTerritoryTypeId;
 		public float mapLocationX;
 		public float mapLocationY;
+		public string Posted_Time = "";
+		public long PostedEpoch;
+		public string creatureName = "";
 	}
 
 	private sealed class ForeignHuntProps

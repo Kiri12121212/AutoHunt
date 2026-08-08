@@ -214,6 +214,48 @@ public static class HuntTrainMessageCoerce
 				if (TryFloat(value, out var y))
 					target.mapLocationY = y;
 				break;
+			case nameof(HuntTrainMessage.Posted_Time):
+			case "PostedTime":
+				target.Posted_Time = AsString(value) ?? target.Posted_Time;
+				break;
+			case nameof(HuntTrainMessage.PostedEpoch):
+			case "Posted_Epoch":
+				if (TryLong(value, out var epoch))
+					target.PostedEpoch = epoch;
+				break;
+			case nameof(HuntTrainMessage.creatureName):
+			case "CreatureName":
+				target.creatureName = AsString(value) ?? target.creatureName;
+				break;
+		}
+	}
+
+	private static bool TryLong(object value, out long result)
+	{
+		switch (value)
+		{
+			case long l:
+				result = l;
+				return true;
+			case int i:
+				result = i;
+				return true;
+			case uint u:
+				result = u;
+				return true;
+			case string s when long.TryParse(s, NumberStyles.Integer, CultureInfo.InvariantCulture, out result):
+				return true;
+			default:
+				try
+				{
+					result = Convert.ToInt64(value, CultureInfo.InvariantCulture);
+					return true;
+				}
+				catch
+				{
+					result = 0;
+					return false;
+				}
 		}
 	}
 

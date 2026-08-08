@@ -35,6 +35,7 @@ public sealed class HuntAlertsIpc : IHuntAlertsService
 	private readonly ICallGateSubscriber<HuntTrainMessage, object> onHuntTrain;
 	private bool subscribed;
 	private HuntAlertsLastAlert? lastMappedAlert;
+	private HuntTrainMessage? lastTrainMessage;
 	private string? lastIntakeStatus;
 
 	/// <param name="resolveMapParams">
@@ -127,6 +128,9 @@ public sealed class HuntAlertsIpc : IHuntAlertsService
 
 	/// <inheritdoc />
 	public HuntAlertsLastAlert? LastMappedAlert => lastMappedAlert;
+
+	/// <inheritdoc />
+	public HuntTrainMessage? LastTrainMessage => lastTrainMessage;
 
 	/// <inheritdoc />
 	public string? LastIntakeStatus => lastIntakeStatus;
@@ -224,6 +228,7 @@ public sealed class HuntAlertsIpc : IHuntAlertsService
 			}
 
 			lastMappedAlert = HuntAlertsAvailability.FromMappedFlag(flag);
+			lastTrainMessage = accepted.Clone();
 			RememberIntake(
 				$"mapped {flag.HuntWorld ?? "?"} / {flag.PlaceName ?? $"territory {flag.TerritoryTypeId}"}",
 				now);

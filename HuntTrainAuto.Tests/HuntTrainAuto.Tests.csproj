@@ -74,6 +74,8 @@
 		<Compile Include="..\HuntTrainAuto\Windows\DependencyAvailability.cs" Link="Windows\DependencyAvailability.cs" />
 		<Compile Include="..\HuntTrainAuto\Windows\ConfigTabs.cs" Link="Windows\ConfigTabs.cs" />
 		<Compile Include="..\HuntTrainAuto\Windows\StatusDisplay.cs" Link="Windows\StatusDisplay.cs" />
+		<Compile Include="..\HuntTrainAuto\Windows\AlertInfoDisplay.cs" Link="Windows\AlertInfoDisplay.cs" />
+		<Compile Include="..\HuntTrainAuto\Windows\AlertRelay.cs" Link="Windows\AlertRelay.cs" />
 		<Compile Include="..\HuntTrainAuto\Notifications\NotificationDecision.cs" Link="Notifications\NotificationDecision.cs" />
 		<Compile Include="..\HuntTrainAuto\HuntAlerts\HuntAlertsFilter.cs" Link="HuntAlerts\HuntAlertsFilter.cs" />
 		<Compile Include="..\HuntTrainAuto\HuntAlerts\HuntAlertsAvailability.cs" Link="HuntAlerts\HuntAlertsAvailability.cs" />

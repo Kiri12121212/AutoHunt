@@ -27,6 +27,10 @@ public sealed class Plugin : IDalamudPlugin
 	private readonly IPluginLog pluginLog;
 	private readonly WindowSystem windowSystem;
 	private readonly ConfigWindow configWindow;
+	private readonly AlertInfoWindow alertInfoWindow;
+
+	/// <summary>Open <see cref="alertInfoWindow"/> on next Framework tick after HA map.</summary>
+	private bool pendingShowAlertInfo;
 	private readonly IChatOutput chat;
 	private readonly Chat2Ipc chat2Ipc;
 	private readonly ContextMenuService contextMenu;
@@ -329,6 +333,11 @@ public sealed class Plugin : IDalamudPlugin
 			pluginLog,
 			() => pluginInterface.SavePluginConfig(Config));
 
+		System.Action openSettings = () => { };
+		alertInfoWindow = new AlertInfoWindow(
+			() => huntAlertsIpc.LastTrainMessage,
+			chat,
+			() => openSettings());
 		configWindow = new ConfigWindow(
 			Config,
 			() => pluginInterface.SavePluginConfig(Config),
@@ -341,8 +350,12 @@ public sealed class Plugin : IDalamudPlugin
 			() => huntAlertsIpc.LastMappedAlert,
 			CaptureStatus,
 			debugLog,
-			() => huntAlertsIpc.LastIntakeStatus);
+			() => huntAlertsIpc.LastIntakeStatus,
+			() => huntAlertsIpc.LastTrainMessage,
+			() => alertInfoWindow.ShowLatest());
+		openSettings = () => configWindow.IsOpen = true;
 		windowSystem.AddWindow(configWindow);
+		windowSystem.AddWindow(alertInfoWindow);
 
 		chat2Ipc = new Chat2Ipc(
 			pluginInterface,
@@ -456,7 +469,11 @@ public sealed class Plugin : IDalamudPlugin
 	/// so pending-slot mutations share the update tick with flush (no IPC/Update race).
 	/// </summary>
 	private void OnHuntAlertsFlag(HuntFlag flag)
-		=> HuntAlertsFlagQueue.Enqueue(huntAlertsFlagQueue, flag);
+	{
+		HuntAlertsFlagQueue.Enqueue(huntAlertsFlagQueue, flag);
+		if (Config.ShowHuntAlertsInfoWindow)
+			pendingShowAlertInfo = true;
+	}
 
 	/// <summary>
 	/// HuntAlerts mapped-flag processing on Framework tick: cross-world → Lifestream
@@ -1202,6 +1219,19 @@ public sealed class Plugin : IDalamudPlugin
 	private void OnFrameworkUpdate(IFramework fw)
 	{
 		_ = fw;
+		if (pendingShowAlertInfo)
+		{
+			pendingShowAlertInfo = false;
+			try
+			{
+				alertInfoWindow.ShowLatest();
+			}
+			catch
+			{
+				// soft-fail UI open
+			}
+		}
+
 		var now = Environment.TickCount64;
 		TryFinalizePendingSameZoneTravelCost(now);
 		var player = objectTable.LocalPlayer;
@@ -1897,6 +1927,7 @@ public sealed class Plugin : IDalamudPlugin
 		pluginInterface.UiBuilder.OpenMainUi -= ToggleUi;
 		pluginInterface.UiBuilder.OpenConfigUi -= ToggleUi;
 		windowSystem.RemoveAllWindows();
+		alertInfoWindow.Dispose();
 		configWindow.Dispose();
 	}
 

@@ -27,6 +27,11 @@ public interface IHuntAlertsService : IDisposable
 	HuntAlertsLastAlert? LastMappedAlert { get; }
 
 	/// <summary>
+	/// Last successfully mapped HuntAlerts train/S payload (cloned), for the alert info window.
+	/// </summary>
+	HuntTrainMessage? LastTrainMessage { get; }
+
+	/// <summary>
 	/// Last IPC intake outcome (mapped or reject reason), for Integrations diagnostics.
 	/// </summary>
 	string? LastIntakeStatus { get; }

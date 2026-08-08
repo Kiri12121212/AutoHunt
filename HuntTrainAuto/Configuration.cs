@@ -169,6 +169,11 @@ public sealed class Configuration : IPluginConfiguration
 	/// <summary>Optional UI sound cue on conductor flag (TASKS 9.1).</summary>
 	public bool EnableNotificationSound { get; set; } = false;
 
+	/// <summary>
+	/// Open the HuntAlerts-style alert info window when a HuntAlerts payload maps successfully.
+	/// </summary>
+	public bool ShowHuntAlertsInfoWindow { get; set; } = true;
+
 	/// <summary>Record phase / follow / mount edges into the Debug tab ring buffer (TASKS 9.2).</summary>
 	public bool EnableDebugLogging { get; set; } = true;
 
