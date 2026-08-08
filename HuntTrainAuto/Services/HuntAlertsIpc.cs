@@ -28,6 +28,7 @@ public sealed class HuntAlertsIpc : IHuntAlertsService
 	private readonly Func<uint, MapCoordParams?>? resolveMapParams;
 	private readonly Func<uint, uint?>? resolveExVersion;
 	private readonly Action<HuntFlag>? onFlag;
+	private readonly Action? saveConfig;
 	private readonly IPluginLog? log;
 	private readonly ICallGateSubscriber<object, object> onHuntTrain;
 	private bool subscribed;
@@ -42,19 +43,25 @@ public sealed class HuntAlertsIpc : IHuntAlertsService
 	/// Territory → <c>TerritoryType.ExVersion</c> RowId for train-group filtering.
 	/// Null / failed lookup falls back to IPC <c>huntKind</c>.
 	/// </param>
+	/// <param name="saveConfig">
+	/// Persist config after auto-adding a conductor from HA message text.
+	/// Null skips save (tests / no-op).
+	/// </param>
 	public HuntAlertsIpc(
 		IDalamudPluginInterface pluginInterface,
 		Configuration config,
 		Func<uint, MapCoordParams?>? resolveMapParams = null,
 		Action<HuntFlag>? onFlag = null,
 		Func<uint, uint?>? resolveExVersion = null,
-		IPluginLog? log = null)
+		IPluginLog? log = null,
+		Action? saveConfig = null)
 	{
 		this.pluginInterface = pluginInterface;
 		this.config = config;
 		this.resolveMapParams = resolveMapParams;
 		this.resolveExVersion = resolveExVersion;
 		this.onFlag = onFlag;
+		this.saveConfig = saveConfig;
 		this.log = log;
 
 		onHuntTrain = pluginInterface.GetIpcSubscriber<object, object>(
@@ -212,7 +219,11 @@ public sealed class HuntAlertsIpc : IHuntAlertsService
 				now);
 			log?.Information(
 				$"HuntAlerts mapped: {flag.HuntWorld} / {flag.PlaceName} territory={flag.TerritoryTypeId}");
+
 			onFlag?.Invoke(flag);
+
+			// Best-effort conductor from Message free text — after onFlag so save/parse never delays TP/nav.
+			TryAutoAssignConductor(accepted.Message);
 		}
 		catch (Exception ex)
 		{
@@ -223,6 +234,48 @@ public sealed class HuntAlertsIpc : IHuntAlertsService
 
 	private void RememberIntake(string detail, DateTimeOffset when)
 		=> lastIntakeStatus = HuntAlertsAvailability.FormatIntakeStatus(detail, when);
+
+	private void TryAutoAssignConductor(string? message)
+	{
+		if (!config.HuntAlertsAutoConductor)
+			return;
+
+		try
+		{
+			var result = HuntAlertsConductorDecision.Decide(
+				config.Conductors,
+				message,
+				enabled: true);
+			switch (result.Kind)
+			{
+				case HuntAlertsConductorAssignKind.Added:
+					try
+					{
+						saveConfig?.Invoke();
+					}
+					catch (Exception ex)
+					{
+						log?.Debug($"HuntAlerts auto-conductor save soft-fail: {ex.Message}");
+					}
+
+					log?.Information(
+						result.World == null
+							? $"HuntAlerts auto-conductor: {result.Name}"
+							: $"HuntAlerts auto-conductor: {result.Name} @{result.World}");
+					break;
+				case HuntAlertsConductorAssignKind.AlreadyPresent:
+					log?.Debug($"HuntAlerts auto-conductor already present: {result.Name}");
+					break;
+				default:
+					log?.Debug("HuntAlerts auto-conductor: no name in message");
+					break;
+			}
+		}
+		catch (Exception ex)
+		{
+			log?.Debug($"HuntAlerts auto-conductor soft-fail: {ex.Message}");
+		}
+	}
 
 	public void Dispose()
 	{

@@ -152,6 +152,13 @@ public sealed class Configuration : IPluginConfiguration
 	public bool HuntAlertsIntegration { get; set; } = HuntAlertsFilter.DefaultIntegration;
 
 	/// <summary>
+	/// When HuntAlerts integration is on, parse conductor names from toast/IPC Message text and
+	/// auto-add them to <see cref="Conductors"/>. Default off — HA free text is untrusted until
+	/// the user opts in.
+	/// </summary>
+	public bool HuntAlertsAutoConductor { get; set; } = false;
+
+	/// <summary>
 	/// Worlds excluded from HuntAlerts auto-intake (HTA <c>WorldBlacklist</c> parity).
 	/// Entries are world names and/or decimal RowIds; empty = no world filter.
 	/// </summary>

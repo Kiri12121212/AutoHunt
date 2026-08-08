@@ -297,7 +297,8 @@ public sealed class Plugin : IDalamudPlugin
 			territoryTypeId => mapManager.GetMapParams(mapId: 0, territoryTypeId),
 			OnHuntAlertsFlag,
 			ResolveTerritoryExVersion,
-			pluginLog);
+			pluginLog,
+			() => pluginInterface.SavePluginConfig(Config));
 
 		configWindow = new ConfigWindow(
 			Config,

@@ -487,6 +487,15 @@ public sealed class ConfigWindow : Window, IDisposable
 
 		ImGui.BeginDisabled(!config.HuntAlertsIntegration);
 		ImGui.Indent();
+		var autoConductor = config.HuntAlertsAutoConductor;
+		if (ImGui.Checkbox("Auto-assign conductor from HuntAlerts message", ref autoConductor))
+		{
+			config.HuntAlertsAutoConductor = autoConductor;
+			saveConfig();
+		}
+
+		ImGui.TextDisabled("Parses \"Conductor - Name\" / \"Conductor: [World] Name\" from toast text.");
+		ImGui.Spacing();
 		ImGui.Text("Accept ranks");
 		DrawHuntAlertsRankCheckbox("A-rank trains (new_hunt)", HuntMarkRank.A);
 		DrawHuntAlertsRankCheckbox("S-rank alerts (srank)", HuntMarkRank.S);
