@@ -1,5 +1,6 @@
 #nullable enable
 
+using System.Collections.Generic;
 using HuntTrainAuto.HuntAlerts;
 
 namespace HuntTrainAuto.Tests.HuntAlerts;
@@ -9,6 +10,10 @@ public sealed class HuntTrainMessageCoerceTests
 	[Fact]
 	public void TryCoerce_null_fails()
 		=> Assert.False(HuntTrainMessageCoerce.TryCoerce(null, out _));
+
+	[Fact]
+	public void TryCoerce_empty_foreign_shape_fails()
+		=> Assert.False(HuntTrainMessageCoerce.TryCoerce(new ForeignHuntPayload(), out _));
 
 	[Fact]
 	public void TryCoerce_same_type_returns_instance()
@@ -73,6 +78,56 @@ public sealed class HuntTrainMessageCoerceTests
 		Assert.Equal(813u, msg.startTerritoryTypeId);
 		Assert.Equal(1.5f, msg.mapLocationX);
 		Assert.Equal(2.5f, msg.mapLocationY);
+	}
+
+	[Fact]
+	public void TryCoerce_copies_callgate_dictionary_shape()
+	{
+		// CallGate DeserializeObject(json, typeof(object)) → JObject / IDictionary.
+		var dict = new Dictionary<string, object?>
+		{
+			["huntType"] = HuntAlertsFilter.HuntTypeATrain,
+			["huntKind"] = "Dawntrail",
+			["huntWorld"] = "Ragnarok",
+			["startTerritoryTypeId"] = 1191L,
+			["mapLocationX"] = 17.1d,
+			["mapLocationY"] = 23.9d,
+			["locationCoords"] = "17.1, 23.9",
+			["startLocationAetheryteId"] = 210,
+			["instance"] = 1,
+			["startLocation"] = "Yyasulani Station",
+			["startZone"] = "Heritage Found",
+			["Message"] = "Train up!",
+		};
+
+		Assert.True(HuntTrainMessageCoerce.TryCoerce(dict, out var msg));
+		Assert.Equal(HuntAlertsFilter.HuntTypeATrain, msg.huntType);
+		Assert.Equal("Dawntrail", msg.huntKind);
+		Assert.Equal("Ragnarok", msg.huntWorld);
+		Assert.Equal(1191u, msg.startTerritoryTypeId);
+		Assert.Equal(17.1f, msg.mapLocationX);
+		Assert.Equal(23.9f, msg.mapLocationY);
+		Assert.Equal(210u, msg.startLocationAetheryteId);
+		Assert.Equal(1, msg.instance);
+		Assert.Equal("Train up!", msg.Message);
+	}
+
+	[Fact]
+	public void TryCoerce_accepts_pascal_case_dictionary_keys()
+	{
+		var dict = new Dictionary<string, object?>
+		{
+			["HuntType"] = HuntAlertsFilter.HuntTypeSRank,
+			["HuntWorld"] = "Phoenix",
+			["StartingTerritoryTypeId"] = 813,
+			["MapLocationX"] = 1.5f,
+			["MapLocationY"] = 2.5f,
+		};
+
+		Assert.True(HuntTrainMessageCoerce.TryCoerce(dict, out var msg));
+		Assert.Equal(HuntAlertsFilter.HuntTypeSRank, msg.huntType);
+		Assert.Equal("Phoenix", msg.huntWorld);
+		Assert.Equal(813u, msg.startTerritoryTypeId);
 	}
 
 	// Field-shaped like HuntAlerts.Helpers.HuntTrainMessage (no shared assembly type).

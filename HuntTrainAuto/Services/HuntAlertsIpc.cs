@@ -16,8 +16,10 @@ namespace HuntTrainAuto.Services;
 /// Soft-fail subscriber for HuntAlerts
 /// <c>HuntAlerts.OnHuntTrainMessageReceived</c> (HTA <c>SonarMonitor</c> pattern
 /// via Dalamud CallGate — no ECommons EzIPC attributes).
-/// Subscribes as <c>object</c> so CallGate skips JSON re-shape (publisher field-shaped
-/// DTO stays intact), then copies members into <see cref="HuntTrainMessage"/>.
+/// Subscribes as <see cref="HuntTrainMessage"/> so CallGate JSON-converts the
+/// publisher DTO into our fields (subscribing as <c>object</c> yields an empty
+/// Newtonsoft <c>JObject</c> shape that used to map to blank huntType).
+/// <see cref="HuntTrainMessageCoerce"/> still accepts foreign CLR / dictionary payloads.
 /// Maps accepted messages to <see cref="HuntFlag"/> (TASKS 10.3); optional
 /// <paramref name="onFlag"/> runs world-visit + TP/nav intake (10.4–10.5).
 /// </summary>
@@ -30,7 +32,7 @@ public sealed class HuntAlertsIpc : IHuntAlertsService
 	private readonly Action<HuntFlag>? onFlag;
 	private readonly Action? saveConfig;
 	private readonly IPluginLog? log;
-	private readonly ICallGateSubscriber<object, object> onHuntTrain;
+	private readonly ICallGateSubscriber<HuntTrainMessage, object> onHuntTrain;
 	private bool subscribed;
 	private HuntAlertsLastAlert? lastMappedAlert;
 	private string? lastIntakeStatus;
@@ -64,7 +66,7 @@ public sealed class HuntAlertsIpc : IHuntAlertsService
 		this.saveConfig = saveConfig;
 		this.log = log;
 
-		onHuntTrain = pluginInterface.GetIpcSubscriber<object, object>(
+		onHuntTrain = pluginInterface.GetIpcSubscriber<HuntTrainMessage, object>(
 			HuntAlertsAvailability.OnHuntTrainMessageReceivedChannel);
 
 		try
@@ -129,15 +131,22 @@ public sealed class HuntAlertsIpc : IHuntAlertsService
 	/// <inheritdoc />
 	public string? LastIntakeStatus => lastIntakeStatus;
 
-	private void OnHuntTrainMessageReceived(object payload)
+	private void OnHuntTrainMessageReceived(HuntTrainMessage payload)
+		=> OnHuntTrainMessageReceived((object)payload);
+
+	/// <summary>
+	/// Shared intake for typed CallGate callbacks and tests that pass foreign shapes.
+	/// </summary>
+	internal void OnHuntTrainMessageReceived(object payload)
 	{
 		try
 		{
 			var now = DateTimeOffset.UtcNow;
 			if (!HuntTrainMessageCoerce.TryCoerce(payload, out var message))
 			{
-				RememberIntake("rejected: bad IPC payload", now);
-				log?.Warning("HuntAlerts IPC: null/unusable payload");
+				var payloadType = payload?.GetType().FullName ?? "null";
+				RememberIntake($"rejected: bad IPC payload ({payloadType})", now);
+				log?.Warning($"HuntAlerts IPC: null/unusable payload type={payloadType}");
 				return;
 			}
 

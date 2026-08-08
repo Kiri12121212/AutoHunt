@@ -2,7 +2,7 @@
     "Author": "Kiri12121212",
     "Name": "HuntTrainAuto",
     "InternalName": "HuntTrainAuto",
-    "AssemblyVersion": "0.1.1.0",
+    "AssemblyVersion": "0.1.2.0",
     "Punchline": "Automated hunt train follower.",
     "Description": "Follows a hunt train conductor: parses map flags, auto-teleports, mounts and navigates with vnavmesh, unmounts at the spot, follows party to the pull, and engages combat with Rotation Solver Reborn.",
     "ApplicableVersion": "any",
