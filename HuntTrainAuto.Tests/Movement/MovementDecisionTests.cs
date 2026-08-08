@@ -76,24 +76,26 @@ public sealed class MovementDecisionTests
 		=> Assert.Equal(expected, MovementDecision.ShouldSetLastPointTolerance(waypoints));
 
 	[Theory]
-	[InlineData(true, true, false, 0, false, false)]
-	[InlineData(false, true, false, 0, false, true)]
-	[InlineData(true, false, false, 0, false, true)]
-	[InlineData(true, true, true, 0, false, true)]
-	[InlineData(true, true, false, 1, false, true)]
-	[InlineData(true, true, false, 3, false, true)]
-	[InlineData(true, true, false, 0, true, true)]
+	[InlineData(true, true, false, 0, false, true, false)]
+	[InlineData(false, true, false, 0, false, true, true)]
+	[InlineData(true, false, false, 0, false, true, true)]
+	[InlineData(true, true, true, 0, false, true, true)]
+	[InlineData(true, true, false, 1, false, true, true)]
+	[InlineData(true, true, false, 3, false, true, true)]
+	[InlineData(true, true, false, 0, true, true, true)]
+	[InlineData(true, true, false, 0, false, false, true)]
 	public void ShouldWaitBeforeMeshPathfind(
 		bool playerReady,
 		bool navReady,
 		bool pathfindInProgress,
 		int numWaypoints,
 		bool pathIsRunning,
+		bool playerOnMesh,
 		bool expectedWait)
 		=> Assert.Equal(
 			expectedWait,
 			MovementDecision.ShouldWaitBeforeMeshPathfind(
-				playerReady, navReady, pathfindInProgress, numWaypoints, pathIsRunning));
+				playerReady, navReady, pathfindInProgress, numWaypoints, pathIsRunning, playerOnMesh));
 
 	[Fact]
 	public void CanStartMeshPathfind_when_idle_and_ready()
@@ -102,7 +104,25 @@ public sealed class MovementDecisionTests
 			navReady: true,
 			pathfindInProgress: false,
 			numWaypoints: 0,
-			pathIsRunning: false));
+			pathIsRunning: false,
+			playerOnMesh: true));
+
+	[Fact]
+	public void CanStartMeshPathfind_false_when_player_off_mesh()
+		=> Assert.False(MovementDecision.CanStartMeshPathfind(
+			playerReady: true,
+			navReady: true,
+			pathfindInProgress: false,
+			numWaypoints: 0,
+			pathIsRunning: false,
+			playerOnMesh: false));
+
+	[Fact]
+	public void DecideMoveTick_waits_when_player_off_mesh()
+	{
+		var r = Decide(distance: 50f, playerOnMesh: false);
+		Assert.Equal(MoveTickKind.Wait, r.Kind);
+	}
 
 	[Fact]
 	public void DecideMoveTick_waits_mesh_when_path_running()
@@ -270,7 +290,8 @@ public sealed class MovementDecisionTests
 		bool navReady = true,
 		bool pathfindInProgress = false,
 		int numWaypoints = 0,
-		bool pathIsRunning = false)
+		bool pathIsRunning = false,
+		bool playerOnMesh = true)
 		=> MovementDecision.DecideMoveTick(
 			playerValid,
 			flyRequested,
@@ -286,5 +307,6 @@ public sealed class MovementDecisionTests
 			navReady,
 			pathfindInProgress,
 			numWaypoints,
-			pathIsRunning);
+			pathIsRunning,
+			playerOnMesh);
 }

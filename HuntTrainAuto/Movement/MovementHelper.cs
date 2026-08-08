@@ -26,6 +26,9 @@ public sealed class MovementHelper
 	private readonly IClientState clientState;
 	private readonly IPluginLog pluginLog;
 	private long nextTakeoffMs;
+	private long nextMeshPathfindAttemptMs;
+	private int meshPathfindAttempts;
+	private bool meshPathfindExhaustedLogged;
 
 	public MovementHelper(
 		IVnavmeshService vnav,
@@ -47,6 +50,16 @@ public sealed class MovementHelper
 
 	/// <summary>Stop active vnavmesh path following.</summary>
 	public void Stop() => vnav.PathStop();
+
+	/// <summary>
+	/// Clear soft-retry bookkeeping after territory change / new flag so the next Navigate
+	/// epoch gets a fresh attempt budget.
+	/// </summary>
+	public void ResetMeshPathfindRetry()
+	{
+		MeshPathfindRetryDecision.Reset(ref nextMeshPathfindAttemptMs, ref meshPathfindAttempts);
+		meshPathfindExhaustedLogged = false;
+	}
 
 	/// <summary>
 	/// Whether the current territory supports flying (AD <c>IsFlyingSupported</c> without ECommons).
@@ -145,6 +158,21 @@ public sealed class MovementHelper
 			condition[ConditionFlag.WatchingCutscene]);
 		var playerReady = playerValid && screenReady;
 
+		var navReady = vnav.NavIsReady();
+		var pathfindInProgress = vnav.SimpleMovePathfindInProgress();
+		var numWaypoints = vnav.PathNumWaypoints();
+		var pathIsRunning = vnav.PathIsRunning();
+
+		// Fresh budget once vnav is actually following a path (post-mesh-load success).
+		if (MeshPathfindRetryDecision.ShouldResetOnNavProgress(pathIsRunning, numWaypoints))
+		{
+			MeshPathfindRetryDecision.Reset(ref nextMeshPathfindAttemptMs, ref meshPathfindAttempts);
+			meshPathfindExhaustedLogged = false;
+		}
+
+		// After territory swap: do not pathfind until the player projects onto the new mesh.
+		var playerOnMesh = !useMesh || !navReady || IsPlayerOnMesh(playerPos);
+
 		var decision = MovementDecision.DecideMoveTick(
 			playerValid,
 			fly,
@@ -157,10 +185,11 @@ public sealed class MovementHelper
 			lastPointTolerance,
 			useMesh,
 			playerReady,
-			vnav.NavIsReady(),
-			vnav.SimpleMovePathfindInProgress(),
-			vnav.PathNumWaypoints(),
-			vnav.PathIsRunning());
+			navReady,
+			pathfindInProgress,
+			numWaypoints,
+			pathIsRunning,
+			playerOnMesh);
 
 		switch (decision.Kind)
 		{
@@ -170,6 +199,7 @@ public sealed class MovementHelper
 			case MoveTickKind.Arrived:
 				if (decision.StopPath)
 					vnav.PathStop();
+				ResetMeshPathfindRetry();
 				return true;
 			case MoveTickKind.Takeoff:
 				if (TryFireTakeoff())
@@ -183,12 +213,69 @@ public sealed class MovementHelper
 				vnav.PathMoveTo(new List<Vector3> { position }, decision.Fly);
 				return false;
 			case MoveTickKind.StartMeshPath:
-				chat.TryExecuteCommand("/automove off");
-				vnav.PathSetTolerance(tolerance);
-				vnav.SimpleMovePathfindAndMoveTo(position, decision.Fly);
-				return false;
+				return TryStartMeshPath(position, tolerance, decision.Fly);
 			default:
 				return false;
+		}
+	}
+
+	private bool TryStartMeshPath(Vector3 position, float tolerance, bool fly)
+	{
+		var now = Environment.TickCount64;
+		var retry = MeshPathfindRetryDecision.Decide(
+			canStartMeshPathfind: true,
+			now,
+			nextMeshPathfindAttemptMs,
+			meshPathfindAttempts);
+
+		switch (retry)
+		{
+			case MeshPathfindRetryKind.WaitCooldown:
+				return false;
+			case MeshPathfindRetryKind.Exhausted:
+				if (!meshPathfindExhaustedLogged)
+				{
+					meshPathfindExhaustedLogged = true;
+					pluginLog.Debug(
+						$"Mesh pathfind soft-retry exhausted after {meshPathfindAttempts} attempts");
+				}
+
+				return false;
+			case MeshPathfindRetryKind.WaitNotReady:
+				return false;
+			case MeshPathfindRetryKind.Start:
+			default:
+				break;
+		}
+
+		chat.TryExecuteCommand("/automove off");
+		vnav.PathSetTolerance(tolerance);
+		_ = vnav.SimpleMovePathfindAndMoveTo(position, fly);
+		// Throttle even on IPC true: silent poly→0 failures otherwise re-queue every tick.
+		MeshPathfindRetryDecision.AfterStartAttempt(
+			ref nextMeshPathfindAttemptMs,
+			ref meshPathfindAttempts,
+			now);
+		return false;
+	}
+
+	/// <summary>
+	/// True when the local player projects onto the loaded navmesh floor.
+	/// Soft-fails false (wait) when mesh / IPC unavailable.
+	/// </summary>
+	private bool IsPlayerOnMesh(Vector3 playerPos)
+	{
+		try
+		{
+			var floor = vnav.QueryMeshPointOnFloor(
+				playerPos,
+				allowUnlandable: true,
+				halfExtentXZ: FlagWorldPosition.DefaultHalfExtentXZ);
+			return floor != null;
+		}
+		catch
+		{
+			return false;
 		}
 	}
 
