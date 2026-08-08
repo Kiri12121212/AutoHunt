@@ -116,6 +116,13 @@ public static class CombatDecision
 	/// <summary>Minimum configurable engage range (yalms).</summary>
 	public const float MinEngageRange = 5f;
 
+	/// <summary>
+	/// Cap for tanks / melee DPS when resolving effective engage range.
+	/// RSR uses ranged fillers out of melee and does not walk in — path to this
+	/// before <see cref="CombatTransitionKind.EnterCombat"/> instead.
+	/// </summary>
+	public const float DefaultMeleeEngageRange = MinEngageRange;
+
 	/// <summary>Maximum configurable engage range (yalms).</summary>
 	public const float MaxEngageRange = 60f;
 
@@ -132,6 +139,20 @@ public static class CombatDecision
 		if (range > MaxEngageRange)
 			return MaxEngageRange;
 		return range;
+	}
+
+	/// <summary>
+	/// Engage distance used for path-stop / EnterCombat.
+	/// Melee roles (tank + melee DPS) are capped at
+	/// <see cref="DefaultMeleeEngageRange"/> so vnav closes in; casters/healers
+	/// keep the clamped config value (default 25y).
+	/// </summary>
+	public static float EffectiveEngageRange(float configured, bool meleeEngageRole)
+	{
+		var clamped = ClampEngageRange(configured);
+		return meleeEngageRole && clamped > DefaultMeleeEngageRange
+			? DefaultMeleeEngageRange
+			: clamped;
 	}
 
 	/// <summary>True when a known distance is ≤ engage range.</summary>

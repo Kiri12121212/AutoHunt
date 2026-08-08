@@ -445,6 +445,10 @@ public sealed class ConfigWindow : Window, IDisposable
 			saveConfig();
 		}
 
+		ImGui.TextWrapped(
+			$"Tanks and melee DPS stop pathing at {CombatDecision.DefaultMeleeEngageRange:0} yalms " +
+			"(melee), even when this slider is higher — RSR will not walk you in.");
+
 		var aRankScan = config.ARankScanRange;
 		ImGui.SetNextItemWidth(200f);
 		if (ImGui.SliderFloat(

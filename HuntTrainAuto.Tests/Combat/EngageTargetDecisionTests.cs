@@ -120,6 +120,15 @@ public sealed class EngageTargetDecisionTests
 	}
 
 	[Fact]
+	public void ShouldEnterCombatOnMob_melee_cap_keeps_pathing_past_caster_range()
+	{
+		var melee = CombatDecision.EffectiveEngageRange(25f, meleeEngageRole: true);
+		Assert.Equal(CombatDecision.DefaultMeleeEngageRange, melee);
+		Assert.False(EngageTargetDecision.ShouldEnterCombatOnMob(20f, melee));
+		Assert.True(EngageTargetDecision.ShouldEnterCombatOnMob(5f, melee));
+	}
+
+	[Fact]
 	public void ARankHuntIndex_only_rank_a()
 	{
 		var ids = ARankHuntIndex.BuildARankIds(

@@ -12,6 +12,9 @@ public static class RsrSettingsDecision
 	/// <summary>Lumina <c>ClassJob.Role</c> value for tanks.</summary>
 	public const byte TankClassJobRole = 1;
 
+	/// <summary>Lumina <c>ClassJob.Role</c> value for melee DPS.</summary>
+	public const byte MeleeDpsClassJobRole = 2;
+
 	/// <summary>AD default: <see cref="RsrTargetHostileType.AllTargetsCanAttack"/>.</summary>
 	public static RsrTargetHostileType DefaultHostileType => RsrTargetHostileType.AllTargetsCanAttack;
 
@@ -23,6 +26,15 @@ public static class RsrSettingsDecision
 
 	/// <summary>True when <paramref name="classJobRole"/> is tank (<see cref="TankClassJobRole"/>).</summary>
 	public static bool IsTankRole(byte classJobRole) => classJobRole == TankClassJobRole;
+
+	/// <summary>True when <paramref name="classJobRole"/> is melee DPS (<see cref="MeleeDpsClassJobRole"/>).</summary>
+	public static bool IsMeleeDpsRole(byte classJobRole) => classJobRole == MeleeDpsClassJobRole;
+
+	/// <summary>
+	/// Tank or melee DPS — need melee engage distance (RSR will not walk in).
+	/// </summary>
+	public static bool IsMeleeEngageRole(byte classJobRole)
+		=> IsTankRole(classJobRole) || IsMeleeDpsRole(classJobRole);
 
 	/// <summary>
 	/// Clamp to a defined <see cref="RsrTargetHostileType"/>;

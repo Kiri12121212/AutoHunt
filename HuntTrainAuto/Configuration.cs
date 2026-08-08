@@ -116,6 +116,7 @@ public sealed class Configuration : IPluginConfiguration
 	/// Default <see cref="CombatDecision.DefaultEngageRange"/>.
 	/// Clamped to
 	/// [<see cref="CombatDecision.MinEngageRange"/>, <see cref="CombatDecision.MaxEngageRange"/>].
+	/// Tanks / melee DPS use <see cref="CombatDecision.EffectiveEngageRange"/> (melee cap).
 	/// </summary>
 	public float EngageRange { get; set; } = CombatDecision.DefaultEngageRange;
 

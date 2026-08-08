@@ -115,7 +115,9 @@ public sealed class EngageTargetHelper
 			return false;
 		}
 
-		// Already in combat phase — do not path; Phase 6 owns rotation.
+		// Already in combat phase — do not path; RSR owns rotation.
+		// Melee roles enter combat only at EffectiveEngageRange (melee cap) so
+		// approach happens above via Move before this latch.
 		if (combat.InCombatPhase)
 			return true;
 

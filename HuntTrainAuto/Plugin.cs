@@ -368,7 +368,7 @@ public sealed class Plugin : IDalamudPlugin
 			dataManager,
 			pluginLog,
 			movement,
-			() => Config.EngageRange,
+			ResolveEngageRange,
 			() => Config.ARankScanRange);
 		// Retained for CombatTransitionHelper Clear API only — party follow is disabled.
 		follow = new FollowHelper(
@@ -381,7 +381,7 @@ public sealed class Plugin : IDalamudPlugin
 			partyList,
 			condition,
 			pluginLog,
-			() => Config.EngageRange);
+			ResolveEngageRange);
 		rsrEnable = new RsrEnableHelper(RsrIpc, pluginLog, ResolveRsrRotationSettings);
 
 		chatMessageHandler = new ChatMessageHandler(chatGui, gameGui, Config);
@@ -1247,6 +1247,28 @@ public sealed class Plugin : IDalamudPlugin
 		{
 			return false;
 		}
+	}
+
+	/// <summary>
+	/// Engage path-stop range: casters/healers use config; tanks/melee DPS are
+	/// capped at melee so vnav closes in (RSR ranged fillers do not approach).
+	/// Soft-fails to non-melee (full config range) when job is unavailable.
+	/// </summary>
+	private float ResolveEngageRange()
+	{
+		var meleeEngage = false;
+		try
+		{
+			var player = objectTable.LocalPlayer;
+			if (player != null && player.ClassJob.ValueNullable is { } job)
+				meleeEngage = RsrSettingsDecision.IsMeleeEngageRole(job.Role);
+		}
+		catch
+		{
+			// Soft-fail: treat as non-melee.
+		}
+
+		return CombatDecision.EffectiveEngageRange(Config.EngageRange, meleeEngage);
 	}
 
 	/// <summary>

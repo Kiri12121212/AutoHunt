@@ -13,12 +13,32 @@ public sealed class RsrSettingsDecisionTests
 	public void IsTankRole_matches_ClassJob_Role_byte(byte role, bool expected)
 		=> Assert.Equal(expected, RsrSettingsDecision.IsTankRole(role));
 
+	[Theory]
+	[InlineData((byte)2, true)]
+	[InlineData((byte)1, false)]
+	[InlineData((byte)0, false)]
+	[InlineData((byte)3, false)]
+	[InlineData((byte)4, false)]
+	public void IsMeleeDpsRole_matches_ClassJob_Role_byte(byte role, bool expected)
+		=> Assert.Equal(expected, RsrSettingsDecision.IsMeleeDpsRole(role));
+
+	[Theory]
+	[InlineData((byte)1, true)]
+	[InlineData((byte)2, true)]
+	[InlineData((byte)0, false)]
+	[InlineData((byte)3, false)]
+	[InlineData((byte)4, false)]
+	public void IsMeleeEngageRole_tank_or_melee_dps(byte role, bool expected)
+		=> Assert.Equal(expected, RsrSettingsDecision.IsMeleeEngageRole(role));
+
 	[Fact]
 	public void Defaults_match_AD()
 	{
 		Assert.Equal(RsrTargetHostileType.AllTargetsCanAttack, RsrSettingsDecision.DefaultHostileType);
 		Assert.Equal(RsrTargetingType.HighHP, RsrSettingsDecision.DefaultTankTargeting);
 		Assert.Equal(RsrTargetingType.LowHP, RsrSettingsDecision.DefaultNonTankTargeting);
+		Assert.Equal(1, RsrSettingsDecision.TankClassJobRole);
+		Assert.Equal(2, RsrSettingsDecision.MeleeDpsClassJobRole);
 	}
 
 	[Theory]
