@@ -6,6 +6,7 @@ global using HuntTrainAuto.Logging;
 global using HuntTrainAuto.Map;
 global using HuntTrainAuto.Movement;
 global using HuntTrainAuto.Notifications;
+global using HuntTrainAuto.PartyFinder;
 global using HuntTrainAuto.State;
 global using HuntTrainAuto.Teleport;
 global using HuntTrainAuto.Windows;

@@ -98,6 +98,18 @@ public sealed class Configuration : IPluginConfiguration
 	public bool AutoUnmountAtFlag { get; set; } = true;
 
 	/// <summary>
+	/// After flag arrival / unmount, find a The Hunt Party Finder listing and join it.
+	/// Retries until joined (or disabled / new flag). Soft-fails agent/UI join attempts.
+	/// </summary>
+	public bool AutoJoinHuntPf { get; set; } = true;
+
+	/// <summary>
+	/// Milliseconds between hunt PF refresh / join retries.
+	/// Clamped via <see cref="HuntPfDecision.ClampRetryIntervalMs"/>.
+	/// </summary>
+	public int HuntPfRetryIntervalMs { get; set; } = HuntPfDecision.DefaultRetryIntervalMs;
+
+	/// <summary>
 	/// Party-stack follow distance (yalms). Default <see cref="FollowDecision.DefaultFollowDistance"/>.
 	/// Effective value is clamped to
 	/// [<see cref="FollowDecision.MinFollowDistance"/>, <see cref="FollowDecision.MaxFollowDistance"/>].

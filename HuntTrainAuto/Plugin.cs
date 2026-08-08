@@ -39,6 +39,7 @@ public sealed class Plugin : IDalamudPlugin
 	private readonly FlagWorldHelper flagWorld;
 	private readonly FlagArrivalHelper flagArrival;
 	private readonly UnmountRunner unmount;
+	private readonly HuntPfHelper huntPf;
 	private readonly MovementHelper movement;
 	private readonly EngageTargetHelper engage;
 	private readonly FollowHelper follow;
@@ -254,6 +255,7 @@ public sealed class Plugin : IDalamudPlugin
 		IFramework framework,
 		ICondition condition,
 		IPartyList partyList,
+		IPartyFinderGui partyFinderGui,
 		IPluginLog pluginLog,
 		INotificationManager notificationManager,
 		IContextMenu contextMenuService)
@@ -290,6 +292,7 @@ public sealed class Plugin : IDalamudPlugin
 			Config.RsrTargetingNonTank,
 			RsrSettingsDecision.DefaultNonTankTargeting);
 		Config.BossModPreference = BossModCommands.ClampPreference(Config.BossModPreference);
+		Config.HuntPfRetryIntervalMs = HuntPfDecision.ClampRetryIntervalMs(Config.HuntPfRetryIntervalMs);
 		if (migratedSkipDistance)
 			pluginInterface.SavePluginConfig(Config);
 
@@ -379,6 +382,14 @@ public sealed class Plugin : IDalamudPlugin
 			pluginLog,
 			() => teleportPlan.Active != null,
 			() => instanceChange.IsActive);
+		huntPf = new HuntPfHelper(
+			partyFinderGui,
+			partyList,
+			condition,
+			gameGui,
+			pluginLog,
+			() => Config.AutoJoinHuntPf,
+			() => Config.HuntPfRetryIntervalMs);
 		movement = new MovementHelper(
 			VNavmeshIpc,
 			chat,
@@ -1003,7 +1014,10 @@ public sealed class Plugin : IDalamudPlugin
 		if (plan.ClearMount)
 			mount.Clear();
 		if (plan.ClearFlagArrival)
+		{
 			flagArrival.Clear();
+			huntPf.Clear();
+		}
 		if (plan.ClearUnmount)
 			unmount.ClearAll();
 		if (plan.ClearEngage)
@@ -1086,7 +1100,10 @@ public sealed class Plugin : IDalamudPlugin
 		if (plan.ClearFollow)
 			follow.Clear();
 		if (plan.ClearFlagArrival)
+		{
 			flagArrival.Clear();
+			huntPf.Clear();
+		}
 		if (plan.ClearUnmount)
 			unmount.ClearAll();
 		if (plan.ClearEngage)
@@ -1211,6 +1228,7 @@ public sealed class Plugin : IDalamudPlugin
 			combat.Clear();
 			rsrEnable.Clear();
 			bossModEnable.Clear();
+			huntPf.Clear();
 			train.Reset();
 			ObserveDebugSignals();
 			return;
@@ -1245,6 +1263,8 @@ public sealed class Plugin : IDalamudPlugin
 				Config.Conductors,
 				pluginEnabled: true,
 				playerDead: false);
+			// Hunt PF join retries while at start until in a party.
+			huntPf.Tick(atHuntStart: true, nowMs: Environment.TickCount64);
 		}
 
 		// Death / mob-dead / combat-end → CombatDecision Idle (RsrStopPath.CombatPhaseTick).
@@ -1748,6 +1768,7 @@ public sealed class Plugin : IDalamudPlugin
 		combat.Clear();
 		rsrEnable.Clear();
 		bossModEnable.Clear();
+		huntPf.Dispose();
 		train.Reset();
 		chatMessageHandler.Dispose();
 		huntAlertsIpc.Dispose();

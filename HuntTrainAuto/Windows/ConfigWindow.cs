@@ -403,6 +403,28 @@ public sealed class ConfigWindow : Window, IDisposable
 			saveConfig();
 		}
 
+		var autoJoinPf = config.AutoJoinHuntPf;
+		if (ImGui.Checkbox("Auto-join hunt Party Finder at flag", ref autoJoinPf))
+		{
+			config.AutoJoinHuntPf = autoJoinPf;
+			saveConfig();
+		}
+
+		ImGui.BeginDisabled(!config.AutoJoinHuntPf);
+		var pfRetry = config.HuntPfRetryIntervalMs;
+		ImGui.SetNextItemWidth(200f);
+		if (ImGui.SliderInt(
+			    "Hunt PF retry interval (ms)",
+			    ref pfRetry,
+			    HuntPfDecision.MinRetryIntervalMs,
+			    HuntPfDecision.MaxRetryIntervalMs))
+		{
+			config.HuntPfRetryIntervalMs = HuntPfDecision.ClampRetryIntervalMs(pfRetry);
+			saveConfig();
+		}
+
+		ImGui.EndDisabled();
+
 		var arrival = config.FlagArrivalTolerance;
 		ImGui.SetNextItemWidth(200f);
 		if (ImGui.SliderFloat(
