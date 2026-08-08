@@ -73,4 +73,30 @@ public sealed class ArrivalData
 		flag.Arrival = arrival;
 		return arrival;
 	}
+
+	/// <summary>
+	/// Same-zone instance switch plan. Prefers nearest aetheryte when known (Approach
+	/// may still need it if Lifestream cannot change yet); otherwise uses aetheryte 0
+	/// so ChangeInstance is not blocked by MissingArrival.
+	/// </summary>
+	public static ArrivalData AttachForInstanceSwitch(
+		HuntFlag flag,
+		NearestAetheryteResult? nearest,
+		int instance,
+		string? world = null)
+	{
+		ArgumentNullException.ThrowIfNull(flag);
+		var trimmed = world?.Trim();
+		var worldOrNull = string.IsNullOrEmpty(trimmed) ? null : trimmed;
+		var aetheryteId = nearest is { RowId: > 0 } n ? n.RowId : 0u;
+		var arrival = new ArrivalData
+		{
+			AetheryteId = aetheryteId,
+			Territory = flag.TerritoryTypeId,
+			Instance = instance,
+			World = worldOrNull,
+		};
+		flag.Arrival = arrival;
+		return arrival;
+	}
 }

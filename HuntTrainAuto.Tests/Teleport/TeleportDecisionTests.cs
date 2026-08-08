@@ -49,6 +49,32 @@ public sealed class TeleportDecisionTests
 	}
 
 	[Fact]
+	public void Decide_switches_instance_even_when_auto_teleport_disabled()
+	{
+		var arrival = new ArrivalData
+		{
+			AetheryteId = 0,
+			Territory = 813,
+			Instance = 0,
+			World = null,
+		};
+		var result = TeleportDecision.Decide(
+			enabled: true,
+			autoTeleport: false,
+			currentTerritory: 813,
+			flagTerritory: 813,
+			playerDistance: 40f,
+			distanceThreshold: DefaultYalmThreshold,
+			currentInstance: 1,
+			targetInstance: 2,
+			arrival: arrival);
+
+		Assert.Equal(TeleportAction.SwitchInstance, result.Action);
+		Assert.True(result.ShouldTeleport);
+		Assert.Equal(2, result.Arrival!.Instance);
+	}
+
+	[Fact]
 	public void Decide_teleports_to_zone_when_territory_differs()
 	{
 		var arrival = Arrival(territory: 813);

@@ -163,6 +163,7 @@ public sealed class HuntAlertsIpc : IHuntAlertsService
 				    out var accepted))
 			{
 				RememberIntake("rejected: accept gate", now);
+				log?.Information("HuntAlerts IPC ignored (accept gate)");
 				return;
 			}
 

@@ -61,7 +61,85 @@ internal static class HuntPfAgent
 	}
 
 	/// <summary>
+	/// True when LookingForGroupDetail at <paramref name="addonPtr"/> is ready to join
+	/// and the agent's last-viewed listing matches <paramref name="expectedListingId"/>.
+	/// </summary>
+	public static unsafe bool IsDetailReadyToJoin(nint addonPtr, ulong expectedListingId)
+	{
+		if (addonPtr == nint.Zero || expectedListingId == 0)
+			return false;
+
+		try
+		{
+			if (!IsCurrentDetailListing(expectedListingId))
+				return false;
+
+			var addon = (AddonLookingForGroupDetail*)addonPtr;
+			if (!addon->IsVisible || !addon->IsReady)
+				return false;
+
+			var join = addon->JoinPartyButton;
+			return join != null && join->IsEnabled;
+		}
+		catch
+		{
+			return false;
+		}
+	}
+
+	/// <summary>Click Join Party only when the open detail is still <paramref name="expectedListingId"/>.</summary>
+	public static unsafe bool TryClickJoin(nint addonPtr, ulong expectedListingId)
+	{
+		if (addonPtr == nint.Zero || expectedListingId == 0)
+			return false;
+
+		try
+		{
+			if (!IsCurrentDetailListing(expectedListingId))
+				return false;
+
+			var addon = (AddonLookingForGroupDetail*)addonPtr;
+			if (!addon->IsVisible || !addon->IsReady)
+				return false;
+
+			var join = addon->JoinPartyButton;
+			if (join == null || !join->IsEnabled)
+				return false;
+
+			return ClickAddonButton(join, (AtkUnitBase*)addon);
+		}
+		catch
+		{
+			return false;
+		}
+	}
+
+	/// <summary>
+	/// True when agent last-viewed detail listing id matches the one we OpenListing'd.
+	/// Soft-fails closed (false) if agent unavailable.
+	/// </summary>
+	public static unsafe bool IsCurrentDetailListing(ulong expectedListingId)
+	{
+		if (expectedListingId == 0)
+			return false;
+
+		try
+		{
+			var agent = AgentLookingForGroup.Instance();
+			if (agent == null)
+				return false;
+
+			return agent->LastViewedListing.ListingId == expectedListingId;
+		}
+		catch
+		{
+			return false;
+		}
+	}
+
+	/// <summary>
 	/// True when LookingForGroupDetail at <paramref name="addonPtr"/> is ready to join.
+	/// Prefer the overload that binds to an expected listing id.
 	/// </summary>
 	public static unsafe bool IsDetailReadyToJoin(nint addonPtr)
 	{
@@ -83,7 +161,7 @@ internal static class HuntPfAgent
 		}
 	}
 
-	/// <summary>Click Join Party when the detail addon is ready.</summary>
+	/// <summary>Click Join Party when the detail addon is ready (no listing-id bind).</summary>
 	public static unsafe bool TryClickJoin(nint addonPtr)
 	{
 		if (addonPtr == nint.Zero)

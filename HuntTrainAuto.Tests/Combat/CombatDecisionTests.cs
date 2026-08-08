@@ -21,12 +21,12 @@ public sealed class CombatDecisionTests
 	{
 		Assert.Equal(25f, CombatDecision.DefaultEngageRange);
 		Assert.Equal(5f, CombatDecision.MinEngageRange);
-		Assert.Equal(5f, CombatDecision.DefaultMeleeEngageRange);
+		Assert.Equal(3f, CombatDecision.DefaultMeleeEngageRange);
 		Assert.Equal(60f, CombatDecision.MaxEngageRange);
 		Assert.True(CombatDecision.MinEngageRange > 0f);
+		Assert.True(CombatDecision.DefaultMeleeEngageRange < CombatDecision.MinEngageRange);
 		Assert.True(CombatDecision.DefaultEngageRange >= CombatDecision.MinEngageRange);
 		Assert.True(CombatDecision.DefaultEngageRange <= CombatDecision.MaxEngageRange);
-		Assert.Equal(CombatDecision.MinEngageRange, CombatDecision.DefaultMeleeEngageRange);
 	}
 
 	[Theory]

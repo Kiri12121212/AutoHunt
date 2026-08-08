@@ -100,8 +100,9 @@ public sealed class Configuration : IPluginConfiguration
 	/// <summary>
 	/// After flag arrival / unmount, find a The Hunt Party Finder listing and join it.
 	/// Retries until joined (or disabled / new flag). Soft-fails agent/UI join attempts.
+	/// Default off — opt-in until the join path is trusted in live trains.
 	/// </summary>
-	public bool AutoJoinHuntPf { get; set; } = true;
+	public bool AutoJoinHuntPf { get; set; } = false;
 
 	/// <summary>
 	/// Milliseconds between hunt PF refresh / join retries.

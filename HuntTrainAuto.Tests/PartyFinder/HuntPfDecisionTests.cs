@@ -33,6 +33,21 @@ public sealed class HuntPfDecisionTests
 				actionReady: true));
 
 	[Fact]
+	public void Decide_none_when_in_combat()
+		=> Assert.Equal(
+			HuntPfKind.None,
+			HuntPfDecision.Decide(
+				enabled: true,
+				atHuntStart: true,
+				inCombat: true,
+				inParty: false,
+				joinedLatch: false,
+				hasSuitableListing: true,
+				detailReadyToJoin: true,
+				pluginOpenedListing: true,
+				actionReady: true));
+
+	[Fact]
 	public void Decide_none_when_already_in_party()
 		=> Assert.Equal(
 			HuntPfKind.None,

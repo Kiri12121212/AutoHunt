@@ -118,10 +118,10 @@ public static class CombatDecision
 
 	/// <summary>
 	/// Cap for tanks / melee DPS when resolving effective engage range.
-	/// RSR uses ranged fillers out of melee and does not walk in — path to this
-	/// before <see cref="CombatTransitionKind.EnterCombat"/> instead.
+	/// ~weaponskill range so RSR does not sit on Lightning Shot at 5y+.
+	/// Independent of <see cref="MinEngageRange"/> (config floor).
 	/// </summary>
-	public const float DefaultMeleeEngageRange = MinEngageRange;
+	public const float DefaultMeleeEngageRange = 3f;
 
 	/// <summary>Maximum configurable engage range (yalms).</summary>
 	public const float MaxEngageRange = 60f;

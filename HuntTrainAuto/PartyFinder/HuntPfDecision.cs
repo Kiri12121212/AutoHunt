@@ -68,10 +68,11 @@ public static class HuntPfDecision
 
 	/// <summary>
 	/// Gate from arrival + party latch + listing/detail readiness.
-	/// Does not observe combat / engage — only hunt-start join.
+	/// Skips while in combat so PF UI is not opened mid-fight.
 	/// </summary>
 	/// <param name="enabled">Config auto-join toggle.</param>
 	/// <param name="atHuntStart">Player ready at flag (e.g. ReadyForGroundFollow).</param>
+	/// <param name="inCombat">Local player in combat / combat phase — do not thrash PF.</param>
 	/// <param name="inParty">Already in a multi-member / CW party.</param>
 	/// <param name="joinedLatch">True after we observed a successful join this flag leg.</param>
 	/// <param name="hasSuitableListing">Cached hunt PF with open slots.</param>
@@ -84,6 +85,7 @@ public static class HuntPfDecision
 	public static HuntPfKind Decide(
 		bool enabled,
 		bool atHuntStart,
+		bool inCombat,
 		bool inParty,
 		bool joinedLatch,
 		bool hasSuitableListing,
@@ -91,7 +93,7 @@ public static class HuntPfDecision
 		bool pluginOpenedListing,
 		bool actionReady)
 	{
-		if (!enabled || !atHuntStart)
+		if (!enabled || !atHuntStart || inCombat)
 			return HuntPfKind.None;
 		if (joinedLatch || inParty)
 			return HuntPfKind.None;
@@ -105,6 +107,29 @@ public static class HuntPfDecision
 			return HuntPfKind.OpenListing;
 		return HuntPfKind.RefreshListings;
 	}
+
+	/// <summary>
+	/// Backward-compatible overload (assumes not in combat).
+	/// </summary>
+	public static HuntPfKind Decide(
+		bool enabled,
+		bool atHuntStart,
+		bool inParty,
+		bool joinedLatch,
+		bool hasSuitableListing,
+		bool detailReadyToJoin,
+		bool pluginOpenedListing,
+		bool actionReady)
+		=> Decide(
+			enabled,
+			atHuntStart,
+			inCombat: false,
+			inParty,
+			joinedLatch,
+			hasSuitableListing,
+			detailReadyToJoin,
+			pluginOpenedListing,
+			actionReady);
 
 	/// <summary>
 	/// Next success latch. Sets when we see <paramref name="inParty"/> while seeking;

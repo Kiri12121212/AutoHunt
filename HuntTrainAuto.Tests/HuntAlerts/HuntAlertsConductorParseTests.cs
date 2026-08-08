@@ -74,6 +74,22 @@ public sealed class HuntAlertsConductorParseTests
 	[InlineData("Conductor's chat is loud")]
 	[InlineData("Conductor soon")]
 	[InlineData("Conductor - Soon")]
+	[InlineData("Conductor - Very Fast")]
+	[InlineData("Not Conductor: Alice Bob")]
+	[InlineData("Former Conductor: Alice Bob")]
 	public void TryExtract_rejects_missing_or_invalid(string? message)
 		=> Assert.False(HuntAlertsConductorParse.TryExtract(message, out _, out _));
+
+	[Fact]
+	public void TryExtract_prefers_real_conductor_over_former_line()
+	{
+		const string message =
+			"""
+			Former Conductor: Alice Bob
+			Conductor - Petrichor Daydream
+			""";
+
+		Assert.True(HuntAlertsConductorParse.TryExtract(message, out var name, out _));
+		Assert.Equal("Petrichor Daydream", name);
+	}
 }

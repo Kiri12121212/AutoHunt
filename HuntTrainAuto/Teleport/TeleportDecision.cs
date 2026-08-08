@@ -101,11 +101,19 @@ public static class TeleportDecision
 		if (!enabled)
 			return Skip(TeleportSkipReason.PluginDisabled);
 
-		if (!autoTeleport)
+		var sameZone = flagTerritory == currentTerritory;
+		var needsInstanceSwitch = sameZone
+			&& NeedsInstanceSwitch(currentInstance, targetInstance);
+
+		// Instance swap is independent of AutoTeleport (Lifestream ChangeInstance, not aetheryte TP).
+		if (!autoTeleport && !needsInstanceSwitch)
 			return Skip(TeleportSkipReason.AutoTeleportDisabled);
 
-		if (flagTerritory != currentTerritory)
+		if (!sameZone)
 		{
+			if (!autoTeleport)
+				return Skip(TeleportSkipReason.AutoTeleportDisabled);
+
 			if (arrival == null)
 				return Skip(TeleportSkipReason.MissingArrival);
 
@@ -113,13 +121,16 @@ public static class TeleportDecision
 		}
 
 		// Same territory — conductor/flag instance wins over distance skip (ChangeInstance, no aetheryte TP).
-		if (NeedsInstanceSwitch(currentInstance, targetInstance))
+		if (needsInstanceSwitch)
 		{
 			if (arrival == null)
 				return Skip(TeleportSkipReason.MissingArrival);
 
 			return Teleport(TeleportAction.SwitchInstance, WithInstance(arrival, targetInstance));
 		}
+
+		if (!autoTeleport)
+			return Skip(TeleportSkipReason.AutoTeleportDisabled);
 
 		if (playerDistance is { } d0)
 		{
@@ -219,7 +230,17 @@ public static class TeleportDecision
 			zoneChange,
 			autoSwitchInstanceToOne);
 
-		var arrival = ArrivalData.Attach(flag, s.Nearest, targetInstance);
+		ArrivalData? arrival;
+		if (!zoneChange && NeedsInstanceSwitch(s.CurrentInstance, targetInstance))
+		{
+			// ChangeInstance does not need an aetheryte row; keep nearest when known for Approach.
+			arrival = ArrivalData.AttachForInstanceSwitch(flag, s.Nearest, targetInstance);
+		}
+		else
+		{
+			arrival = ArrivalData.Attach(flag, s.Nearest, targetInstance);
+		}
+
 		return Decide(
 			enabled,
 			autoTeleport,

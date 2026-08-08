@@ -28,6 +28,9 @@ public sealed class HuntPfHelper : IDisposable
 	private long nextActionMs;
 	private ulong openedListingId;
 	private bool subscribed;
+	/// <summary>True while Tick is actively seeking a join (gates ReceiveListing cache).</summary>
+	private bool seeking;
+
 
 	public HuntPfHelper(
 		IPartyFinderGui partyFinderGui,
@@ -82,6 +85,7 @@ public sealed class HuntPfHelper : IDisposable
 		joinedLatch = false;
 		nextActionMs = 0;
 		openedListingId = 0;
+		seeking = false;
 		lock (cacheLock)
 			listings.Clear();
 	}
@@ -89,11 +93,11 @@ public sealed class HuntPfHelper : IDisposable
 	/// <summary>
 	/// One Framework tick while at hunt start. Soft-fails; never throws to Framework.
 	/// </summary>
-	public void Tick(bool atHuntStart, long nowMs)
+	public void Tick(bool atHuntStart, long nowMs, bool inCombat = false)
 	{
 		try
 		{
-			TickCore(atHuntStart, nowMs);
+			TickCore(atHuntStart, nowMs, inCombat);
 		}
 		catch (Exception ex)
 		{
@@ -101,7 +105,7 @@ public sealed class HuntPfHelper : IDisposable
 		}
 	}
 
-	private void TickCore(bool atHuntStart, long nowMs)
+	private void TickCore(bool atHuntStart, long nowMs, bool inCombat)
 	{
 		var enabled = false;
 		try
@@ -113,8 +117,13 @@ public sealed class HuntPfHelper : IDisposable
 			enabled = false;
 		}
 
-		if (!enabled || !atHuntStart)
+		if (!enabled || !atHuntStart || inCombat)
+		{
+			seeking = false;
 			return;
+		}
+
+		seeking = true;
 
 		var inParty = IsInParty();
 		var wasJoined = joinedLatch;
@@ -123,6 +132,7 @@ public sealed class HuntPfHelper : IDisposable
 		{
 			if (!wasJoined)
 				pluginLog.Information("Hunt PF: joined party (latch)");
+			seeking = false;
 			return;
 		}
 
@@ -130,16 +140,19 @@ public sealed class HuntPfHelper : IDisposable
 		if (!HuntPfDecision.IsActionReady(nowMs, nextActionMs))
 			return;
 
-		var detailReady = HuntPfAgent.IsDetailReadyToJoin(GetDetailAddonPtr());
 		var best = PickBestCached();
 		var hasListing = best is not null;
-		// Only treat detail as ours when we opened it and it is still the best suitable id.
+		// Only treat detail as ours when we opened it, it is still best, and agent detail matches.
 		var pluginOpened = openedListingId != 0
 			&& best is not null
-			&& best.Value.Id == openedListingId;
+			&& best.Value.Id == openedListingId
+			&& HuntPfAgent.IsCurrentDetailListing(openedListingId);
+		var detailReady = pluginOpened
+			&& HuntPfAgent.IsDetailReadyToJoin(GetDetailAddonPtr(), openedListingId);
 		var kind = HuntPfDecision.Decide(
 			enabled,
 			atHuntStart,
+			inCombat,
 			inParty,
 			joinedLatch,
 			hasListing,
@@ -193,11 +206,12 @@ public sealed class HuntPfHelper : IDisposable
 				break;
 
 			case HuntPfKind.ClickJoin:
-				var clicked = HuntPfAgent.TryClickJoin(GetDetailAddonPtr());
+				var clickId = openedListingId;
+				var clicked = HuntPfAgent.TryClickJoin(GetDetailAddonPtr(), clickId);
 				nextActionMs = HuntPfDecision.NextActionAt(nowMs, getRetryIntervalMs());
 				if (clicked)
 				{
-					pluginLog.Information($"Hunt PF: ClickJoin listing={openedListingId}");
+					pluginLog.Information($"Hunt PF: ClickJoin listing={clickId}");
 				}
 				else
 				{
@@ -226,6 +240,10 @@ public sealed class HuntPfHelper : IDisposable
 	{
 		try
 		{
+			// Ignore browse noise unless we are actively seeking a hunt PF join.
+			if (!seeking)
+				return;
+
 			var info = ToInfo(listing);
 			if (!HuntPfMatch.IsSuitable(in info))
 				return;

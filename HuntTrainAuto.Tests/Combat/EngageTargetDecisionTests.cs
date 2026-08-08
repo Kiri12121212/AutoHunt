@@ -125,7 +125,8 @@ public sealed class EngageTargetDecisionTests
 		var melee = CombatDecision.EffectiveEngageRange(25f, meleeEngageRole: true);
 		Assert.Equal(CombatDecision.DefaultMeleeEngageRange, melee);
 		Assert.False(EngageTargetDecision.ShouldEnterCombatOnMob(20f, melee));
-		Assert.True(EngageTargetDecision.ShouldEnterCombatOnMob(5f, melee));
+		Assert.False(EngageTargetDecision.ShouldEnterCombatOnMob(5f, melee));
+		Assert.True(EngageTargetDecision.ShouldEnterCombatOnMob(3f, melee));
 	}
 
 	[Fact]

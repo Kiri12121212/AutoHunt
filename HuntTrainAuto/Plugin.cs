@@ -1263,14 +1263,20 @@ public sealed class Plugin : IDalamudPlugin
 				Config.Conductors,
 				pluginEnabled: true,
 				playerDead: false);
-			// Hunt PF join retries while at start until in a party.
-			huntPf.Tick(atHuntStart: true, nowMs: Environment.TickCount64);
 		}
 
 		// Death / mob-dead / combat-end → CombatDecision Idle (RsrStopPath.CombatPhaseTick).
 		// Enter combat is owned by EngageTargetHelper.
 		var wasInCombatPhase = combat.InCombatPhase;
 		combat.Tick(follow, pluginEnabled: true);
+		// Hunt PF join after combat tick so we skip mid-fight thrash.
+		if (unmount.ReadyForGroundFollow && !playerDead)
+		{
+			huntPf.Tick(
+				atHuntStart: true,
+				nowMs: Environment.TickCount64,
+				inCombat: combat.InCombatPhase);
+		}
 		// Remount on combat-end falling edge (UseMount) — same EnqueueIfEnabled as TP / AlreadyClose.
 		if (MountDecision.ShouldEnqueueOnCombatEnd(
 			    wasInCombatPhase,
@@ -1353,11 +1359,11 @@ public sealed class Plugin : IDalamudPlugin
 	/// <summary>
 	/// Engage path-stop range: casters/healers use config; tanks/melee DPS are
 	/// capped at melee so vnav closes in (RSR ranged fillers do not approach).
-	/// Soft-fails to non-melee (full config range) when job is unavailable.
+	/// Soft-fails to melee cap when job is unavailable (safer for GNB/melee trains).
 	/// </summary>
 	private float ResolveEngageRange()
 	{
-		var meleeEngage = false;
+		var meleeEngage = true;
 		try
 		{
 			var player = objectTable.LocalPlayer;
@@ -1366,7 +1372,7 @@ public sealed class Plugin : IDalamudPlugin
 		}
 		catch
 		{
-			// Soft-fail: treat as non-melee.
+			// Soft-fail: treat as melee so we do not re-open the GNB 25y bug.
 		}
 
 		return CombatDecision.EffectiveEngageRange(Config.EngageRange, meleeEngage);
