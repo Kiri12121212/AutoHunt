@@ -82,9 +82,14 @@ public static class TeleportDecision
 	/// </param>
 	/// <param name="timeAware">
 	/// Optional same-zone time-aware settings. When enabled with Ready path lengths,
-	/// compares direct vs TP travel time; Pending defers; Unavailable soft-falls to distance.
+	/// compares direct vs TP travel time; Pending defers; Unavailable soft-falls to distance
+	/// / player-closer-than-aetheryte.
 	/// </param>
 	/// <param name="travelEstimate">Injected path lengths / status (null = distance only).</param>
+	/// <param name="aetheryteDistance">
+	/// World XZ aetheryte→flag yalms. Used when path-cost is Unavailable so we skip TP when
+	/// the player is already closer than the aetheryte.
+	/// </param>
 	public static TeleportDecisionResult Decide(
 		bool enabled,
 		bool autoTeleport,
@@ -96,7 +101,8 @@ public static class TeleportDecision
 		int targetInstance,
 		ArrivalData? arrival,
 		SameZoneTimeAwareSettings timeAware = default,
-		SameZoneTravelEstimate? travelEstimate = null)
+		SameZoneTravelEstimate? travelEstimate = null,
+		float? aetheryteDistance = null)
 	{
 		if (!enabled)
 			return Skip(TeleportSkipReason.PluginDisabled);
@@ -142,8 +148,6 @@ public static class TeleportDecision
 		if (playerDistance == null)
 			return Skip(TeleportSkipReason.PlayerStateUnavailable);
 
-		var withinFloor = playerDistance.Value <= distanceThreshold;
-
 		if (timeAware.Enabled)
 		{
 			var estimate = travelEstimate ?? new SameZoneTravelEstimate
@@ -164,8 +168,11 @@ public static class TeleportDecision
 				return Teleport(TeleportAction.TeleportBecauseFar, arrival);
 			}
 
-			// Unavailable / invalid estimate — soft-fall to distance threshold.
-			if (withinFloor)
+			// Unavailable / invalid estimate — soft-fall to yalm floor or closer-than-aetheryte.
+			if (SameZoneTravelCost.ShouldSkipTeleportWhenPathCostUnavailable(
+				    playerDistance,
+				    aetheryteDistance,
+				    distanceThreshold))
 				return Skip(TeleportSkipReason.AlreadyClose);
 		}
 
@@ -252,7 +259,8 @@ public static class TeleportDecision
 			targetInstance,
 			arrival,
 			timeAware,
-			s.TravelEstimate);
+			s.TravelEstimate,
+			s.AetheryteDistance);
 	}
 
 	private static TeleportDecisionResult Skip(TeleportSkipReason reason) => new()

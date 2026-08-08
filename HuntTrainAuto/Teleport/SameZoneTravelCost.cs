@@ -133,6 +133,34 @@ public static class SameZoneTravelCost
 		=> tDirectSeconds <= tTeleportSeconds;
 
 	/// <summary>
+	/// Path-cost Unavailable soft-fall: skip aetheryte TP when already within the yalm
+	/// floor, or when the player is no farther from the flag than the aetheryte
+	/// (mid-air / off-mesh pathfind must not TP you farther away).
+	/// </summary>
+	public static bool ShouldSkipTeleportWhenPathCostUnavailable(
+		float? playerDistanceYalms,
+		float? aetheryteDistanceYalms,
+		float distanceThreshold)
+	{
+		if (playerDistanceYalms is not { } pd
+		    || float.IsNaN(pd)
+		    || float.IsInfinity(pd)
+		    || pd < 0f)
+			return false;
+
+		if (pd <= distanceThreshold)
+			return true;
+
+		if (aetheryteDistanceYalms is not { } ad
+		    || float.IsNaN(ad)
+		    || float.IsInfinity(ad)
+		    || ad < 0f)
+			return false;
+
+		return pd <= ad;
+	}
+
+	/// <summary>
 	/// Same-zone far decision from injected lengths.
 	/// Returns null when estimate incomplete / invalid — caller soft-falls to distance threshold.
 	/// True = skip TP (direct faster); false = TeleportBecauseFar.

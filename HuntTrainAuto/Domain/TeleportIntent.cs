@@ -49,12 +49,19 @@ public readonly struct TeleportPlayerSnapshot
 	/// <summary>World XZ distance to flag in yalms; null if unknown.</summary>
 	public float? PlayerDistance { get; init; }
 
+	/// <summary>
+	/// World XZ distance from nearest aetheryte to flag in yalms; null if unknown.
+	/// Used when path-cost is Unavailable so we do not TP when already closer than the aetheryte.
+	/// </summary>
+	public float? AetheryteDistance { get; init; }
+
 	/// <summary>Nearest aetheryte for the flag territory; null if selection failed.</summary>
 	public NearestAetheryteResult? Nearest { get; init; }
 
 	/// <summary>
 	/// Optional same-zone vnav path-cost estimate for time-aware TP.
-	/// Null / unavailable → <see cref="TeleportDecision"/> soft-falls to distance threshold.
+	/// Null / unavailable → <see cref="TeleportDecision"/> soft-falls to distance threshold
+	/// (and player-closer-than-aetheryte).
 	/// </summary>
 	public SameZoneTravelEstimate? TravelEstimate { get; init; }
 }

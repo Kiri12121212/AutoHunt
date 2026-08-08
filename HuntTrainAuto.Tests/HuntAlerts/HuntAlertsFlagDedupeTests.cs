@@ -92,6 +92,80 @@ public sealed class HuntAlertsFlagDedupeTests
 	}
 
 	[Fact]
+	public void ShouldSuppressRecentNearDuplicate_true_same_source_within_window()
+	{
+		var flag = Flag(813, 0, 0);
+		var repeat = Flag(813, 500, 0);
+		var mem = Mem(flag, HuntFlagIntakeSource.Chat);
+
+		Assert.True(HuntAlertsFlagDedupe.ShouldSuppressRecentNearDuplicate(
+			mem,
+			repeat,
+			T0 + TimeSpan.FromSeconds(2)));
+	}
+
+	[Fact]
+	public void ShouldSuppressRecentNearDuplicate_false_after_window()
+	{
+		var flag = Flag(813, 0, 0);
+		var repeat = Flag(813, 500, 0);
+		var mem = Mem(flag, HuntFlagIntakeSource.Chat);
+		var after = T0 + HuntAlertsFlagDedupe.DefaultCrossSourceWindow + TimeSpan.FromMilliseconds(1);
+
+		Assert.False(HuntAlertsFlagDedupe.ShouldSuppressRecentNearDuplicate(mem, repeat, after));
+	}
+
+	[Fact]
+	public void ShouldSuppressChatIntake_true_for_same_source_near_dup_when_idle_within_window()
+	{
+		// Conductor re-flags find spot while engage paths after Combat→Idle.
+		var active = Flag(813, 0, 0);
+		var repeat = Flag(813, 500, 0);
+		var mem = Mem(active, HuntFlagIntakeSource.Chat);
+
+		Assert.True(HuntAlertsFlagDedupe.ShouldSuppressChatIntake(
+			active,
+			repeat,
+			pipelineActive: false,
+			mem,
+			T0 + TimeSpan.FromSeconds(5),
+			huntAlertsIntegration: false));
+	}
+
+	[Fact]
+	public void ShouldSuppressChatIntake_false_for_same_source_near_dup_idle_after_window()
+	{
+		var active = Flag(813, 0, 0);
+		var repeat = Flag(813, 500, 0);
+		var mem = Mem(active, HuntFlagIntakeSource.Chat);
+		var after = T0 + HuntAlertsFlagDedupe.DefaultCrossSourceWindow + TimeSpan.FromSeconds(1);
+
+		Assert.False(HuntAlertsFlagDedupe.ShouldSuppressChatIntake(
+			active,
+			repeat,
+			pipelineActive: false,
+			mem,
+			after,
+			huntAlertsIntegration: false));
+	}
+
+	[Fact]
+	public void ShouldProceedAbortVisitThenEnter_false_when_recent_near_dup_window()
+	{
+		var active = Flag(813, 0, 0);
+		var near = Flag(813, 500, 0);
+		var mem = Mem(active, HuntFlagIntakeSource.HuntAlerts);
+
+		Assert.False(HuntAlertsFlagDedupe.ShouldProceedAbortVisitThenEnter(
+			active,
+			near,
+			pipelineActive: false,
+			mem,
+			T0 + TimeSpan.FromSeconds(1),
+			huntAlertsIntegration: true));
+	}
+
+	[Fact]
 	public void ShouldSuppressChatIntake_false_for_distinct_flag_while_pipeline_active()
 	{
 		var active = Flag(813, 0, 0);

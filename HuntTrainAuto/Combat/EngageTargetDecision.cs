@@ -149,4 +149,13 @@ public static class EngageTargetDecision
 	/// <summary>Within engage range of the chosen mob → ready for combat phase.</summary>
 	public static bool ShouldEnterCombatOnMob(float? distanceToMob, float engageRange)
 		=> CombatDecision.IsWithinEngageRange(distanceToMob, engageRange);
+
+	/// <summary>
+	/// Skip conductor chat flag intake while fighting an A-rank so a map-link
+	/// does not abort mid-pull. Approach / non-A combat still accept chat.
+	/// </summary>
+	public static bool ShouldSuppressChatWhileFightingARank(
+		bool inCombatPhase,
+		bool targetIsARank)
+		=> inCombatPhase && targetIsARank;
 }

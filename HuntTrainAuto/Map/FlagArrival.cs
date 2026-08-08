@@ -34,9 +34,17 @@ public static class FlagArrival
 	/// <summary>
 	/// Whether distance to flag is within tolerance (mesh-style <see cref="MovementDecision.IsArrived"/>).
 	/// Missing / zero <paramref name="flagWorldPos"/> → not arrived.
+	/// While <paramref name="inFlight"/>, not arrived — keep descending onto the floor before unmount.
 	/// </summary>
-	public static bool IsArrived(Vector3 playerPos, Vector3? flagWorldPos, float tolerance)
+	public static bool IsArrived(
+		Vector3 playerPos,
+		Vector3? flagWorldPos,
+		float tolerance,
+		bool inFlight = false)
 	{
+		if (inFlight)
+			return false;
+
 		if (flagWorldPos is not { } world || world == Vector3.Zero)
 			return false;
 
@@ -58,11 +66,13 @@ public static class FlagArrival
 	/// <param name="flagWorldPos"><see cref="HuntFlag.WorldPos"/>; null until PointOnFloor.</param>
 	/// <param name="tolerance"><see cref="Configuration.FlagArrivalTolerance"/>.</param>
 	/// <param name="pathAlreadyStoppedForArrival">True after PathStop was issued for the current flag.</param>
+	/// <param name="inFlight">True while airborne — defer arrival until on the floor.</param>
 	public static FlagArrivalResult Evaluate(
 		Vector3 playerPos,
 		Vector3? flagWorldPos,
 		float tolerance,
-		bool pathAlreadyStoppedForArrival = false)
+		bool pathAlreadyStoppedForArrival = false,
+		bool inFlight = false)
 	{
 		if (flagWorldPos is not { } world || world == Vector3.Zero)
 		{
@@ -75,7 +85,8 @@ public static class FlagArrival
 		}
 
 		var distance = MovementDecision.Distance(playerPos, world);
-		var arrived = MovementDecision.IsArrived(world, distance, tolerance, useMesh: true);
+		var arrived = !inFlight
+			&& MovementDecision.IsArrived(world, distance, tolerance, useMesh: true);
 		return new FlagArrivalResult
 		{
 			IsArrived = arrived,

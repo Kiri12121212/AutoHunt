@@ -129,6 +129,19 @@ public sealed class EngageTargetDecisionTests
 		Assert.True(EngageTargetDecision.ShouldEnterCombatOnMob(3f, melee));
 	}
 
+	[Theory]
+	[InlineData(true, true, true)]
+	[InlineData(true, false, false)]
+	[InlineData(false, true, false)]
+	[InlineData(false, false, false)]
+	public void ShouldSuppressChatWhileFightingARank(
+		bool inCombat,
+		bool targetIsA,
+		bool expected)
+		=> Assert.Equal(
+			expected,
+			EngageTargetDecision.ShouldSuppressChatWhileFightingARank(inCombat, targetIsA));
+
 	[Fact]
 	public void ARankHuntIndex_only_rank_a()
 	{

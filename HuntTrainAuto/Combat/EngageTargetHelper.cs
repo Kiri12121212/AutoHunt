@@ -32,6 +32,7 @@ public sealed class EngageTargetHelper
 	private HashSet<uint>? aRankIds;
 	private uint? lockedEntityId;
 	private EngageTargetKind lastKind = EngageTargetKind.None;
+	private bool lastTargetIsARank;
 
 	public EngageTargetHelper(
 		IObjectTable objectTable,
@@ -55,11 +56,18 @@ public sealed class EngageTargetHelper
 
 	public EngageTargetKind LastKind => lastKind;
 
+	/// <summary>
+	/// True when the last resolved engage mob is NotoriousMonster Rank A
+	/// (any engage kind). Used to ignore chat flags mid-fight.
+	/// </summary>
+	public bool TargetIsARank => lastTargetIsARank;
+
 	/// <summary>Clear path / lock (new flag, territory, master off, dispose).</summary>
 	public void Clear()
 	{
 		lockedEntityId = null;
 		lastKind = EngageTargetKind.None;
+		lastTargetIsARank = false;
 		try
 		{
 			movement.Stop();
@@ -132,12 +140,14 @@ public sealed class EngageTargetHelper
 		if (!pick.Found || pick.Index < 0 || pick.Index >= candidateObjects.Count)
 		{
 			lastKind = EngageTargetKind.None;
+			lastTargetIsARank = false;
 			lockedEntityId = null;
 			return false;
 		}
 
 		var mob = candidateObjects[pick.Index];
 		lastKind = pick.Kind;
+		lastTargetIsARank = candidates[pick.Index].IsARank;
 		var entityId = TryEntityId(mob);
 		if (entityId != null)
 			lockedEntityId = entityId;

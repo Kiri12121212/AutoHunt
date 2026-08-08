@@ -677,6 +677,19 @@ public sealed class Plugin : IDalamudPlugin
 			    forceAccept: forceAccept))
 			return;
 
+		// Same-source HA→HA re-share (forceAccept flush still strips Arrival via
+		// cross-source only when chat won; recent window skips double HA when Idle).
+		if (!forceAccept
+		    && HuntAlertsFlagDedupe.ShouldSuppressRecentNearDuplicate(
+			    lastFlagIntakeMemory,
+			    flag,
+			    now))
+		{
+			pluginLog.Information(
+				"HuntAlerts intake skipped (recent near-duplicate window)");
+			return;
+		}
+
 		if (HuntAlertsFlagDedupe.ShouldSuppressCrossSource(
 			    lastFlagIntakeMemory,
 			    flag,
@@ -828,6 +841,14 @@ public sealed class Plugin : IDalamudPlugin
 
 	private void OnHuntFlagReceived(HuntFlag flag)
 	{
+		if (EngageTargetDecision.ShouldSuppressChatWhileFightingARank(
+			    combat.InCombatPhase,
+			    engage.TargetIsARank))
+		{
+			pluginLog.Information("Conductor flag skipped (in combat vs A-rank)");
+			return;
+		}
+
 		var now = DateTimeOffset.UtcNow;
 		var pipelineActive = FlagRestartDecision.IsPipelineActive(
 			train.Phase,
@@ -845,10 +866,17 @@ public sealed class Plugin : IDalamudPlugin
 			    now,
 			    Config.HuntAlertsIntegration))
 		{
+			var recentNearDup = !nearDupPipeline
+				&& HuntAlertsFlagDedupe.ShouldSuppressRecentNearDuplicate(
+					lastFlagIntakeMemory,
+					flag,
+					now);
 			pluginLog.Information(
 				nearDupPipeline
 					? "Conductor flag skipped (near-duplicate, pipeline active)"
-					: "Conductor flag skipped (cross-source chat↔HA window dedupe)");
+					: recentNearDup
+						? "Conductor flag skipped (recent near-duplicate window)"
+						: "Conductor flag skipped (cross-source chat↔HA window dedupe)");
 			return;
 		}
 
@@ -970,11 +998,16 @@ public sealed class Plugin : IDalamudPlugin
 	{
 		try
 		{
+			// ReadyForGroundFollow / Following: engage may still path to the find while
+			// train is Idle after CombatEnded — treat as in-flight so near-dup suppress
+			// does not let a second same-spot flag ClearEngage / reset the path.
 			if (teleportPlan.HasActive
 				|| instanceChange.IsActive
 				|| mount.IsActive
 				|| unmount.IsActive
+				|| unmount.ReadyForGroundFollow
 				|| combat.InCombatPhase
+				|| combat.Session.Phase == CombatPhase.Following
 				|| follow.Enabled)
 				return true;
 
@@ -1449,7 +1482,12 @@ public sealed class Plugin : IDalamudPlugin
 			if (flag.WorldPos is null || flag.WorldPos == Vector3.Zero)
 				flagWorld.TryResolve(flag);
 
-			var arrival = flagArrival.Tick(player.Position, flag.WorldPos, Config.FlagArrivalTolerance);
+			var inFlight = condition[ConditionFlag.InFlight];
+			var arrival = flagArrival.Tick(
+				player.Position,
+				flag.WorldPos,
+				Config.FlagArrivalTolerance,
+				inFlight);
 			// AlreadyClose: clear pending mount before unmount so it cannot remount after.
 			// After ReadyForGroundFollow, keep combat-end remount while still at the kill flag.
 			if (MountDecision.ShouldClearMountOnArrival(arrival.IsArrived, unmount.ReadyForGroundFollow))
@@ -1522,12 +1560,37 @@ public sealed class Plugin : IDalamudPlugin
 			}
 
 			float? distance = null;
+			float? aetheryteDistance = null;
 			var sameZone = clientState.TerritoryType == flag.TerritoryTypeId;
+			float flagWorldX;
+			float flagWorldZ;
+			if (flag.WorldPos is { } wp && wp != Vector3.Zero)
+			{
+				flagWorldX = wp.X;
+				flagWorldZ = wp.Z;
+			}
+			else
+			{
+				var flagXz = FlagWorldPosition.WorldXZFromRaw(flag.RawX, flag.RawY);
+				flagWorldX = flagXz.X;
+				flagWorldZ = flagXz.Y;
+			}
+
 			if (sameZone)
 			{
 				var pos = player.Position;
-				var flagXz = FlagWorldPosition.WorldXZFromRaw(flag.RawX, flag.RawY);
-				distance = MapCoordinates.WorldXZDistance(pos.X, pos.Z, flagXz.X, flagXz.Y);
+				distance = MapCoordinates.WorldXZDistance(pos.X, pos.Z, flagWorldX, flagWorldZ);
+			}
+
+			if (nearest != null && mapParams != null)
+			{
+				var p = mapParams.Value;
+				var aethWorldX = MapCoordinates.ConvertMapCoordinateToWorld(
+					nearest.Value.MapX, p.SizeFactor, p.OffsetX);
+				var aethWorldZ = MapCoordinates.ConvertMapCoordinateToWorld(
+					nearest.Value.MapY, p.SizeFactor, p.OffsetY);
+				aetheryteDistance = MapCoordinates.WorldXZDistance(
+					aethWorldX, aethWorldZ, flagWorldX, flagWorldZ);
 			}
 
 			var travelEstimate = TrySampleSameZoneTravelEstimate(
@@ -1545,6 +1608,7 @@ public sealed class Plugin : IDalamudPlugin
 				CurrentInstance = lifestreamInstance > 0 ? lifestreamInstance : (int)clientState.Instance,
 				TargetInstance = 0,
 				PlayerDistance = distance,
+				AetheryteDistance = aetheryteDistance,
 				Nearest = nearest,
 				TravelEstimate = travelEstimate,
 			};

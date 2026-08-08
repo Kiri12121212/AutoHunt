@@ -225,6 +225,48 @@ public sealed class TeleportDecisionTimeAwareTests
 	}
 
 	[Fact]
+	public void Decide_time_aware_unavailable_skips_when_closer_than_aetheryte()
+	{
+		// Live bug: mid-air poly-0 pathfind → Unavailable; player 87y, aeth 330y, floor 74.8.
+		var result = TeleportDecision.Decide(
+			true, true, 813, 813, 87f, 74.8f, 0, 0, Arrival(),
+			Aware(),
+			new SameZoneTravelEstimate { Status = SameZonePathCostStatus.Unavailable },
+			aetheryteDistance: 330f);
+		Assert.Equal(TeleportSkipReason.AlreadyClose, result.SkipReason);
+		Assert.False(result.ShouldTeleport);
+	}
+
+	[Fact]
+	public void Decide_time_aware_unavailable_tps_when_farther_than_aetheryte()
+	{
+		var arrival = Arrival();
+		var result = TeleportDecision.Decide(
+			true, true, 813, 813, 400f, 74.8f, 0, 0, arrival,
+			Aware(),
+			new SameZoneTravelEstimate { Status = SameZonePathCostStatus.Unavailable },
+			aetheryteDistance: 200f);
+		Assert.Equal(TeleportAction.TeleportBecauseFar, result.Action);
+		Assert.Same(arrival, result.Arrival);
+	}
+
+	[Theory]
+	[InlineData(87f, 330f, 74.8f, true)]
+	[InlineData(150f, 570f, 74.8f, true)]
+	[InlineData(40f, null, 150f, true)]
+	[InlineData(400f, 200f, 150f, false)]
+	[InlineData(400f, null, 150f, false)]
+	[InlineData(null, 100f, 150f, false)]
+	public void ShouldSkipTeleportWhenPathCostUnavailable(
+		float? player,
+		float? aeth,
+		float threshold,
+		bool expected)
+		=> Assert.Equal(
+			expected,
+			SameZoneTravelCost.ShouldSkipTeleportWhenPathCostUnavailable(player, aeth, threshold));
+
+	[Fact]
 	public void Decide_time_aware_instance_switch_beats_distance_floor()
 	{
 		var result = TeleportDecision.Decide(
@@ -274,6 +316,26 @@ public sealed class TeleportDecisionTimeAwareTests
 		};
 		var result = TeleportDecision.Evaluate(
 			true, true, YalmThreshold, false, flag, snapshot, Aware());
+		Assert.Equal(TeleportSkipReason.AlreadyClose, result.SkipReason);
+	}
+
+	[Fact]
+	public void Evaluate_unavailable_uses_aetheryte_distance_from_snapshot()
+	{
+		var flag = HuntFlag.FromMapLink(813u, 1u, 100, 200, "A", System.DateTimeOffset.UnixEpoch);
+		var snapshot = new TeleportPlayerSnapshot
+		{
+			CurrentTerritory = 813,
+			PlayerDistance = 87f,
+			AetheryteDistance = 330f,
+			Nearest = new NearestAetheryteResult(5u, "Near", 10f, 12f),
+			TravelEstimate = new SameZoneTravelEstimate
+			{
+				Status = SameZonePathCostStatus.Unavailable,
+			},
+		};
+		var result = TeleportDecision.Evaluate(
+			true, true, 74.8f, false, flag, snapshot, Aware());
 		Assert.Equal(TeleportSkipReason.AlreadyClose, result.SkipReason);
 	}
 }

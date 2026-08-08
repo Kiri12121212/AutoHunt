@@ -169,9 +169,40 @@ public static class HuntAlertsFlagDedupe
 		=> null;
 
 	/// <summary>
-	/// Conductor chat intake gate: near-dup while pipeline is active, or cross-source window.
-	/// True → skip adopt (no second Engaging / AbortThenRestart mid-hop).
-	/// Distinct flags and Idle near-dups still proceed.
+	/// Windowed suppress of a near-duplicate of the last accepted intake (any source).
+	/// Covers same-source double-share (chat→chat / HA→HA) when the pipeline looks Idle
+	/// — e.g. conductor re-flags the find spot while engage is still pathing after
+	/// Combat→Idle with ReadyForGroundFollow. Cross-source still uses
+	/// <see cref="ShouldSuppressCrossSource"/> (integration-gated); this fills the
+	/// same-source gap. Non-positive <paramref name="window"/> → no-op.
+	/// </summary>
+	public static bool ShouldSuppressRecentNearDuplicate(
+		HuntFlagDedupeMemory? memory,
+		HuntFlag incoming,
+		DateTimeOffset now,
+		TimeSpan? window = null,
+		float distanceThreshold = NearDuplicateDistanceThreshold)
+	{
+		ArgumentNullException.ThrowIfNull(incoming);
+
+		var w = window ?? DefaultCrossSourceWindow;
+		if (w <= TimeSpan.Zero)
+			return false;
+
+		if (memory is not { } mem)
+			return false;
+
+		if (now - mem.AcceptedAt > w)
+			return false;
+
+		return IsNearDuplicate(mem.Flag, incoming, distanceThreshold);
+	}
+
+	/// <summary>
+	/// Conductor chat intake gate: near-dup while pipeline is active, recent same-spot
+	/// re-share window, or cross-source window.
+	/// True → skip adopt (no second Engaging / AbortThenRestart / engage path clear).
+	/// Distinct flags and Idle near-dups outside the window still proceed.
 	/// </summary>
 	public static bool ShouldSuppressChatIntake(
 		HuntFlag? activeFlag,
@@ -188,6 +219,14 @@ public static class HuntAlertsFlagDedupe
 			    incoming,
 			    pipelineActive,
 			    forceAccept: false,
+			    distanceThreshold))
+			return true;
+
+		if (ShouldSuppressRecentNearDuplicate(
+			    crossSourceMemory,
+			    incoming,
+			    now,
+			    crossSourceWindow,
 			    distanceThreshold))
 			return true;
 
@@ -224,11 +263,20 @@ public static class HuntAlertsFlagDedupe
 			    distanceThreshold))
 			return false;
 
+		var at = now ?? DateTimeOffset.UtcNow;
+		if (ShouldSuppressRecentNearDuplicate(
+			    crossSourceMemory,
+			    incoming,
+			    at,
+			    crossSourceWindow,
+			    distanceThreshold))
+			return false;
+
 		if (ShouldSuppressCrossSource(
 			    crossSourceMemory,
 			    incoming,
 			    HuntFlagIntakeSource.HuntAlerts,
-			    now ?? DateTimeOffset.UtcNow,
+			    at,
 			    huntAlertsIntegration,
 			    crossSourceWindow,
 			    distanceThreshold))

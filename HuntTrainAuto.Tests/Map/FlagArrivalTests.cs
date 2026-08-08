@@ -27,6 +27,15 @@ public sealed class FlagArrivalTests
 	}
 
 	[Fact]
+	public void IsArrived_false_while_in_flight()
+	{
+		var player = new Vector3(1, 10, 0);
+		var flag = new Vector3(1, 0, 0);
+		Assert.True(FlagArrival.IsArrived(player, flag, 15f, inFlight: false));
+		Assert.False(FlagArrival.IsArrived(player, flag, 15f, inFlight: true));
+	}
+
+	[Fact]
 	public void IsArrived_exact_tolerance_boundary()
 	{
 		var player = new Vector3(0, 0, 0);
@@ -77,6 +86,20 @@ public sealed class FlagArrivalTests
 		Assert.False(result.IsArrived);
 		Assert.False(result.ShouldStopPath);
 		Assert.Equal(20f, result.Distance);
+	}
+
+	[Fact]
+	public void Evaluate_in_flight_defers_arrival()
+	{
+		var result = FlagArrival.Evaluate(
+			new Vector3(1, 3, 0),
+			new Vector3(1, 0, 0),
+			5f,
+			pathAlreadyStoppedForArrival: false,
+			inFlight: true);
+		Assert.False(result.IsArrived);
+		Assert.False(result.ShouldStopPath);
+		Assert.Equal(3f, result.Distance);
 	}
 
 	[Fact]

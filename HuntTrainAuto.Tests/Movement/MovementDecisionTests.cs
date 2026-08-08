@@ -98,6 +98,17 @@ public sealed class MovementDecisionTests
 				playerReady, navReady, pathfindInProgress, numWaypoints, pathIsRunning, playerOnMesh));
 
 	[Fact]
+	public void ShouldWaitBeforeMeshPathfind_fly_ignores_off_mesh()
+		=> Assert.False(MovementDecision.ShouldWaitBeforeMeshPathfind(
+			playerReady: true,
+			navReady: true,
+			pathfindInProgress: false,
+			numWaypoints: 0,
+			pathIsRunning: false,
+			playerOnMesh: false,
+			fly: true));
+
+	[Fact]
 	public void CanStartMeshPathfind_when_idle_and_ready()
 		=> Assert.True(MovementDecision.CanStartMeshPathfind(
 			playerReady: true,
@@ -118,10 +129,58 @@ public sealed class MovementDecisionTests
 			playerOnMesh: false));
 
 	[Fact]
+	public void CanStartMeshPathfind_fly_true_when_off_mesh()
+		=> Assert.True(MovementDecision.CanStartMeshPathfind(
+			playerReady: true,
+			navReady: true,
+			pathfindInProgress: false,
+			numWaypoints: 0,
+			pathIsRunning: false,
+			playerOnMesh: false,
+			fly: true));
+
+	[Fact]
 	public void DecideMoveTick_waits_when_player_off_mesh()
 	{
 		var r = Decide(distance: 50f, playerOnMesh: false);
 		Assert.Equal(MoveTickKind.Wait, r.Kind);
+	}
+
+	[Fact]
+	public void DecideMoveTick_fly_starts_when_off_mesh()
+	{
+		var r = Decide(
+			flyRequested: true,
+			zoneSupportsFlying: true,
+			mounted: true,
+			inFlight: true,
+			distance: 50f,
+			playerOnMesh: false);
+		Assert.Equal(MoveTickKind.StartMeshPath, r.Kind);
+		Assert.True(r.Fly);
+	}
+
+	[Fact]
+	public void IsArrivedForMove_in_flight_requires_default_tolerance()
+	{
+		Assert.False(MovementDecision.IsArrivedForMove(
+			new Vector3(1, 0, 0),
+			distanceToDestination: 3f,
+			lastPointTolerance: 5f,
+			useMesh: true,
+			inFlight: true));
+		Assert.True(MovementDecision.IsArrivedForMove(
+			new Vector3(1, 0, 0),
+			distanceToDestination: 0.2f,
+			lastPointTolerance: 5f,
+			useMesh: true,
+			inFlight: true));
+		Assert.True(MovementDecision.IsArrivedForMove(
+			new Vector3(1, 0, 0),
+			distanceToDestination: 3f,
+			lastPointTolerance: 5f,
+			useMesh: true,
+			inFlight: false));
 	}
 
 	[Fact]

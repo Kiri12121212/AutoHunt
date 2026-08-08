@@ -34,7 +34,12 @@ public sealed class FlagArrivalHelper
 	/// Subsequent ticks while still arrived report <see cref="FlagArrivalResult.IsArrived"/>
 	/// but do not stop again (so unmount/follow can path).
 	/// </summary>
-	public FlagArrivalResult Tick(Vector3 playerPos, Vector3? flagWorldPos, float tolerance)
+	/// <param name="inFlight">Defer arrival while airborne so Navigate can finish onto the floor.</param>
+	public FlagArrivalResult Tick(
+		Vector3 playerPos,
+		Vector3? flagWorldPos,
+		float tolerance,
+		bool inFlight = false)
 	{
 		try
 		{
@@ -44,7 +49,12 @@ public sealed class FlagArrivalHelper
 				latchedWorldPos = flagWorldPos;
 			}
 
-			var result = FlagArrival.Evaluate(playerPos, flagWorldPos, tolerance, pathStoppedForArrival);
+			var result = FlagArrival.Evaluate(
+				playerPos,
+				flagWorldPos,
+				tolerance,
+				pathStoppedForArrival,
+				inFlight);
 			if (result.ShouldStopPath)
 			{
 				vnav.PathStop();

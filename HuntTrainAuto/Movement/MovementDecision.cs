@@ -116,6 +116,8 @@ public static class MovementDecision
 	/// Soft-wait before starting a mesh pathfind (AD ready / nav / in-progress / waypoints / running guards).
 	/// <paramref name="playerOnMesh"/>: after territory swap, wait until the local player projects
 	/// onto the loaded mesh (avoids <c>poly → 0</c> spam while still falling / off-mesh).
+	/// Ignored when <paramref name="fly"/> — voxel fly pathfind starts from mid-air; blocking on
+	/// ground PointOnFloor stalls descent to the flag floor and prevents unmount.
 	/// </summary>
 	public static bool ShouldWaitBeforeMeshPathfind(
 		bool playerReady,
@@ -123,10 +125,11 @@ public static class MovementDecision
 		bool pathfindInProgress,
 		int numWaypoints,
 		bool pathIsRunning = false,
-		bool playerOnMesh = true)
+		bool playerOnMesh = true,
+		bool fly = false)
 		=> !playerReady
 			|| !navReady
-			|| !playerOnMesh
+			|| (!fly && !playerOnMesh)
 			|| pathfindInProgress
 			|| numWaypoints > 0
 			|| pathIsRunning;
@@ -138,9 +141,30 @@ public static class MovementDecision
 		bool pathfindInProgress,
 		int numWaypoints,
 		bool pathIsRunning = false,
-		bool playerOnMesh = true)
+		bool playerOnMesh = true,
+		bool fly = false)
 		=> !ShouldWaitBeforeMeshPathfind(
-			playerReady, navReady, pathfindInProgress, numWaypoints, pathIsRunning, playerOnMesh);
+			playerReady, navReady, pathfindInProgress, numWaypoints, pathIsRunning, playerOnMesh, fly);
+
+	/// <summary>
+	/// While still <c>InFlight</c>, only treat as arrived when within <see cref="DefaultTolerance"/>
+	/// so a loose flag last-point tolerance cannot PathStop high above the floor.
+	/// </summary>
+	public static bool IsArrivedForMove(
+		Vector3 destination,
+		float distanceToDestination,
+		float lastPointTolerance,
+		bool useMesh,
+		bool inFlight)
+	{
+		if (!IsArrived(destination, distanceToDestination, lastPointTolerance, useMesh))
+			return false;
+
+		if (!inFlight)
+			return true;
+
+		return IsArrived(destination, distanceToDestination, DefaultTolerance, useMesh);
+	}
 
 	/// <summary>
 	/// One <c>Move</c> decision step after zone/fly resolution.
@@ -197,7 +221,8 @@ public static class MovementDecision
 			};
 		}
 
-		if (IsArrived(destination, distanceToDestination, lastPointTolerance, useMesh))
+		if (IsArrivedForMove(
+			    destination, distanceToDestination, lastPointTolerance, useMesh, inFlight))
 		{
 			return new MoveTickResult
 			{
@@ -235,7 +260,13 @@ public static class MovementDecision
 		}
 
 		if (ShouldWaitBeforeMeshPathfind(
-			    playerReady, navReady, pathfindInProgress, numWaypoints, pathIsRunning, playerOnMesh))
+			    playerReady,
+			    navReady,
+			    pathfindInProgress,
+			    numWaypoints,
+			    pathIsRunning,
+			    playerOnMesh,
+			    fly))
 		{
 			return new MoveTickResult
 			{
