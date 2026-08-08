@@ -253,6 +253,72 @@ public sealed class ConfigWindow : Window, IDisposable
 			saveConfig();
 		}
 
+		var timeAware = config.AutoTeleportTimeAware;
+		if (ImGui.Checkbox("Time-aware same-zone TP (vnav path cost)", ref timeAware))
+		{
+			config.AutoTeleportTimeAware = timeAware;
+			saveConfig();
+		}
+
+		var retainFloor = config.AutoTeleportRetainDistanceFloor;
+		if (ImGui.Checkbox("Keep distance threshold as floor / fallback", ref retainFloor))
+		{
+			config.AutoTeleportRetainDistanceFloor = retainFloor;
+			saveConfig();
+		}
+
+		ImGui.SetNextItemWidth(200f);
+		var castSec = config.AutoTeleportCastSeconds;
+		if (ImGui.SliderFloat(
+			    "TP cast estimate (s)",
+			    ref castSec,
+			    ConfigTabs.MinTeleportCastSeconds,
+			    ConfigTabs.MaxTeleportCastSeconds,
+			    "%.1f"))
+		{
+			config.AutoTeleportCastSeconds = ConfigTabs.ClampTeleportCastSeconds(castSec);
+			saveConfig();
+		}
+
+		ImGui.SetNextItemWidth(200f);
+		var loadSec = config.AutoTeleportLoadEstimateSeconds;
+		if (ImGui.SliderFloat(
+			    "TP load estimate (s)",
+			    ref loadSec,
+			    ConfigTabs.MinTeleportLoadEstimateSeconds,
+			    ConfigTabs.MaxTeleportLoadEstimateSeconds,
+			    "%.1f"))
+		{
+			config.AutoTeleportLoadEstimateSeconds = ConfigTabs.ClampTeleportLoadEstimateSeconds(loadSec);
+			saveConfig();
+		}
+
+		ImGui.SetNextItemWidth(200f);
+		var mountSpeed = config.AutoTeleportMountSpeedYalmsPerSec;
+		if (ImGui.SliderFloat(
+			    "Mount speed (yalms/s)",
+			    ref mountSpeed,
+			    ConfigTabs.MinMountSpeedYalmsPerSec,
+			    ConfigTabs.MaxMountSpeedYalmsPerSec,
+			    "%.1f"))
+		{
+			config.AutoTeleportMountSpeedYalmsPerSec = ConfigTabs.ClampMountSpeedYalmsPerSec(mountSpeed);
+			saveConfig();
+		}
+
+		ImGui.SetNextItemWidth(200f);
+		var mountUp = config.AutoTeleportMountUpSeconds;
+		if (ImGui.SliderFloat(
+			    "Mount-up overhead (s)",
+			    ref mountUp,
+			    ConfigTabs.MinMountUpSeconds,
+			    ConfigTabs.MaxMountUpSeconds,
+			    "%.1f"))
+		{
+			config.AutoTeleportMountUpSeconds = ConfigTabs.ClampMountUpSeconds(mountUp);
+			saveConfig();
+		}
+
 		ImGui.Spacing();
 		ImGui.Text("Teleport delay");
 		var delayEnabled = config.TeleportDelayEnabled;

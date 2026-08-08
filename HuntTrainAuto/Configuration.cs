@@ -27,8 +27,32 @@ public sealed class Configuration : IPluginConfiguration
 	/// Same-zone skip threshold in yalms: if player↔flag world XZ ≤ this, skip aetheryte TP
 	/// (mount/nav later). Default 150 ≈ former HTA 3 map-units on sizeFactor 100 maps.
 	/// Config Version &lt; 2 stored map units; Plugin migrates on load (×50, clamp).
+	/// Soft-fallback when time-aware path costs are unavailable; optional floor when time-aware is on.
 	/// </summary>
 	public float AutoTeleportAetheryteDistanceDiff { get; set; } = 150f;
+
+	/// <summary>
+	/// Same-zone: compare vnav path ride times vs TP overhead instead of (only) flat distance.
+	/// Soft-fails to <see cref="AutoTeleportAetheryteDistanceDiff"/> when vnav/pathfind fails.
+	/// </summary>
+	public bool AutoTeleportTimeAware { get; set; } = true;
+
+	/// <summary>Teleport cast duration estimate (seconds; Action 5 ≈ 5s).</summary>
+	public float AutoTeleportCastSeconds { get; set; } = SameZoneTravelCost.DefaultCastSeconds;
+
+	/// <summary>Configurable BetweenAreas load estimate (seconds).</summary>
+	public float AutoTeleportLoadEstimateSeconds { get; set; } = SameZoneTravelCost.DefaultLoadEstimateSeconds;
+
+	/// <summary>Assumed mount speed for ride-time estimates (yalms / second).</summary>
+	public float AutoTeleportMountSpeedYalmsPerSec { get; set; } = SameZoneTravelCost.DefaultMountSpeedYalmsPerSec;
+
+	/// <summary>Optional mount-up overhead added to both ride legs (seconds).</summary>
+	public float AutoTeleportMountUpSeconds { get; set; } = SameZoneTravelCost.DefaultMountUpSeconds;
+
+	/// <summary>
+	/// When time-aware is on, still skip TP if distance ≤ <see cref="AutoTeleportAetheryteDistanceDiff"/>.
+	/// </summary>
+	public bool AutoTeleportRetainDistanceFloor { get; set; } = true;
 
 	/// <summary>
 	/// When teleporting to another zone, set arrival instance to 1 (HTA parity).

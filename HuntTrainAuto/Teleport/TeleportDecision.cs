@@ -28,6 +28,8 @@ public enum TeleportSkipReason
 	AlreadyClose,
 	MissingArrival,
 	PlayerStateUnavailable,
+	/// <summary>Same-zone time-aware pathfind still running — defer far-TP adopt.</summary>
+	AwaitingTravelCost,
 }
 
 /// <summary>Immutable result of <see cref="TeleportDecision.Decide"/>.</summary>
@@ -48,7 +50,8 @@ public readonly struct TeleportDecisionResult
 
 /// <summary>
 /// Pure teleport decision (HTA <c>ChatMessageHandler</c> zone/instance triggers +
-/// same-zone distance skip via <c>AutoTeleportAetheryteDistanceDiff</c>).
+/// same-zone distance skip via <c>AutoTeleportAetheryteDistanceDiff</c>,
+/// optional time-aware path-cost compare).
 /// Does not call Teleporter, Lifestream, or cast teleport.
 /// </summary>
 public static class TeleportDecision
@@ -77,6 +80,11 @@ public static class TeleportDecision
 	/// Pre-built arrival for the flag's nearest aetheryte. Required for teleport outcomes;
 	/// missing arrival yields <see cref="TeleportSkipReason.MissingArrival"/>.
 	/// </param>
+	/// <param name="timeAware">
+	/// Optional same-zone time-aware settings. When enabled with Ready path lengths,
+	/// compares direct vs TP travel time; Pending defers; Unavailable soft-falls to distance.
+	/// </param>
+	/// <param name="travelEstimate">Injected path lengths / status (null = distance only).</param>
 	public static TeleportDecisionResult Decide(
 		bool enabled,
 		bool autoTeleport,
@@ -86,7 +94,9 @@ public static class TeleportDecision
 		float distanceThreshold,
 		int currentInstance,
 		int targetInstance,
-		ArrivalData? arrival)
+		ArrivalData? arrival,
+		SameZoneTimeAwareSettings timeAware = default,
+		SameZoneTravelEstimate? travelEstimate = null)
 	{
 		if (!enabled)
 			return Skip(TeleportSkipReason.PluginDisabled);
@@ -102,9 +112,13 @@ public static class TeleportDecision
 			return Teleport(TeleportAction.TeleportToZone, arrival);
 		}
 
-		// Same territory — already-close beats instance hints (no aetheryte TP when nearby).
-		if (playerDistance is { } d && d <= distanceThreshold)
-			return Skip(TeleportSkipReason.AlreadyClose);
+		// Same territory — distance floor beats instance hints (no aetheryte TP when nearby).
+		if (playerDistance is { } d0)
+		{
+			var withinDistanceFloor = d0 <= distanceThreshold;
+			if (withinDistanceFloor && (!timeAware.Enabled || timeAware.RetainDistanceAsFloor))
+				return Skip(TeleportSkipReason.AlreadyClose);
+		}
 
 		if (NeedsInstanceSwitch(currentInstance, targetInstance))
 		{
@@ -116,6 +130,33 @@ public static class TeleportDecision
 
 		if (playerDistance == null)
 			return Skip(TeleportSkipReason.PlayerStateUnavailable);
+
+		var withinFloor = playerDistance.Value <= distanceThreshold;
+
+		if (timeAware.Enabled)
+		{
+			var estimate = travelEstimate ?? new SameZoneTravelEstimate
+			{
+				Status = SameZonePathCostStatus.Unavailable,
+			};
+
+			if (estimate.Status == SameZonePathCostStatus.Pending)
+				return Skip(TeleportSkipReason.AwaitingTravelCost);
+
+			var skipForTime = SameZoneTravelCost.ShouldSkipTeleportForTime(estimate, timeAware);
+			if (skipForTime == true)
+				return Skip(TeleportSkipReason.AlreadyClose);
+			if (skipForTime == false)
+			{
+				if (arrival == null)
+					return Skip(TeleportSkipReason.MissingArrival);
+				return Teleport(TeleportAction.TeleportBecauseFar, arrival);
+			}
+
+			// Unavailable / invalid estimate — soft-fall to distance threshold.
+			if (withinFloor)
+				return Skip(TeleportSkipReason.AlreadyClose);
+		}
 
 		if (arrival == null)
 			return Skip(TeleportSkipReason.MissingArrival);
@@ -146,7 +187,8 @@ public static class TeleportDecision
 		float distanceThreshold,
 		bool autoSwitchInstanceToOne,
 		HuntFlag flag,
-		TeleportPlayerSnapshot? snapshot)
+		TeleportPlayerSnapshot? snapshot,
+		SameZoneTimeAwareSettings timeAware = default)
 	{
 		ArgumentNullException.ThrowIfNull(flag);
 
@@ -168,7 +210,9 @@ public static class TeleportDecision
 			distanceThreshold,
 			s.CurrentInstance,
 			targetInstance,
-			arrival);
+			arrival,
+			timeAware,
+			s.TravelEstimate);
 	}
 
 	private static TeleportDecisionResult Skip(TeleportSkipReason reason) => new()

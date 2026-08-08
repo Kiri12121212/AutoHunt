@@ -47,4 +47,10 @@ public readonly struct TeleportPlayerSnapshot
 
 	/// <summary>Nearest aetheryte for the flag territory; null if selection failed.</summary>
 	public NearestAetheryteResult? Nearest { get; init; }
+
+	/// <summary>
+	/// Optional same-zone vnav path-cost estimate for time-aware TP.
+	/// Null / unavailable → <see cref="TeleportDecision"/> soft-falls to distance threshold.
+	/// </summary>
+	public SameZoneTravelEstimate? TravelEstimate { get; init; }
 }

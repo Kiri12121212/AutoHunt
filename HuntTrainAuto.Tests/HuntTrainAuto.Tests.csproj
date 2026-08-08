@@ -42,6 +42,7 @@
 		<Compile Include="..\HuntTrainAuto\Domain\CombatSession.cs" Link="Domain\CombatSession.cs" />
 		<Compile Include="..\HuntTrainAuto\Domain\HuntMarkRank.cs" Link="Domain\HuntMarkRank.cs" />
 		<Compile Include="..\HuntTrainAuto\Teleport\TeleportDecision.cs" Link="Teleport\TeleportDecision.cs" />
+		<Compile Include="..\HuntTrainAuto\Teleport\SameZoneTravelCost.cs" Link="Teleport\SameZoneTravelCost.cs" />
 		<Compile Include="..\HuntTrainAuto\Teleport\TeleportThrottle.cs" Link="Teleport\TeleportThrottle.cs" />
 		<Compile Include="..\HuntTrainAuto\Teleport\TeleportGate.cs" Link="Teleport\TeleportGate.cs" />
 		<Compile Include="..\HuntTrainAuto\Teleport\InstanceChangeDecision.cs" Link="Teleport\InstanceChangeDecision.cs" />

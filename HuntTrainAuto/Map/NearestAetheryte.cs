@@ -4,17 +4,27 @@ using System.Collections.Generic;
 
 namespace HuntTrainAuto.Map;
 
-/// <summary>Identity of the nearest aetheryte (usable by later ArrivalData wiring).</summary>
+/// <summary>
+/// Identity + map position of the nearest aetheryte (ArrivalData + same-zone path endpoints).
+/// </summary>
 public readonly struct NearestAetheryteResult
 {
-	public NearestAetheryteResult(uint rowId, string placeName)
+	public NearestAetheryteResult(uint rowId, string placeName, float mapX = 0f, float mapY = 0f)
 	{
 		RowId = rowId;
 		PlaceName = placeName ?? throw new ArgumentNullException(nameof(placeName));
+		MapX = mapX;
+		MapY = mapY;
 	}
 
 	public uint RowId { get; }
 	public string PlaceName { get; }
+
+	/// <summary>Map X of the selected aetheryte (same units as flag map-link coords).</summary>
+	public float MapX { get; }
+
+	/// <summary>Map Y of the selected aetheryte (same units as flag map-link coords).</summary>
+	public float MapY { get; }
 }
 
 /// <summary>
@@ -63,7 +73,11 @@ public static class NearestAetheryte
 			if (best == null || distance < bestDistance)
 			{
 				bestDistance = distance;
-				best = new NearestAetheryteResult(candidate.RowId, candidate.PlaceName);
+				best = new NearestAetheryteResult(
+					candidate.RowId,
+					candidate.PlaceName,
+					candidate.MapX,
+					candidate.MapY);
 			}
 		}
 

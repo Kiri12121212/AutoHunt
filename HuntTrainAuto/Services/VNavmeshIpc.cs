@@ -2,6 +2,7 @@
 using System;
 using System.Collections.Generic;
 using System.Numerics;
+using System.Threading.Tasks;
 using Dalamud.Plugin;
 using Dalamud.Plugin.Ipc;
 using HuntTrainAuto.Contracts;
@@ -55,6 +56,12 @@ public sealed class VNavmeshIpc : IVnavmeshService
 	/// </summary>
 	private const string PointOnFloorChannel = "vnavmesh.Query.Mesh.PointOnFloor";
 
+	/// <summary>
+	/// IPC: <c>vnavmesh.Nav.Pathfind</c> —
+	/// <c>Func&lt;Vector3, Vector3, bool, Task&lt;List&lt;Vector3&gt;&gt;&gt;</c>.
+	/// </summary>
+	private const string NavPathfindChannel = "vnavmesh.Nav.Pathfind";
+
 	private readonly ICallGateSubscriber<bool> navIsReady;
 	private readonly ICallGateSubscriber<object?> pathStop;
 	private readonly ICallGateSubscriber<bool> pathIsRunning;
@@ -64,6 +71,7 @@ public sealed class VNavmeshIpc : IVnavmeshService
 	private readonly ICallGateSubscriber<Vector3, bool, bool> pathfindAndMoveTo;
 	private readonly ICallGateSubscriber<bool> simpleMovePathfindInProgress;
 	private readonly ICallGateSubscriber<Vector3, bool, float, Vector3?> pointOnFloor;
+	private readonly ICallGateSubscriber<Vector3, Vector3, bool, Task<List<Vector3>>> navPathfind;
 
 	public VNavmeshIpc(IDalamudPluginInterface pluginInterface)
 	{
@@ -76,6 +84,7 @@ public sealed class VNavmeshIpc : IVnavmeshService
 		pathfindAndMoveTo = pluginInterface.GetIpcSubscriber<Vector3, bool, bool>(PathfindAndMoveToChannel);
 		simpleMovePathfindInProgress = pluginInterface.GetIpcSubscriber<bool>(SimpleMovePathfindInProgressChannel);
 		pointOnFloor = pluginInterface.GetIpcSubscriber<Vector3, bool, float, Vector3?>(PointOnFloorChannel);
+		navPathfind = pluginInterface.GetIpcSubscriber<Vector3, Vector3, bool, Task<List<Vector3>>>(NavPathfindChannel);
 	}
 	/// <summary>
 	/// True when the <c>vnavmesh.Nav.IsReady</c> CallGate has a registered provider.
@@ -244,6 +253,21 @@ public sealed class VNavmeshIpc : IVnavmeshService
 		try
 		{
 			return pointOnFloor.InvokeFunc(position, allowUnlandable, halfExtentXZ);
+		}
+		catch
+		{
+			return null;
+		}
+	}
+
+	/// <summary>
+	/// Async pathfind (<c>vnavmesh.Nav.Pathfind</c>). Soft-fails (null) when vnavmesh is absent or IPC throws.
+	/// </summary>
+	public Task<List<Vector3>>? NavPathfind(Vector3 from, Vector3 to, bool fly)
+	{
+		try
+		{
+			return navPathfind.InvokeFunc(from, to, fly);
 		}
 		catch
 		{

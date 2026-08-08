@@ -46,6 +46,15 @@ public static class ConfigTabs
 	public const float MinFlagArrivalTolerance = 1f;
 	public const float MaxFlagArrivalTolerance = 25f;
 
+	public const float MinTeleportCastSeconds = 0f;
+	public const float MaxTeleportCastSeconds = 30f;
+	public const float MinTeleportLoadEstimateSeconds = 0f;
+	public const float MaxTeleportLoadEstimateSeconds = 60f;
+	public const float MinMountSpeedYalmsPerSec = 1f;
+	public const float MaxMountSpeedYalmsPerSec = 80f;
+	public const float MinMountUpSeconds = 0f;
+	public const float MaxMountUpSeconds = 15f;
+
 	/// <summary>Clamp tab index into <see cref="Labels"/> range.</summary>
 	public static int ClampSelected(int selected)
 	{
@@ -128,5 +137,36 @@ public static class ConfigTabs
 		if (tolerance > MaxFlagArrivalTolerance)
 			return MaxFlagArrivalTolerance;
 		return tolerance;
+	}
+
+	public static float ClampTeleportCastSeconds(float seconds)
+		=> ClampFinite(seconds, MinTeleportCastSeconds, MaxTeleportCastSeconds, SameZoneTravelCost.DefaultCastSeconds);
+
+	public static float ClampTeleportLoadEstimateSeconds(float seconds)
+		=> ClampFinite(
+			seconds,
+			MinTeleportLoadEstimateSeconds,
+			MaxTeleportLoadEstimateSeconds,
+			SameZoneTravelCost.DefaultLoadEstimateSeconds);
+
+	public static float ClampMountSpeedYalmsPerSec(float speed)
+		=> ClampFinite(
+			speed,
+			MinMountSpeedYalmsPerSec,
+			MaxMountSpeedYalmsPerSec,
+			SameZoneTravelCost.DefaultMountSpeedYalmsPerSec);
+
+	public static float ClampMountUpSeconds(float seconds)
+		=> ClampFinite(seconds, MinMountUpSeconds, MaxMountUpSeconds, SameZoneTravelCost.DefaultMountUpSeconds);
+
+	private static float ClampFinite(float value, float min, float max, float fallback)
+	{
+		if (float.IsNaN(value) || float.IsInfinity(value))
+			return fallback;
+		if (value < min)
+			return min;
+		if (value > max)
+			return max;
+		return value;
 	}
 }

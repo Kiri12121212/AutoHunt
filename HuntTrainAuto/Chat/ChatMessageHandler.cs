@@ -161,7 +161,8 @@ public sealed class ChatMessageHandler : IDisposable
 				config.AutoTeleportAetheryteDistanceDiff,
 				config.AutoSwitchInstanceToOne,
 				flag,
-				snapshot);
+				snapshot,
+				CreateTimeAwareSettings(config));
 			TeleportIntent.Set(decision);
 		}
 		catch
@@ -203,6 +204,18 @@ public sealed class ChatMessageHandler : IDisposable
 		var payloadNames = sender.Payloads.OfType<PlayerPayload>().Select(static p => p.PlayerName);
 		return ChatSender.TryDecode(payloadNames, sender.TextValue, out playerName);
 	}
+
+	internal static SameZoneTimeAwareSettings CreateTimeAwareSettings(Configuration cfg)
+		=> SameZoneTravelCost.CreateSettings(
+			cfg.AutoTeleportTimeAware,
+			cfg.AutoTeleportCastSeconds,
+			cfg.AutoTeleportLoadEstimateSeconds,
+			cfg.AutoTeleportMountSpeedYalmsPerSec,
+			cfg.AutoTeleportMountUpSeconds,
+			cfg.AutoTeleportRetainDistanceFloor,
+			cfg.TeleportDelayEnabled,
+			cfg.TeleportDelayMin,
+			cfg.TeleportDelayMax);
 
 	public void Dispose()
 	{

@@ -1,8 +1,10 @@
 #nullable enable
 using System;
 using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.Numerics;
 using System.Threading;
+using System.Threading.Tasks;
 using Dalamud.Game.ClientState.Conditions;
 using Dalamud.Game.ClientState.Objects;
 using Dalamud.Game.Command;
@@ -48,6 +50,10 @@ public sealed class Plugin : IDalamudPlugin
 	private readonly HuntNotificator notificator;
 
 	private HuntFlag? activeHuntFlag;
+
+	/// <summary>In-flight same-zone vnav path-cost sample for time-aware TP.</summary>
+	private PendingSameZoneTravelCost? pendingSameZoneTravelCost;
+
 	/// <summary>
 	/// Cross-world HuntAlerts hand-off (TASKS 10.5): single-slot stash while Lifestream
 	/// <c>ChangeWorld</c> runs; flushed into <see cref="OnHuntFlagReceived"/> once on hunt world.
@@ -660,7 +666,11 @@ public sealed class Plugin : IDalamudPlugin
 		{
 			var snapshot = TryGetPlayerSnapshot(flag);
 			if (snapshot is { } s && targetInstanceHint > 0)
+			{
 				snapshot = s with { TargetInstance = targetInstanceHint };
+				if (pendingSameZoneTravelCost is { } pending && ReferenceEquals(pending.Flag, flag))
+					pending.Snapshot = snapshot.Value;
+			}
 
 			var decision = TeleportDecision.Evaluate(
 				Config.Enabled,
@@ -668,11 +678,15 @@ public sealed class Plugin : IDalamudPlugin
 				Config.AutoTeleportAetheryteDistanceDiff,
 				Config.AutoSwitchInstanceToOne,
 				flag,
-				snapshot);
+				snapshot,
+				ChatMessageHandler.CreateTimeAwareSettings(Config));
 			chatMessageHandler.TeleportIntent.Set(decision);
+			if (decision.SkipReason != TeleportSkipReason.AwaitingTravelCost)
+				pendingSameZoneTravelCost = null;
 		}
 		catch
 		{
+			pendingSameZoneTravelCost = null;
 			chatMessageHandler.TeleportIntent.Set(new TeleportDecisionResult
 			{
 				Action = TeleportAction.Skip,
@@ -1056,6 +1070,7 @@ public sealed class Plugin : IDalamudPlugin
 	{
 		_ = fw;
 		var now = Environment.TickCount64;
+		TryFinalizePendingSameZoneTravelCost(now);
 		var player = objectTable.LocalPlayer;
 		var active = teleportPlan.Active;
 
@@ -1349,7 +1364,10 @@ public sealed class Plugin : IDalamudPlugin
 		{
 			var player = objectTable.LocalPlayer;
 			if (player == null)
+			{
+				pendingSameZoneTravelCost = null;
 				return null;
+			}
 
 			var mapParams = mapManager.GetMapParams(flag.MapId, flag.TerritoryTypeId);
 			float? flagMapX = null;
@@ -1371,28 +1389,207 @@ public sealed class Plugin : IDalamudPlugin
 			}
 
 			float? distance = null;
-			if (clientState.TerritoryType == flag.TerritoryTypeId)
+			var sameZone = clientState.TerritoryType == flag.TerritoryTypeId;
+			if (sameZone)
 			{
 				var pos = player.Position;
 				var flagXz = FlagWorldPosition.WorldXZFromRaw(flag.RawX, flag.RawY);
 				distance = MapCoordinates.WorldXZDistance(pos.X, pos.Z, flagXz.X, flagXz.Y);
 			}
 
+			var travelEstimate = TrySampleSameZoneTravelEstimate(
+				flag,
+				player.Position,
+				sameZone,
+				distance,
+				nearest,
+				mapParams);
+
 			var lifestreamInstance = LifestreamIpc.GetCurrentInstance();
-			return new TeleportPlayerSnapshot
+			var snapshot = new TeleportPlayerSnapshot
 			{
 				CurrentTerritory = clientState.TerritoryType,
 				CurrentInstance = lifestreamInstance > 0 ? lifestreamInstance : (int)clientState.Instance,
 				TargetInstance = 0,
 				PlayerDistance = distance,
 				Nearest = nearest,
+				TravelEstimate = travelEstimate,
 			};
+
+			if (pendingSameZoneTravelCost is { } pending && ReferenceEquals(pending.Flag, flag))
+				pending.Snapshot = snapshot;
+
+			return snapshot;
 		}
 		catch (Exception ex)
 		{
+			pendingSameZoneTravelCost = null;
 			pluginLog.Debug($"TryGetPlayerSnapshot soft-fail: {ex.Message}");
 			return null;
 		}
+	}
+
+	/// <summary>
+	/// Same-zone only: start/resolve vnav path lengths for time-aware TP.
+	/// Soft-fails to null / Unavailable (distance threshold) when vnav or endpoints missing.
+	/// </summary>
+	private SameZoneTravelEstimate? TrySampleSameZoneTravelEstimate(
+		HuntFlag flag,
+		Vector3 playerPos,
+		bool sameZone,
+		float? distanceYalms,
+		NearestAetheryteResult? nearest,
+		MapCoordParams? mapParams)
+	{
+		pendingSameZoneTravelCost = null;
+		if (!Config.AutoTeleportTimeAware || !sameZone)
+			return null;
+
+		if (Config.AutoTeleportRetainDistanceFloor
+			&& distanceYalms is { } d
+			&& d <= Config.AutoTeleportAetheryteDistanceDiff)
+			return null;
+
+		if (nearest == null || mapParams == null)
+			return SameZonePathCostSampler.Unavailable();
+
+		try
+		{
+			// Zero is "unset" elsewhere (nav / arrival); do not pathfind to origin.
+			Vector3? flagFloor = flag.WorldPos is { } wp && wp != Vector3.Zero
+				? wp
+				: flagWorld.TryResolve(flag);
+			if (flagFloor is null || flagFloor == Vector3.Zero)
+				return SameZonePathCostSampler.Unavailable();
+
+			var p = mapParams.Value;
+			var aethWorldX = MapCoordinates.ConvertMapCoordinateToWorld(nearest.Value.MapX, p.SizeFactor, p.OffsetX);
+			var aethWorldZ = MapCoordinates.ConvertMapCoordinateToWorld(nearest.Value.MapY, p.SizeFactor, p.OffsetY);
+			var aethFloor = VNavmeshIpc.QueryMeshPointOnFloor(
+				FlagWorldPosition.PointOnFloorQueryFromWorldXZ(aethWorldX, aethWorldZ),
+				FlagWorldPosition.DefaultAllowUnlandable,
+				FlagWorldPosition.DefaultHalfExtentXZ);
+			if (aethFloor == null)
+				return SameZonePathCostSampler.Unavailable();
+
+			if (!SameZonePathCostSampler.TryBegin(
+				    VNavmeshIpc,
+				    playerPos,
+				    flagFloor.Value,
+				    aethFloor.Value,
+				    canFly: false,
+				    out var estimate,
+				    out var directTask,
+				    out var aethTask))
+				return SameZonePathCostSampler.Unavailable();
+
+			if (estimate.Status == SameZonePathCostStatus.Pending
+				&& directTask != null
+				&& aethTask != null)
+			{
+				pendingSameZoneTravelCost = new PendingSameZoneTravelCost
+				{
+					Flag = flag,
+					Snapshot = default,
+					Direct = directTask,
+					FromAetheryte = aethTask,
+					StartedAtMs = Environment.TickCount64,
+				};
+			}
+
+			return estimate;
+		}
+		catch (Exception ex)
+		{
+			pluginLog.Debug($"TrySampleSameZoneTravelEstimate soft-fail: {ex.Message}");
+			return SameZonePathCostSampler.Unavailable();
+		}
+	}
+
+	private void TryFinalizePendingSameZoneTravelCost(long nowMs)
+	{
+		var pending = pendingSameZoneTravelCost;
+		if (pending == null)
+			return;
+
+		try
+		{
+			if (chatMessageHandler.TeleportIntent.LatestDecision is not
+			    { Action: TeleportAction.Skip, SkipReason: TeleportSkipReason.AwaitingTravelCost })
+			{
+				pendingSameZoneTravelCost = null;
+				return;
+			}
+
+			SameZoneTravelEstimate estimate;
+			if (nowMs - pending.StartedAtMs >= SameZonePathCostSampler.DefaultTimeoutMs)
+			{
+				estimate = SameZonePathCostSampler.Unavailable();
+			}
+			else if (!SameZonePathCostSampler.TryResolve(pending.Direct, pending.FromAetheryte, out estimate))
+			{
+				return;
+			}
+
+			pendingSameZoneTravelCost = null;
+
+			var snapshot = pending.Snapshot with { TravelEstimate = estimate };
+			if (snapshot.TargetInstance == 0 && pending.Flag.Arrival is { Instance: > 0 } arr)
+				snapshot = snapshot with { TargetInstance = arr.Instance };
+
+			var decision = TeleportDecision.Evaluate(
+				Config.Enabled,
+				Config.AutoTeleport,
+				Config.AutoTeleportAetheryteDistanceDiff,
+				Config.AutoSwitchInstanceToOne,
+				pending.Flag,
+				snapshot,
+				ChatMessageHandler.CreateTimeAwareSettings(Config));
+			chatMessageHandler.TeleportIntent.Set(decision);
+			TryEngageAfterTravelCost(decision);
+		}
+		catch (Exception ex)
+		{
+			pendingSameZoneTravelCost = null;
+			pluginLog.Debug($"TryFinalizePendingSameZoneTravelCost soft-fail: {ex.Message}");
+		}
+	}
+
+	/// <summary>
+	/// After deferred time-aware resolve: adopt TP or mount/nav if still Idle and no plan.
+	/// </summary>
+	private void TryEngageAfterTravelCost(TeleportDecisionResult decision)
+	{
+		if (teleportPlan.HasActive)
+			return;
+
+		var adopted = teleportPlan.TryAdoptFromIntent(chatMessageHandler.TeleportIntent);
+		var alreadyClose = decision is
+			{ Action: TeleportAction.Skip, SkipReason: TeleportSkipReason.AlreadyClose };
+
+		if (adopted)
+		{
+			ApplyDelayTeleport();
+			pluginLog.Information("Engaging autoteleport (time-aware)");
+			if (train.Phase == HuntTrainPhase.Idle)
+				train.Apply(HuntTrainEvent.StartTeleport);
+			return;
+		}
+
+		if (!alreadyClose)
+			return;
+
+		mount.EnqueueIfEnabled(Config.UseMount);
+		if (train.Phase != HuntTrainPhase.Idle)
+			return;
+
+		var start = HuntTrainObserve.DecideFlagStart(
+			Config.Enabled,
+			teleportPlanActive: false,
+			alreadyCloseSkip: true,
+			Config.UseMount);
+		if (start != HuntTrainEvent.None)
+			train.Apply(start);
 	}
 
 	private uint? GetIntendedUseRowId(uint territoryId) =>
@@ -1411,6 +1608,7 @@ public sealed class Plugin : IDalamudPlugin
 
 	public void Dispose()
 	{
+		pendingSameZoneTravelCost = null;
 		framework.Update -= OnFrameworkUpdate;
 		clientState.TerritoryChanged -= OnTerritoryChanged;
 		chatMessageHandler.HuntFlagReceived -= OnHuntFlagReceived;
@@ -1441,5 +1639,15 @@ public sealed class Plugin : IDalamudPlugin
 		pluginInterface.UiBuilder.OpenConfigUi -= ToggleUi;
 		windowSystem.RemoveAllWindows();
 		configWindow.Dispose();
+	}
+
+	/// <summary>Deferred vnav path-cost sample for same-zone time-aware TP.</summary>
+	private sealed class PendingSameZoneTravelCost
+	{
+		public required HuntFlag Flag { get; init; }
+		public TeleportPlayerSnapshot Snapshot { get; set; }
+		public required Task<List<Vector3>> Direct { get; init; }
+		public required Task<List<Vector3>> FromAetheryte { get; init; }
+		public long StartedAtMs { get; init; }
 	}
 }

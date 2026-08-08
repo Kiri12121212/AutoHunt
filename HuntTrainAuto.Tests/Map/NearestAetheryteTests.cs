@@ -19,6 +19,8 @@ public sealed class NearestAetheryteTests
 		Assert.NotNull(result);
 		Assert.Equal(2u, result.Value.RowId);
 		Assert.Equal("Near", result.Value.PlaceName);
+		Assert.Equal(11f, result.Value.MapX);
+		Assert.Equal(10f, result.Value.MapY);
 	}
 
 	[Fact]

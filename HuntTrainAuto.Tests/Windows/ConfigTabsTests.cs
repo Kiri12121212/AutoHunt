@@ -113,4 +113,28 @@ public sealed class ConfigTabsTests
 	[InlineData(40f, 25f)]
 	public void ClampFlagArrivalTolerance_bounds(float input, float expected)
 		=> Assert.Equal(expected, ConfigTabs.ClampFlagArrivalTolerance(input));
+
+	[Theory]
+	[InlineData(float.NaN, 5f)]
+	[InlineData(-1f, 0f)]
+	[InlineData(5f, 5f)]
+	[InlineData(40f, 30f)]
+	public void ClampTeleportCastSeconds_bounds(float input, float expected)
+		=> Assert.Equal(expected, ConfigTabs.ClampTeleportCastSeconds(input));
+
+	[Theory]
+	[InlineData(float.NaN, 8f)]
+	[InlineData(-1f, 0f)]
+	[InlineData(8f, 8f)]
+	[InlineData(99f, 60f)]
+	public void ClampTeleportLoadEstimateSeconds_bounds(float input, float expected)
+		=> Assert.Equal(expected, ConfigTabs.ClampTeleportLoadEstimateSeconds(input));
+
+	[Theory]
+	[InlineData(float.NaN, 20f)]
+	[InlineData(0f, 1f)]
+	[InlineData(20f, 20f)]
+	[InlineData(100f, 80f)]
+	public void ClampMountSpeedYalmsPerSec_bounds(float input, float expected)
+		=> Assert.Equal(expected, ConfigTabs.ClampMountSpeedYalmsPerSec(input));
 }
