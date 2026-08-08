@@ -16,7 +16,11 @@ public sealed class TeleportIntent
 	public void Set(TeleportDecisionResult decision)
 	{
 		LatestDecision = decision;
-		IntendedArrival = decision.ShouldTeleport ? decision.Arrival : null;
+		// SwitchInstance is Lifestream ChangeInstance only — do not adopt an aetheryte TP plan.
+		IntendedArrival = decision.Action is TeleportAction.TeleportToZone
+			or TeleportAction.TeleportBecauseFar
+			? decision.Arrival
+			: null;
 	}
 
 	public void Clear()

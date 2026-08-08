@@ -19,6 +19,7 @@
 	<!-- Link pure helpers only — no Dalamud plugin project reference. -->
 	<ItemGroup>
 		<Compile Include="..\HuntTrainAuto\Chat\ConductorList.cs" Link="Chat\ConductorList.cs" />
+		<Compile Include="..\HuntTrainAuto\Chat\ConductorInstanceParse.cs" Link="Chat\ConductorInstanceParse.cs" />
 		<Compile Include="..\HuntTrainAuto\Chat\ChatCommands.cs" Link="Chat\ChatCommands.cs" />
 		<Compile Include="..\HuntTrainAuto\Chat\ChatSender.cs" Link="Chat\ChatSender.cs" />
 		<Compile Include="..\HuntTrainAuto\Chat\ChatSuppress.cs" Link="Chat\ChatSuppress.cs" />

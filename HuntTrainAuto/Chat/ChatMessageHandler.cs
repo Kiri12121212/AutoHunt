@@ -131,8 +131,9 @@ public sealed class ChatMessageHandler : IDisposable
 				mapLink.RawY,
 				mapLink.PlaceName);
 
+			var instanceHint = ConductorInstanceParse.TryParse(message.Message.TextValue);
 			LatestHuntFlag = flag;
-			TryEvaluateTeleportDecision(flag);
+			TryEvaluateTeleportDecision(flag, instanceHint);
 			HuntFlagReceived?.Invoke(flag);
 
 			if (config.AutoOpenMap
@@ -149,12 +150,16 @@ public sealed class ChatMessageHandler : IDisposable
 	/// <summary>
 	/// Computes teleport decision and stores it on <see cref="TeleportIntent"/>.
 	/// Soft-fails when snapshot unavailable or provider throws — never teleports.
+	/// <paramref name="targetInstanceHint"/> is conductor/flag-reported instance (0 = none).
 	/// </summary>
-	private void TryEvaluateTeleportDecision(HuntFlag flag)
+	private void TryEvaluateTeleportDecision(HuntFlag flag, int targetInstanceHint = 0)
 	{
 		try
 		{
 			var snapshot = TryGetPlayerSnapshot?.Invoke(flag);
+			if (snapshot is { } s && targetInstanceHint > 0)
+				snapshot = s with { TargetInstance = targetInstanceHint };
+
 			var decision = TeleportDecision.Evaluate(
 				config.Enabled,
 				config.AutoTeleport,

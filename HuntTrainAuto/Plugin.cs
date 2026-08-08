@@ -865,9 +865,26 @@ public sealed class Plugin : IDalamudPlugin
 		notificator.NotifyConductorFlag(flag);
 		debugProbe.RecordFlagReceived(Config.EnableDebugLogging, flag.PlaceName);
 
-		var adopted = teleportPlan.TryAdoptFromIntent(chatMessageHandler.TeleportIntent);
-		var alreadyClose = chatMessageHandler.TeleportIntent.LatestDecision is
-			{ Action: TeleportAction.Skip, SkipReason: TeleportSkipReason.AlreadyClose };
+		var decision = chatMessageHandler.TeleportIntent.LatestDecision;
+		var switchInstance = decision is
+		{
+			Action: TeleportAction.SwitchInstance,
+			Arrival.Instance: > 0,
+		};
+
+		var adopted = false;
+		var alreadyClose = false;
+		if (switchInstance)
+		{
+			// Same-zone instance swap: ChangeInstance only (no aetheryte TP plan).
+			alreadyClose = true;
+		}
+		else
+		{
+			adopted = teleportPlan.TryAdoptFromIntent(chatMessageHandler.TeleportIntent);
+			alreadyClose = chatMessageHandler.TeleportIntent.LatestDecision is
+				{ Action: TeleportAction.Skip, SkipReason: TeleportSkipReason.AlreadyClose };
+		}
 
 		var plan = FlagRestartDecision.Decide(
 			Config.Enabled,
@@ -881,7 +898,13 @@ public sealed class Plugin : IDalamudPlugin
 		// collapse Combat→Teleport (etc.) into one impossible edge.
 		ObserveDebugSignals();
 
-		if (adopted)
+		if (switchInstance && decision!.Value.Arrival is { Instance: > 0 } arr)
+		{
+			EnqueueChangeInstanceAfterTeleport(arr.Instance, arr.Territory);
+			mount.EnqueueIfEnabled(Config.UseMount);
+			pluginLog.Information($"Engaging instance switch → {arr.Instance}");
+		}
+		else if (adopted)
 		{
 			ApplyDelayTeleport();
 			pluginLog.Information("Engaging autoteleport");
@@ -1597,12 +1620,27 @@ public sealed class Plugin : IDalamudPlugin
 	}
 
 	/// <summary>
-	/// After deferred time-aware resolve: adopt TP or mount/nav if still Idle and no plan.
+	/// After deferred time-aware resolve: adopt TP, instance switch, or mount/nav if still Idle and no plan.
 	/// </summary>
 	private void TryEngageAfterTravelCost(TeleportDecisionResult decision)
 	{
 		if (teleportPlan.HasActive)
 			return;
+
+		if (decision is
+		    {
+			    Action: TeleportAction.SwitchInstance,
+			    Arrival.Instance: > 0,
+		    }
+		    && decision.Arrival is { } switchArr)
+		{
+			EnqueueChangeInstanceAfterTeleport(switchArr.Instance, switchArr.Territory);
+			mount.EnqueueIfEnabled(Config.UseMount);
+			pluginLog.Information($"Engaging instance switch → {switchArr.Instance} (time-aware)");
+			if (train.Phase == HuntTrainPhase.Idle)
+				train.Apply(Config.UseMount ? HuntTrainEvent.StartMount : HuntTrainEvent.StartNavigate);
+			return;
+		}
 
 		var adopted = teleportPlan.TryAdoptFromIntent(chatMessageHandler.TeleportIntent);
 		var alreadyClose = decision is

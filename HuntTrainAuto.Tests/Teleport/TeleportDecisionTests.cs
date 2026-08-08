@@ -109,8 +109,9 @@ public sealed class TeleportDecisionTests
 	}
 
 	[Fact]
-	public void Decide_AlreadyClose_beats_instance_hint_when_close()
+	public void Decide_switches_instance_when_same_zone_close_and_target_differs()
 	{
+		var arrival = Arrival(instance: 0);
 		var result = TeleportDecision.Decide(
 			enabled: true,
 			autoTeleport: true,
@@ -120,11 +121,12 @@ public sealed class TeleportDecisionTests
 			distanceThreshold: DefaultYalmThreshold,
 			currentInstance: 1,
 			targetInstance: 3,
-			arrival: Arrival());
+			arrival: arrival);
 
-		Assert.Equal(TeleportAction.Skip, result.Action);
-		Assert.Equal(TeleportSkipReason.AlreadyClose, result.SkipReason);
-		Assert.False(result.ShouldTeleport);
+		Assert.Equal(TeleportAction.SwitchInstance, result.Action);
+		Assert.True(result.ShouldTeleport);
+		Assert.NotNull(result.Arrival);
+		Assert.Equal(3, result.Arrival.Instance);
 	}
 
 	[Theory]
@@ -349,7 +351,7 @@ public sealed class TeleportDecisionTests
 	}
 
 	[Fact]
-	public void Evaluate_same_zone_close_with_instance_hint_skips_AlreadyClose()
+	public void Evaluate_same_zone_close_with_instance_hint_switches_instance()
 	{
 		var flag = HuntFlag.FromMapLink(813u, 1u, 100, 200, "A", DateTimeOffset.UnixEpoch);
 		var snapshot = new TeleportPlayerSnapshot
@@ -369,9 +371,26 @@ public sealed class TeleportDecisionTests
 			flag,
 			snapshot);
 
-		Assert.Equal(TeleportSkipReason.AlreadyClose, result.SkipReason);
-		Assert.False(result.ShouldTeleport);
+		Assert.Equal(TeleportAction.SwitchInstance, result.Action);
+		Assert.True(result.ShouldTeleport);
+		Assert.Equal(2, result.Arrival!.Instance);
 	}
+
+	[Theory]
+	[InlineData(3, true, true, 3)]
+	[InlineData(3, true, false, 3)]
+	[InlineData(0, true, true, 1)]
+	[InlineData(0, true, false, 0)]
+	[InlineData(0, false, true, 0)]
+	[InlineData(2, false, true, 2)]
+	public void ResolveTargetInstance_prefers_reported_over_force_to_one(
+		int reported,
+		bool zoneChange,
+		bool autoSwitchToOne,
+		int expected)
+		=> Assert.Equal(
+			expected,
+			TeleportDecision.ResolveTargetInstance(reported, zoneChange, autoSwitchToOne));
 
 	[Fact]
 	public void Evaluate_throws_when_flag_null()
@@ -423,6 +442,14 @@ public sealed class TeleportIntentTests
 			Arrival = arrival,
 		});
 		Assert.Null(intent.IntendedArrival);
+
+		intent.Set(new TeleportDecisionResult
+		{
+			Action = TeleportAction.SwitchInstance,
+			Arrival = ArrivalData.CreateOrNull(1u, 813u, 2),
+		});
+		Assert.Null(intent.IntendedArrival);
+		Assert.Equal(TeleportAction.SwitchInstance, intent.LatestDecision!.Value.Action);
 	}
 
 	[Fact]

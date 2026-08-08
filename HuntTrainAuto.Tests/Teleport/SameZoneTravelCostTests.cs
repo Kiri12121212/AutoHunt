@@ -225,7 +225,7 @@ public sealed class TeleportDecisionTimeAwareTests
 	}
 
 	[Fact]
-	public void Decide_time_aware_distance_floor_still_beats_instance()
+	public void Decide_time_aware_instance_switch_beats_distance_floor()
 	{
 		var result = TeleportDecision.Decide(
 			true, true, 813, 813, 40f, YalmThreshold, 1, 2, Arrival(),
@@ -236,7 +236,8 @@ public sealed class TeleportDecisionTimeAwareTests
 				DirectPathLengthYalms = 800f,
 				AetherytePathLengthYalms = 10f,
 			});
-		Assert.Equal(TeleportSkipReason.AlreadyClose, result.SkipReason);
+		Assert.Equal(TeleportAction.SwitchInstance, result.Action);
+		Assert.Equal(2, result.Arrival!.Instance);
 	}
 
 	[Fact]

@@ -112,20 +112,20 @@ public static class TeleportDecision
 			return Teleport(TeleportAction.TeleportToZone, arrival);
 		}
 
-		// Same territory — distance floor beats instance hints (no aetheryte TP when nearby).
-		if (playerDistance is { } d0)
-		{
-			var withinDistanceFloor = d0 <= distanceThreshold;
-			if (withinDistanceFloor && (!timeAware.Enabled || timeAware.RetainDistanceAsFloor))
-				return Skip(TeleportSkipReason.AlreadyClose);
-		}
-
+		// Same territory — conductor/flag instance wins over distance skip (ChangeInstance, no aetheryte TP).
 		if (NeedsInstanceSwitch(currentInstance, targetInstance))
 		{
 			if (arrival == null)
 				return Skip(TeleportSkipReason.MissingArrival);
 
 			return Teleport(TeleportAction.SwitchInstance, WithInstance(arrival, targetInstance));
+		}
+
+		if (playerDistance is { } d0)
+		{
+			var withinDistanceFloor = d0 <= distanceThreshold;
+			if (withinDistanceFloor && (!timeAware.Enabled || timeAware.RetainDistanceAsFloor))
+				return Skip(TeleportSkipReason.AlreadyClose);
 		}
 
 		if (playerDistance == null)
@@ -177,6 +177,23 @@ public static class TeleportDecision
 		=> autoSwitchInstanceToOne ? 1 : 0;
 
 	/// <summary>
+	/// Prefer conductor/flag-reported instance; else zone-change force-to-1 when enabled.
+	/// </summary>
+	public static int ResolveTargetInstance(
+		int reportedInstance,
+		bool zoneChange,
+		bool autoSwitchInstanceToOne)
+	{
+		if (reportedInstance > 0)
+			return reportedInstance;
+
+		if (zoneChange)
+			return ResolveZoneChangeInstance(autoSwitchInstanceToOne);
+
+		return 0;
+	}
+
+	/// <summary>
 	/// Builds arrival on <paramref name="flag"/> from a snapshot and runs <see cref="Decide"/>.
 	/// Soft-fails with <see cref="TeleportSkipReason.PlayerStateUnavailable"/> when snapshot is null.
 	/// Does not teleport.
@@ -196,9 +213,11 @@ public static class TeleportDecision
 			return Skip(TeleportSkipReason.PlayerStateUnavailable);
 
 		var s = snapshot.Value;
-		var targetInstance = s.TargetInstance;
-		if (targetInstance == 0 && s.CurrentTerritory != flag.TerritoryTypeId)
-			targetInstance = ResolveZoneChangeInstance(autoSwitchInstanceToOne);
+		var zoneChange = s.CurrentTerritory != flag.TerritoryTypeId;
+		var targetInstance = ResolveTargetInstance(
+			s.TargetInstance,
+			zoneChange,
+			autoSwitchInstanceToOne);
 
 		var arrival = ArrivalData.Attach(flag, s.Nearest, targetInstance);
 		return Decide(
