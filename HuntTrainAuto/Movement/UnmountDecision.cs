@@ -133,22 +133,19 @@ public static class UnmountDecision
 			};
 		}
 
-		if (!dismountActionUsable)
-		{
-			// Soft-skip: action unavailable (e.g. cannot dismount here) — do not spin forever.
-			return new UnmountTickResult
-			{
-				Kind = UnmountTickKind.Done,
-				ReadyForGroundFollow = false,
-			};
-		}
-
 		if (animationLocked || !dismountThrottleReady)
 		{
 			return new UnmountTickResult { Kind = UnmountTickKind.Wait };
 		}
 
-		return new UnmountTickResult { Kind = UnmountTickKind.Dismount };
+		// Still mounted: never Done-abandon on GA unusable. Transient status (flight, AM null)
+		// used to clear the job while Mounted; arrival latch then blocked re-enqueue.
+		// Runner TryDismount falls back to /dismount; session timeout still bounds the job.
+		return new UnmountTickResult
+		{
+			Kind = UnmountTickKind.Dismount,
+			ForceCheckThrottle = !dismountActionUsable,
+		};
 	}
 
 	/// <summary>Whether CheckUnmount throttle allows progress.</summary>

@@ -144,7 +144,7 @@ public sealed class UnmountDecisionTests
 	}
 
 	[Fact]
-	public void DecideUnmountTick_done_when_action_unusable()
+	public void DecideUnmountTick_dismount_when_action_unusable()
 	{
 		var r = UnmountDecision.DecideUnmountTick(
 			mounted: true,
@@ -154,7 +154,23 @@ public sealed class UnmountDecisionTests
 			dismountActionUsable: false,
 			animationLocked: false,
 			dismountThrottleReady: true);
-		Assert.Equal(UnmountTickKind.Done, r.Kind);
+		Assert.Equal(UnmountTickKind.Dismount, r.Kind);
+		Assert.True(r.ForceCheckThrottle);
+		Assert.False(r.ReadyForGroundFollow);
+	}
+
+	[Fact]
+	public void DecideUnmountTick_wait_when_action_unusable_but_throttled()
+	{
+		var r = UnmountDecision.DecideUnmountTick(
+			mounted: true,
+			mountOrOrnamentTransition: false,
+			casting: false,
+			checkThrottleReady: true,
+			dismountActionUsable: false,
+			animationLocked: false,
+			dismountThrottleReady: false);
+		Assert.Equal(UnmountTickKind.Wait, r.Kind);
 		Assert.False(r.ReadyForGroundFollow);
 	}
 
