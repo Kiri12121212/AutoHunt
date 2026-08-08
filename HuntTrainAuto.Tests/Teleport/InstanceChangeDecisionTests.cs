@@ -23,10 +23,21 @@ public sealed class InstanceChangeDecisionTests
 	[InlineData(2, 1, 3, true)]
 	[InlineData(2, 2, 3, false)]
 	[InlineData(0, 1, 3, false)]
-	[InlineData(2, 1, 0, false)]
+	[InlineData(2, 1, 0, true)]
+	[InlineData(3, 1, 2, false)]
 	[InlineData(0, 0, 0, false)]
 	public void NeedsInstanceChange(int requested, int current, int count, bool expected)
 		=> Assert.Equal(expected, InstanceChangeDecision.NeedsInstanceChange(requested, current, count));
+
+	[Theory]
+	[InlineData(false, 10u, true)]
+	[InlineData(true, 10u, false)]
+	[InlineData(false, 0u, false)]
+	[InlineData(true, 0u, false)]
+	public void ShouldAetheryteTeleportForInstanceSwitch(bool canChange, uint aetheryteId, bool expected)
+		=> Assert.Equal(
+			expected,
+			InstanceChangeDecision.ShouldAetheryteTeleportForInstanceSwitch(canChange, aetheryteId));
 
 	[Theory]
 	[InlineData(true, true, false, true)]

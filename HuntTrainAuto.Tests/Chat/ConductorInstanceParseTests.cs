@@ -17,6 +17,7 @@ public sealed class ConductorInstanceParseTests
 	[InlineData("\uE0B1", 1)]
 	[InlineData("\uE0B2", 2)]
 	[InlineData("\uE0B3", 3)]
+	[InlineData("\uE0B9", 9)]
 	[InlineData("flag \uE0B2 Labyrinthos", 2)]
 	public void TryParse_ffxiv_glyphs(string content, int expected)
 		=> Assert.Equal(expected, ConductorInstanceParse.TryParse(content));

@@ -15,15 +15,17 @@ public static class HuntAlertsArrivalTrust
 {
 	/// <summary>
 	/// Clears <see cref="HuntFlag.Arrival"/> (IPC aetheryte). Returns a positive instance
-	/// hint from the discarded Arrival when present so chat-path evaluation can still
+	/// hint from Arrival or <see cref="HuntFlag.ReportedInstance"/> so evaluation can still
 	/// target the hunt instance; otherwise 0.
 	/// </summary>
 	public static int ClearUntrustedArrival(HuntFlag flag)
 	{
 		ArgumentNullException.ThrowIfNull(flag);
 
-		var instance = flag.Arrival?.Instance ?? 0;
+		var instance = flag.Arrival?.Instance ?? flag.ReportedInstance;
 		flag.Arrival = null;
+		if (instance > 0)
+			flag.ReportedInstance = instance;
 		return instance > 0 ? instance : 0;
 	}
 }

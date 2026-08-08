@@ -132,6 +132,7 @@ public sealed class ChatMessageHandler : IDisposable
 				mapLink.PlaceName);
 
 			var instanceHint = ConductorInstanceParse.TryParse(message.Message.TextValue);
+			flag.ReportedInstance = instanceHint;
 			LatestHuntFlag = flag;
 			TryEvaluateTeleportDecision(flag, instanceHint);
 			HuntFlagReceived?.Invoke(flag);

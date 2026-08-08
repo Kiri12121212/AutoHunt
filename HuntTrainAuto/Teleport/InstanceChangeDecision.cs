@@ -26,12 +26,24 @@ public static class InstanceChangeDecision
 		=> requestedInstance > 0 && currentInstance == requestedInstance;
 
 	/// <summary>
-	/// HTA: skip when <c>instances==0 || num==0 || current==num</c>.
+	/// Whether to keep pursuing an instance change after land.
+	/// <paramref name="numberOfInstances"/> 0 = Lifestream cache unknown (still try when
+	/// current differs); positive = known max — skip when request is above it.
 	/// </summary>
 	public static bool NeedsInstanceChange(int requestedInstance, int currentInstance, int numberOfInstances)
-		=> numberOfInstances != 0
-			&& requestedInstance != 0
-			&& currentInstance != requestedInstance;
+		=> requestedInstance > 0
+			&& currentInstance != requestedInstance
+			&& (numberOfInstances == 0 || requestedInstance <= numberOfInstances);
+
+	/// <summary>
+	/// Same-zone instance switch: Lifestream <c>CanChangeInstance</c> requires ~11y of an
+	/// aetheryte. When false, HTA Sonar/HA parity is aetheryte TP first, then post-land
+	/// <c>ChangeInstance</c>. Direct when already usable or no aetheryte id to TP to.
+	/// </summary>
+	public static bool ShouldAetheryteTeleportForInstanceSwitch(
+		bool canChangeInstance,
+		uint aetheryteId)
+		=> !canChangeInstance && aetheryteId > 0;
 
 	/// <summary>
 	/// Landed after TP: target territory, player usable, not mid BetweenAreas.

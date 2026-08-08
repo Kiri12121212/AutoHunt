@@ -11,8 +11,15 @@ namespace HuntTrainAuto.Chat;
 /// </summary>
 public static class ConductorInstanceParse
 {
-	/// <summary>FFXIV private-use instance markers 1–3 (U+E0B1..U+E0B3).</summary>
-	public static readonly string[] InstanceGlyphs = ["\uE0B1", "\uE0B2", "\uE0B3"];
+	/// <summary>
+	/// FFXIV private-use instance markers 1–9 (<see cref="Dalamud.Game.Text.SeIconChar"/>
+	/// Instance1..Instance9 / U+E0B1..U+E0B9).
+	/// </summary>
+	public static readonly string[] InstanceGlyphs =
+	[
+		"\uE0B1", "\uE0B2", "\uE0B3", "\uE0B4", "\uE0B5",
+		"\uE0B6", "\uE0B7", "\uE0B8", "\uE0B9",
+	];
 
 	private static readonly Regex AsciiInstance = new(
 		@"\bi([1-9])\b",

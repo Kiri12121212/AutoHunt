@@ -16,6 +16,17 @@ public sealed class HuntAlertsArrivalTrustTests
 
 		Assert.Equal(3, instance);
 		Assert.Null(flag.Arrival);
+		Assert.Equal(3, flag.ReportedInstance);
+	}
+
+	[Fact]
+	public void ClearUntrustedArrival_keeps_reported_instance_when_arrival_null()
+	{
+		var flag = HuntFlag.FromMapLink(813, 1, 1000, 2000, "Test");
+		flag.ReportedInstance = 2;
+
+		Assert.Equal(2, HuntAlertsArrivalTrust.ClearUntrustedArrival(flag));
+		Assert.Equal(2, flag.ReportedInstance);
 	}
 
 	[Fact]

@@ -179,6 +179,7 @@ public static class HuntTrainMessageMapper
 		var huntWorld = message.huntWorld?.Trim();
 		flag.HuntWorld = string.IsNullOrEmpty(huntWorld) ? null : huntWorld;
 
+		flag.ReportedInstance = message.instance > 0 ? message.instance : 0;
 		flag.Arrival = ArrivalData.CreateOrNull(
 			message.startLocationAetheryteId,
 			message.startTerritoryTypeId,

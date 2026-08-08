@@ -943,10 +943,23 @@ public sealed class Plugin : IDalamudPlugin
 
 		var adopted = false;
 		var alreadyClose = false;
-		if (switchInstance)
+		var directInstanceChange = false;
+		if (switchInstance && decision!.Value.Arrival is { Instance: > 0 } switchArr)
 		{
-			// Same-zone instance swap: ChangeInstance only (no aetheryte TP plan).
-			alreadyClose = true;
+			// Lifestream ChangeInstance only works near an aetheryte. Otherwise aetheryte-TP
+			// with instance on the plan (HTA Sonar/HA parity); post-land runner finishes it.
+			if (InstanceChangeDecision.ShouldAetheryteTeleportForInstanceSwitch(
+				    TryCanChangeInstance(),
+				    switchArr.AetheryteId))
+			{
+				teleportPlan.Set(switchArr);
+				adopted = true;
+			}
+			else
+			{
+				directInstanceChange = true;
+				alreadyClose = true;
+			}
 		}
 		else
 		{
@@ -967,7 +980,7 @@ public sealed class Plugin : IDalamudPlugin
 		// collapse Combat→Teleport (etc.) into one impossible edge.
 		ObserveDebugSignals();
 
-		if (switchInstance && decision!.Value.Arrival is { Instance: > 0 } arr)
+		if (directInstanceChange && decision!.Value.Arrival is { Instance: > 0 } arr)
 		{
 			EnqueueChangeInstanceAfterTeleport(arr.Instance, arr.Territory);
 			mount.EnqueueIfEnabled(Config.UseMount);
@@ -976,7 +989,10 @@ public sealed class Plugin : IDalamudPlugin
 		else if (adopted)
 		{
 			ApplyDelayTeleport();
-			pluginLog.Information("Engaging autoteleport");
+			pluginLog.Information(
+				switchInstance
+					? $"Engaging autoteleport for instance → {decision!.Value.Arrival!.Instance}"
+					: "Engaging autoteleport");
 		}
 		else if (alreadyClose)
 		{
@@ -1523,6 +1539,21 @@ public sealed class Plugin : IDalamudPlugin
 	}
 
 	/// <summary>
+	/// Soft-fail Lifestream <c>CanChangeInstance</c> (false when absent / not at aetheryte).
+	/// </summary>
+	private bool TryCanChangeInstance()
+	{
+		try
+		{
+			return LifestreamIpc.CanChangeInstance();
+		}
+		catch
+		{
+			return false;
+		}
+	}
+
+	/// <summary>
 	/// Enqueue post-TP instance switch (HTA <c>TaskChangeInstanceAfterTeleport</c>).
 	/// Survives <see cref="TeleportPlan"/> clear; advanced on Framework ticks.
 	/// </summary>
@@ -1767,6 +1798,19 @@ public sealed class Plugin : IDalamudPlugin
 		    }
 		    && decision.Arrival is { } switchArr)
 		{
+			if (InstanceChangeDecision.ShouldAetheryteTeleportForInstanceSwitch(
+				    TryCanChangeInstance(),
+				    switchArr.AetheryteId))
+			{
+				teleportPlan.Set(switchArr);
+				ApplyDelayTeleport();
+				pluginLog.Information(
+					$"Engaging autoteleport for instance → {switchArr.Instance} (time-aware)");
+				if (train.Phase == HuntTrainPhase.Idle)
+					train.Apply(HuntTrainEvent.StartTeleport);
+				return;
+			}
+
 			EnqueueChangeInstanceAfterTeleport(switchArr.Instance, switchArr.Territory);
 			mount.EnqueueIfEnabled(Config.UseMount);
 			pluginLog.Information($"Engaging instance switch → {switchArr.Instance} (time-aware)");

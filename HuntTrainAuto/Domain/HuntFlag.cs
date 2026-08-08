@@ -32,6 +32,12 @@ public sealed class HuntFlag
 	public ArrivalData? Arrival { get; set; }
 
 	/// <summary>
+	/// Conductor/HuntAlerts-reported instance (0 = unspecified). Survives Arrival trust strip
+	/// and aetheryte-id-0 HA maps so instance swap still sees the hint.
+	/// </summary>
+	public int ReportedInstance { get; set; }
+
+	/// <summary>
 	/// Hunt world display name when known independently of <see cref="Arrival"/>
 	/// (e.g. HuntAlerts <c>huntWorld</c> with aetheryte id 0 — Arrival stays null).
 	/// </summary>

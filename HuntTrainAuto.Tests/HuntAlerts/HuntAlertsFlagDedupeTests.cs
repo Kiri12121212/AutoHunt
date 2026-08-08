@@ -32,6 +32,35 @@ public sealed class HuntAlertsFlagDedupeTests
 	}
 
 	[Fact]
+	public void IsNearDuplicate_false_when_incoming_instance_differs()
+	{
+		var active = Flag(813, 0, 0);
+		active.ReportedInstance = 1;
+		var incoming = Flag(813, 500, 0);
+		incoming.ReportedInstance = 2;
+		Assert.False(HuntAlertsFlagDedupe.IsNearDuplicate(active, incoming));
+	}
+
+	[Fact]
+	public void IsNearDuplicate_true_when_same_instance_near()
+	{
+		var active = Flag(813, 0, 0);
+		active.ReportedInstance = 2;
+		var incoming = Flag(813, 500, 0);
+		incoming.ReportedInstance = 2;
+		Assert.True(HuntAlertsFlagDedupe.IsNearDuplicate(active, incoming));
+	}
+
+	[Fact]
+	public void ShouldSuppress_false_when_instance_swap_reflag_pipeline_active()
+	{
+		var active = Flag(813, 0, 0);
+		var incoming = Flag(813, 500, 0);
+		incoming.ReportedInstance = 2;
+		Assert.False(HuntAlertsFlagDedupe.ShouldSuppress(active, incoming, pipelineActive: true));
+	}
+
+	[Fact]
 	public void IsNearDuplicate_true_when_within_threshold()
 	{
 		// Scaled distance: |5000|/1000 = 5 < 10
@@ -553,7 +582,40 @@ public sealed class HuntAlertsCrossSourceDedupeSuiteTests
 	}
 
 	[Fact]
-	public void Mapped_flag_dedupes_against_chat_within_window()
+	public void Mapped_flag_with_instance_does_not_dedupe_against_chat_without_instance()
+	{
+		// Chat won first without instance; HA re-share with instance must proceed (swap).
+		Assert.True(HuntTrainMessageMapper.TryMap(
+			ValidMessage(),
+			huntAlertsIntegration: true,
+			rankFilter: null,
+			worldBlacklist: null,
+			out var haFlag,
+			sizeFactor: 100f,
+			timestamp: DateTimeOffset.UnixEpoch));
+
+		var chat = HuntFlag.FromMapLink(
+			haFlag.TerritoryTypeId,
+			haFlag.MapId,
+			haFlag.RawX,
+			haFlag.RawY,
+			haFlag.PlaceName,
+			DateTimeOffset.UnixEpoch);
+		var mem = HuntAlertsFlagDedupe.Remember(
+			chat,
+			HuntFlagIntakeSource.Chat,
+			DateTimeOffset.UnixEpoch);
+
+		Assert.False(HuntAlertsFlagDedupe.ShouldSuppressCrossSource(
+			mem,
+			haFlag,
+			HuntFlagIntakeSource.HuntAlerts,
+			DateTimeOffset.UnixEpoch.AddSeconds(15),
+			huntAlertsIntegration: true));
+	}
+
+	[Fact]
+	public void Mapped_flag_dedupes_against_chat_when_same_instance()
 	{
 		Assert.True(HuntTrainMessageMapper.TryMap(
 			ValidMessage(),
@@ -571,6 +633,7 @@ public sealed class HuntAlertsCrossSourceDedupeSuiteTests
 			haFlag.RawY,
 			haFlag.PlaceName,
 			DateTimeOffset.UnixEpoch);
+		chat.ReportedInstance = 2;
 		var mem = HuntAlertsFlagDedupe.Remember(
 			chat,
 			HuntFlagIntakeSource.Chat,

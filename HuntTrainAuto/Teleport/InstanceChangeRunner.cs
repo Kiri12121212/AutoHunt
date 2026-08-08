@@ -106,7 +106,7 @@ public sealed class InstanceChangeRunner
 
 		if (!InstanceChangeDecision.NeedsInstanceChange(requested, current, count))
 		{
-			pluginLog.Debug(
+			pluginLog.Information(
 				$"Instance change no-op (requested={requested}, current={current}, instances={count})");
 			session.Clear();
 			return;
@@ -159,7 +159,8 @@ public sealed class InstanceChangeRunner
 				session.NextLockonMs = now + InstanceChangeDecision.LockonThrottleMs;
 				return;
 			case InstanceChangeDecision.ApproachAction.SoftAbortNoAetheryte:
-				pluginLog.Debug("Instance change soft-abort: no targetable aetheryte");
+				pluginLog.Information(
+					$"Instance change soft-abort: not near aetheryte (wanted {session.Instance})");
 				Clear(stopAutomove: true);
 				return;
 			case InstanceChangeDecision.ApproachAction.ReadyToChange:

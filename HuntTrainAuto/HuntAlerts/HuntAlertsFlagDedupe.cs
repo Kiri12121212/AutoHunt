@@ -55,6 +55,8 @@ public static class HuntAlertsFlagDedupe
 	/// <summary>
 	/// True when <paramref name="incoming"/> is the same territory and within
 	/// <paramref name="distanceThreshold"/> of <paramref name="active"/> (scaled coords).
+	/// Positive <see cref="ArrivalData.Instance"/> on incoming that differs from active
+	/// is not a near-duplicate (same-spot re-flag for instance swap must proceed).
 	/// </summary>
 	public static bool IsNearDuplicate(
 		HuntFlag? active,
@@ -68,9 +70,24 @@ public static class HuntAlertsFlagDedupe
 		if (active.TerritoryTypeId != incoming.TerritoryTypeId)
 			return false;
 
+		var incomingInstance = ResolveReportedInstance(incoming);
+		var activeInstance = ResolveReportedInstance(active);
+		if (incomingInstance > 0 && incomingInstance != activeInstance)
+			return false;
+
 		var a = MapOpenDedupe.LinkPosFromRaw(active.RawX, active.RawY);
 		var b = MapOpenDedupe.LinkPosFromRaw(incoming.RawX, incoming.RawY);
 		return Vector2.Distance(a, b) <= distanceThreshold;
+	}
+
+	/// <summary>Arrival instance wins; else <see cref="HuntFlag.ReportedInstance"/>.</summary>
+	public static int ResolveReportedInstance(HuntFlag flag)
+	{
+		ArgumentNullException.ThrowIfNull(flag);
+		var arrival = flag.Arrival?.Instance ?? 0;
+		if (arrival > 0)
+			return arrival;
+		return flag.ReportedInstance > 0 ? flag.ReportedInstance : 0;
 	}
 
 	/// <summary>
