@@ -31,8 +31,17 @@ public static class ConfigTabs
 	public const int MaxTeleportDelayMs = 30_000;
 
 	public const float MinAutoTeleportSkipDistance = 0f;
-	public const float MaxAutoTeleportSkipDistance = 50f;
-	public const float DefaultAutoTeleportSkipDistance = 3f;
+	public const float MaxAutoTeleportSkipDistance = 500f;
+	public const float DefaultAutoTeleportSkipDistance = 150f;
+
+	/// <summary>
+	/// Config <c>Version</c> once <see cref="Configuration.AutoTeleportAetheryteDistanceDiff"/>
+	/// is stored in yalms (was map-coordinate units; default 3 ≈ 150 yalms @ sizeFactor 100).
+	/// </summary>
+	public const int YalmSkipDistanceConfigVersion = 2;
+
+	/// <summary>Legacy map-units → yalms (3 → 150).</summary>
+	public const float LegacyMapUnitToYalmFactor = 50f;
 
 	public const float MinFlagArrivalTolerance = 1f;
 	public const float MaxFlagArrivalTolerance = 25f;
@@ -99,6 +108,16 @@ public static class ConfigTabs
 			return MaxAutoTeleportSkipDistance;
 		return distance;
 	}
+
+	/// <summary>
+	/// Convert a pre-yalm (map-coordinate) skip distance to yalms and clamp.
+	/// </summary>
+	public static float ScaleLegacyMapSkipDistanceToYalms(float legacyMapUnits)
+		=> ClampAutoTeleportSkipDistance(legacyMapUnits * LegacyMapUnitToYalmFactor);
+
+	/// <summary>True when persisted config still stores map-coordinate skip distances.</summary>
+	public static bool NeedsYalmSkipDistanceMigration(int configVersion)
+		=> configVersion < YalmSkipDistanceConfigVersion;
 
 	public static float ClampFlagArrivalTolerance(float tolerance)
 	{

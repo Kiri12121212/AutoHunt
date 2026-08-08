@@ -61,12 +61,12 @@ public static class TeleportDecision
 	/// <param name="currentTerritory">Player territory RowId.</param>
 	/// <param name="flagTerritory">Flag / map-link territory RowId.</param>
 	/// <param name="playerDistance">
-	/// Distance from player to flag (map or world units — caller chooses consistently with
-	/// <paramref name="distanceThreshold"/>). Null when player position is unavailable.
+	/// World XZ distance from player to flag in yalms. Null when player position is unavailable.
 	/// </param>
 	/// <param name="distanceThreshold">
-	/// Same-zone skip threshold (<see cref="Configuration.AutoTeleportAetheryteDistanceDiff"/>).
-	/// HTA default is 3f.
+	/// Same-zone skip threshold in yalms
+	/// (<see cref="Configuration.AutoTeleportAetheryteDistanceDiff"/>).
+	/// Default <c>150f</c> (~former 3 map-units).
 	/// </param>
 	/// <param name="currentInstance">Player instance (0 = unknown / shared).</param>
 	/// <param name="targetInstance">
@@ -102,7 +102,10 @@ public static class TeleportDecision
 			return Teleport(TeleportAction.TeleportToZone, arrival);
 		}
 
-		// Same territory — instance before distance (HTA checks instance switch next).
+		// Same territory — already-close beats instance hints (no aetheryte TP when nearby).
+		if (playerDistance is { } d && d <= distanceThreshold)
+			return Skip(TeleportSkipReason.AlreadyClose);
+
 		if (NeedsInstanceSwitch(currentInstance, targetInstance))
 		{
 			if (arrival == null)
@@ -113,9 +116,6 @@ public static class TeleportDecision
 
 		if (playerDistance == null)
 			return Skip(TeleportSkipReason.PlayerStateUnavailable);
-
-		if (playerDistance.Value <= distanceThreshold)
-			return Skip(TeleportSkipReason.AlreadyClose);
 
 		if (arrival == null)
 			return Skip(TeleportSkipReason.MissingArrival);

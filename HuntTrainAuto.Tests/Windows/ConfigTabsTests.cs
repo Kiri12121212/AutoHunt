@@ -82,13 +82,29 @@ public sealed class ConfigTabsTests
 	}
 
 	[Theory]
-	[InlineData(float.NaN, 3f)]
-	[InlineData(float.PositiveInfinity, 3f)]
+	[InlineData(float.NaN, 150f)]
+	[InlineData(float.PositiveInfinity, 150f)]
 	[InlineData(-1f, 0f)]
-	[InlineData(3f, 3f)]
-	[InlineData(99f, 50f)]
+	[InlineData(150f, 150f)]
+	[InlineData(99f, 99f)]
+	[InlineData(999f, 500f)]
 	public void ClampAutoTeleportSkipDistance_bounds(float input, float expected)
 		=> Assert.Equal(expected, ConfigTabs.ClampAutoTeleportSkipDistance(input));
+
+	[Theory]
+	[InlineData(3f, 150f)]
+	[InlineData(0f, 0f)]
+	[InlineData(50f, 500f)]
+	[InlineData(10f, 500f)]
+	public void ScaleLegacyMapSkipDistanceToYalms_maps_old_units(float legacy, float expected)
+		=> Assert.Equal(expected, ConfigTabs.ScaleLegacyMapSkipDistanceToYalms(legacy));
+
+	[Theory]
+	[InlineData(0, true)]
+	[InlineData(1, true)]
+	[InlineData(2, false)]
+	public void NeedsYalmSkipDistanceMigration_by_version(int version, bool expected)
+		=> Assert.Equal(expected, ConfigTabs.NeedsYalmSkipDistanceMigration(version));
 
 	[Theory]
 	[InlineData(float.NaN, 5f)]

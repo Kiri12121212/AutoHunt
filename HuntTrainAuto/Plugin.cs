@@ -240,6 +240,20 @@ public sealed class Plugin : IDalamudPlugin
 		this.condition = condition;
 		this.pluginLog = pluginLog;
 		Config = pluginInterface.GetPluginConfig() as Configuration ?? new Configuration();
+		var migratedSkipDistance = false;
+		if (ConfigTabs.NeedsYalmSkipDistanceMigration(Config.Version))
+		{
+			Config.AutoTeleportAetheryteDistanceDiff =
+				ConfigTabs.ScaleLegacyMapSkipDistanceToYalms(Config.AutoTeleportAetheryteDistanceDiff);
+			Config.Version = ConfigTabs.YalmSkipDistanceConfigVersion;
+			migratedSkipDistance = true;
+		}
+		else
+		{
+			Config.AutoTeleportAetheryteDistanceDiff =
+				ConfigTabs.ClampAutoTeleportSkipDistance(Config.AutoTeleportAetheryteDistanceDiff);
+		}
+
 		Config.EngageRange = CombatDecision.ClampEngageRange(Config.EngageRange);
 		Config.ARankScanRange = EngageTargetDecision.ClampARankScanRange(Config.ARankScanRange);
 		Config.RsrHostileType = RsrSettingsDecision.ClampHostileType(Config.RsrHostileType);
@@ -249,6 +263,8 @@ public sealed class Plugin : IDalamudPlugin
 		Config.RsrTargetingNonTank = RsrSettingsDecision.ClampTargetingType(
 			Config.RsrTargetingNonTank,
 			RsrSettingsDecision.DefaultNonTankTargeting);
+		if (migratedSkipDistance)
+			pluginInterface.SavePluginConfig(Config);
 
 		windowSystem = new WindowSystem(typeof(Plugin).Assembly.GetName()?.Name ?? "HuntTrainAuto");
 
@@ -1343,16 +1359,11 @@ public sealed class Plugin : IDalamudPlugin
 			}
 
 			float? distance = null;
-			if (mapParams != null
-				&& flagMapX != null
-				&& flagMapY != null
-				&& clientState.TerritoryType == flag.TerritoryTypeId)
+			if (clientState.TerritoryType == flag.TerritoryTypeId)
 			{
 				var pos = player.Position;
-				var p = mapParams.Value;
-				var px = MapCoordinates.ConvertWorldToMapCoordinate(pos.X, p.SizeFactor, p.OffsetX);
-				var py = MapCoordinates.ConvertWorldToMapCoordinate(pos.Z, p.SizeFactor, p.OffsetY);
-				distance = MapCoordinates.MapDistance(px, py, flagMapX.Value, flagMapY.Value);
+				var flagXz = FlagWorldPosition.WorldXZFromRaw(flag.RawX, flag.RawY);
+				distance = MapCoordinates.WorldXZDistance(pos.X, pos.Z, flagXz.X, flagXz.Y);
 			}
 
 			var lifestreamInstance = LifestreamIpc.GetCurrentInstance();

@@ -42,7 +42,7 @@ public readonly struct TeleportPlayerSnapshot
 	/// </summary>
 	public int TargetInstance { get; init; }
 
-	/// <summary>Distance to flag in the same units as the config threshold; null if unknown.</summary>
+	/// <summary>World XZ distance to flag in yalms; null if unknown.</summary>
 	public float? PlayerDistance { get; init; }
 
 	/// <summary>Nearest aetheryte for the flag territory; null if selection failed.</summary>
