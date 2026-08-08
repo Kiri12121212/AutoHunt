@@ -58,6 +58,19 @@ public static class TeleportGate
 		=> betweenAreas || betweenAreas51;
 
 	/// <summary>
+	/// BetweenAreas handoff: clear plan + mount only after we actually invoked Teleporter/Lifestream.
+	/// Prevents residual / unrelated BetweenAreas from wiping a plan that never fired.
+	/// </summary>
+	public static bool ShouldClearPlanOnBetweenAreas(
+		bool betweenAreas,
+		bool betweenAreas51,
+		bool hasActivePlan,
+		bool teleportInvoked)
+		=> hasActivePlan
+			&& teleportInvoked
+			&& IsBetweenAreas(betweenAreas, betweenAreas51);
+
+	/// <summary>
 	/// Whether to enqueue instance change after teleport (see <see cref="InstanceChangeDecision.ShouldEnqueue"/>).
 	/// </summary>
 	public static bool ShouldEnqueueInstanceChange(int instance)

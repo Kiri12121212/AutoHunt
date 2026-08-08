@@ -176,6 +176,28 @@ public sealed class TeleportGateTests
 		Assert.True(TeleportGate.IsBetweenAreas(false, true));
 		Assert.False(TeleportGate.IsBetweenAreas(false, false));
 	}
+
+	[Fact]
+	public void ShouldClearPlanOnBetweenAreas_requires_invoke()
+	{
+		Assert.False(TeleportGate.ShouldClearPlanOnBetweenAreas(
+			betweenAreas: true, betweenAreas51: false, hasActivePlan: true, teleportInvoked: false));
+		Assert.False(TeleportGate.ShouldClearPlanOnBetweenAreas(
+			false, true, hasActivePlan: true, teleportInvoked: false));
+		Assert.True(TeleportGate.ShouldClearPlanOnBetweenAreas(
+			true, false, hasActivePlan: true, teleportInvoked: true));
+		Assert.True(TeleportGate.ShouldClearPlanOnBetweenAreas(
+			false, true, hasActivePlan: true, teleportInvoked: true));
+	}
+
+	[Fact]
+	public void ShouldClearPlanOnBetweenAreas_false_without_plan_or_transition()
+	{
+		Assert.False(TeleportGate.ShouldClearPlanOnBetweenAreas(
+			true, false, hasActivePlan: false, teleportInvoked: true));
+		Assert.False(TeleportGate.ShouldClearPlanOnBetweenAreas(
+			false, false, hasActivePlan: true, teleportInvoked: true));
+	}
 }
 
 public sealed class TeleportPlanTests
@@ -194,8 +216,10 @@ public sealed class TeleportPlanTests
 		var plan = new TeleportPlan();
 		Assert.True(plan.TryAdoptFromIntent(intent));
 		Assert.Same(arrival, plan.Active);
+		Assert.False(plan.TeleportInvoked);
 		plan.Clear();
 		Assert.Null(plan.Active);
+		Assert.False(plan.TeleportInvoked);
 	}
 
 	[Fact]
@@ -219,7 +243,9 @@ public sealed class TeleportPlanTests
 		var prior = ArrivalData.CreateOrNull(10u, 813u, 2)!;
 		var plan = new TeleportPlan();
 		plan.Set(prior);
+		plan.MarkTeleportInvoked();
 		Assert.Same(prior, plan.Active);
+		Assert.True(plan.TeleportInvoked);
 
 		var intent = new TeleportIntent();
 		intent.Set(new TeleportDecisionResult
@@ -230,5 +256,29 @@ public sealed class TeleportPlanTests
 
 		Assert.False(plan.TryAdoptFromIntent(intent));
 		Assert.Null(plan.Active);
+		Assert.False(plan.TeleportInvoked);
+	}
+
+	[Fact]
+	public void MarkTeleportInvoked_sets_flag_only_while_active()
+	{
+		var plan = new TeleportPlan();
+		plan.MarkTeleportInvoked();
+		Assert.False(plan.TeleportInvoked);
+
+		plan.Set(ArrivalData.CreateOrNull(10u, 813u, 0)!);
+		Assert.False(plan.TeleportInvoked);
+		plan.MarkTeleportInvoked();
+		Assert.True(plan.TeleportInvoked);
+
+		// Re-adopt resets invoke so a new plan cannot inherit BetweenAreas handoff.
+		var intent = new TeleportIntent();
+		intent.Set(new TeleportDecisionResult
+		{
+			Action = TeleportAction.TeleportBecauseFar,
+			Arrival = ArrivalData.CreateOrNull(11u, 813u, 0),
+		});
+		Assert.True(plan.TryAdoptFromIntent(intent));
+		Assert.False(plan.TeleportInvoked);
 	}
 }

@@ -1125,9 +1125,14 @@ public sealed class Plugin : IDalamudPlugin
 			lastPosition = player.Position;
 		}
 
-		if (TeleportGate.IsBetweenAreas(
-			condition[ConditionFlag.BetweenAreas],
-			condition[ConditionFlag.BetweenAreas51])
+		// Only hand off on BetweenAreas after Teleporter/Lifestream accepted an invoke.
+		// Clearing earlier (residual BetweenAreas, load flicker) drops the plan with no TP
+		// and falls through to a long same-zone fly-to.
+		if (TeleportGate.ShouldClearPlanOnBetweenAreas(
+			    condition[ConditionFlag.BetweenAreas],
+			    condition[ConditionFlag.BetweenAreas51],
+			    teleportPlan.HasActive,
+			    teleportPlan.TeleportInvoked)
 			&& teleportPlan.Active is { } betweenPlan)
 		{
 			if (TeleportGate.ShouldEnqueueInstanceChange(betweenPlan.Instance))
@@ -1372,12 +1377,14 @@ public sealed class Plugin : IDalamudPlugin
 	{
 		if (TeleporterIpc.Teleport(aetheryteId, 0))
 		{
+			teleportPlan.MarkTeleportInvoked();
 			pluginLog.Information("Teleporting using Teleporter plugin");
 			return;
 		}
 
 		if (LifestreamIpc.Teleport(aetheryteId))
 		{
+			teleportPlan.MarkTeleportInvoked();
 			pluginLog.Information("Teleporting using Lifestream plugin");
 			return;
 		}
