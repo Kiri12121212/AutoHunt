@@ -11,6 +11,31 @@ public sealed class MountDecisionTests
 		=> Assert.Equal(expected, MountDecision.ShouldEnqueueIfEnabled(useMount));
 
 	[Theory]
+	[InlineData(true, false, true, true)]
+	[InlineData(true, false, false, false)]
+	[InlineData(false, false, true, false)]
+	[InlineData(true, true, true, false)]
+	[InlineData(false, true, true, false)]
+	public void ShouldEnqueueOnCombatEnd(
+		bool wasInCombatPhase,
+		bool inCombatPhase,
+		bool useMount,
+		bool expected)
+		=> Assert.Equal(
+			expected,
+			MountDecision.ShouldEnqueueOnCombatEnd(wasInCombatPhase, inCombatPhase, useMount));
+
+	[Theory]
+	[InlineData(true, false, true)]
+	[InlineData(true, true, false)]
+	[InlineData(false, false, false)]
+	[InlineData(false, true, false)]
+	public void ShouldClearMountOnArrival(bool isArrived, bool readyForGroundFollow, bool expected)
+		=> Assert.Equal(
+			expected,
+			MountDecision.ShouldClearMountOnArrival(isArrived, readyForGroundFollow));
+
+	[Theory]
 	[InlineData(false, true, true, false, true)]
 	[InlineData(true, true, true, false, false)]
 	[InlineData(false, false, true, false, false)]

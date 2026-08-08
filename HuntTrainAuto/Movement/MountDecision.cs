@@ -98,6 +98,25 @@ public static class MountDecision
 	public static bool ShouldEnqueueIfEnabled(bool useMount) => useMount;
 
 	/// <summary>
+	/// Combat-phase falling edge while <paramref name="useMount"/> —
+	/// remount ASAP after a kill (ready for next flag / follow), not wait Idle on ground.
+	/// Sample <paramref name="wasInCombatPhase"/> before <c>CombatTransitionHelper.Tick</c>;
+	/// abort <c>Clear()</c> between frames does not false-trigger (was already false).
+	/// </summary>
+	public static bool ShouldEnqueueOnCombatEnd(
+		bool wasInCombatPhase,
+		bool inCombatPhase,
+		bool useMount)
+		=> useMount && wasInCombatPhase && !inCombatPhase;
+
+	/// <summary>
+	/// Flag arrival clears pending mount so AlreadyClose enqueue cannot remount after unmount.
+	/// Once <paramref name="readyForGroundFollow"/>, keep combat-end remount while still at the flag.
+	/// </summary>
+	public static bool ShouldClearMountOnArrival(bool isArrived, bool readyForGroundFollow)
+		=> isArrived && !readyForGroundFollow;
+
+	/// <summary>
 	/// HTA wait-for-player before <c>MountIfCan</c>:
 	/// <c>!Lifestream.IsBusy &amp;&amp; IsScreenReady &amp;&amp; Player.Interactable</c>,
 	/// plus our instance-change runner must be idle.

@@ -1216,7 +1216,14 @@ public sealed class Plugin : IDalamudPlugin
 
 		// Death / mob-dead / combat-end → CombatDecision Idle (RsrStopPath.CombatPhaseTick).
 		// Enter combat is owned by EngageTargetHelper.
+		var wasInCombatPhase = combat.InCombatPhase;
 		combat.Tick(follow, pluginEnabled: true);
+		// Remount on combat-end falling edge (UseMount) — same EnqueueIfEnabled as TP / AlreadyClose.
+		if (MountDecision.ShouldEnqueueOnCombatEnd(
+			    wasInCombatPhase,
+			    combat.InCombatPhase,
+			    Config.UseMount))
+			mount.EnqueueIfEnabled(Config.UseMount);
 		// RSR start only in combat phase; Stop on phase exit (death / combat end) via DecideTick.
 		rsrEnable.Tick(combat.InCombatPhase);
 
@@ -1382,8 +1389,9 @@ public sealed class Plugin : IDalamudPlugin
 				flagWorld.TryResolve(flag);
 
 			var arrival = flagArrival.Tick(player.Position, flag.WorldPos, Config.FlagArrivalTolerance);
-			// Already at flag (e.g. AlreadyClose skip): cancel pending mount so it cannot remount after unmount.
-			if (arrival.IsArrived)
+			// AlreadyClose: clear pending mount before unmount so it cannot remount after.
+			// After ReadyForGroundFollow, keep combat-end remount while still at the kill flag.
+			if (MountDecision.ShouldClearMountOnArrival(arrival.IsArrived, unmount.ReadyForGroundFollow))
 				mount.Clear();
 			unmount.EnqueueOnArrivalIfEnabled(Config.AutoUnmountAtFlag, arrival.IsArrived);
 			unmount.Tick(flagArrival.PathStoppedForArrival, arrival.IsArrived);
