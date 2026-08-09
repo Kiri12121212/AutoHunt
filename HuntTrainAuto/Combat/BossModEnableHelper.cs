@@ -42,7 +42,7 @@ public sealed class BossModEnableHelper
 		}
 		catch (Exception ex)
 		{
-			pluginLog.Debug($"BossModEnableHelper soft-fail: {ex.Message}");
+			pluginLog.Debug($"[BossMod] enable soft-fail: {ex.Message}");
 		}
 	}
 
@@ -56,18 +56,55 @@ public sealed class BossModEnableHelper
 		{
 			var kind = BossModEnableDecision.DecideClear(aiStarted);
 			if (kind == BossModEnableKind.None)
+			{
+				pluginLog.Debug($"[BossMod] clear skipped; {BossModEnableDecision.Describe(kind)}");
 				return;
+			}
 
 			var ok = bossMod.DisableAi();
 			aiStarted = BossModEnableDecision.NextAiStarted(kind, ok, aiStarted);
 			if (ok)
-				pluginLog.Debug("BossMod: AI off (abort clear)");
+				pluginLog.Debug($"[BossMod] AI off (abort clear; {BossModEnableDecision.Describe(kind)})");
 			else
-				pluginLog.Debug("BossModEnableHelper clear: DisableAi failed; keeping latch for retry");
+				pluginLog.Debug("[BossMod] DisableAi failed; keeping latch for retry");
 		}
 		catch (Exception ex)
 		{
-			pluginLog.Debug($"BossModEnableHelper clear soft-fail: {ex.Message}");
+			pluginLog.Debug($"[BossMod] clear soft-fail: {ex.Message}");
+		}
+	}
+
+	/// <summary>
+	/// Always <c>DisableAi</c> — sticky AI left on after reload / prior combat.
+	/// </summary>
+	public bool ForceStop(string reason)
+	{
+		try
+		{
+			if (!bossMod.IsAvailable)
+			{
+				aiStarted = false;
+				pluginLog.Debug("[BossMod] ForceStop skipped; provider unavailable");
+				return true;
+			}
+
+			var ok = bossMod.DisableAi();
+			var readback = bossMod.TryGetAiEnabled();
+			if (readback is true)
+				ok = false;
+			if (ok)
+			{
+				aiStarted = false;
+				pluginLog.Information($"[BossMod] AI off ({reason})");
+			}
+			else
+				pluginLog.Debug($"[BossMod] ForceStop soft-fail ({reason})");
+			return ok;
+		}
+		catch (Exception ex)
+		{
+			pluginLog.Debug($"[BossMod] ForceStop soft-fail: {ex.Message}");
+			return false;
 		}
 	}
 
@@ -91,7 +128,9 @@ public sealed class BossModEnableHelper
 		{
 			if (!bossMod.IsAvailable)
 			{
-				pluginLog.Debug("BossMod: AI start skipped; plugin not available");
+				pluginLog.Debug(
+					$"[BossMod] AI start skipped; provider unavailable; "
+					+ BossModEnableDecision.Describe(kind));
 				return;
 			}
 
@@ -103,20 +142,28 @@ public sealed class BossModEnableHelper
 			if (ok)
 			{
 				pluginLog.Information(
-					$"BossMod: AI on provider={bossMod.ActiveProvider}"
+					$"[BossMod] AI on {BossModEnableDecision.Describe(kind)} provider={bossMod.ActiveProvider}"
 					+ (readback is bool rb ? $" enabled={rb}" : string.Empty));
 			}
 			else
-				pluginLog.Debug("BossMod: EnableAi soft-fail; will retry while InCombatPhase");
+				pluginLog.Debug("[BossMod] EnableAi soft-fail; will retry while InCombatPhase");
 		}
 		else if (kind == BossModEnableKind.Stop)
 		{
 			var ok = bossMod.DisableAi();
 			aiStarted = BossModEnableDecision.NextAiStarted(kind, ok, aiStarted);
 			if (ok)
-				pluginLog.Information("BossMod: AI off (combat phase exit / integration off)");
+				pluginLog.Information(
+					$"[BossMod] AI off (combat phase exit / integration off; "
+					+ BossModEnableDecision.Describe(kind) + ")");
 			else
-				pluginLog.Debug("BossMod: DisableAi soft-fail; will retry while latch held");
+				pluginLog.Debug("[BossMod] DisableAi soft-fail; will retry while latch held");
+		}
+		else if (DebugThrottle.Try("bossmod.enable.skip", 2000, Environment.TickCount64))
+		{
+			var reason = integrationOn ? "already in desired state" : "integration disabled";
+			pluginLog.Debug(
+				$"[BossMod] skipped ({reason}); {BossModEnableDecision.Describe(kind)}");
 		}
 	}
 }

@@ -3,8 +3,10 @@ using System;
 using System.Linq;
 using Dalamud.Plugin;
 using Dalamud.Plugin.Ipc;
+using Dalamud.Plugin.Services;
 using HuntTrainAuto.Combat;
 using HuntTrainAuto.Contracts;
+using HuntTrainAuto.Logging;
 
 namespace HuntTrainAuto.Services;
 
@@ -36,10 +38,17 @@ public sealed class RsrIpc : IRsrService
 	private readonly ICallGateSubscriber<RsrStateCommandType, object> changeOperatingMode;
 	private readonly ICallGateSubscriber<RsrStateCommandType, RsrTargetingType, object> autodutyChangeOperatingMode;
 	private readonly ICallGateSubscriber<RsrOtherCommandType, string, object> otherCommand;
+	private readonly IPluginLog? log;
+	private readonly Func<bool>? debugEnabled;
 
-	public RsrIpc(IDalamudPluginInterface pluginInterface)
+	public RsrIpc(
+		IDalamudPluginInterface pluginInterface,
+		IPluginLog? log = null,
+		Func<bool>? debugEnabled = null)
 	{
 		this.pluginInterface = pluginInterface;
+		this.log = log;
+		this.debugEnabled = debugEnabled;
 		changeOperatingMode = pluginInterface.GetIpcSubscriber<RsrStateCommandType, object>(
 			ChangeOperatingModeChannel);
 		autodutyChangeOperatingMode =
@@ -59,8 +68,9 @@ public sealed class RsrIpc : IRsrService
 				return RsrCommands.IsPluginLoaded(
 					pluginInterface.InstalledPlugins.Select(p => (p.InternalName, p.IsLoaded)));
 			}
-			catch
+			catch (Exception ex)
 			{
+				DebugSoftFail("availability probe", ex);
 				return false;
 			}
 		}
@@ -78,11 +88,12 @@ public sealed class RsrIpc : IRsrService
 		try
 		{
 			autodutyChangeOperatingMode.InvokeAction(RsrStateCommandType.AutoDuty, targeting);
+			Debug($"RotationAuto succeeded: targeting={targeting}, hostile={hostileType}");
 			return true;
 		}
-		catch
+		catch (Exception ex)
 		{
-			// RSR may be absent.
+			DebugSoftFail("RotationAuto", ex);
 			return false;
 		}
 	}
@@ -93,11 +104,12 @@ public sealed class RsrIpc : IRsrService
 		try
 		{
 			changeOperatingMode.InvokeAction(RsrStateCommandType.Off);
+			Debug("RotationStop succeeded");
 			return true;
 		}
-		catch
+		catch (Exception ex)
 		{
-			// RSR may be absent.
+			DebugSoftFail("RotationStop", ex);
 			return false;
 		}
 	}
@@ -108,14 +120,31 @@ public sealed class RsrIpc : IRsrService
 		{
 			otherCommand.InvokeAction(type, command);
 		}
-		catch
+		catch (Exception ex)
 		{
-			// RSR may be absent.
+			DebugSoftFail($"OtherCommand({type})", ex);
 		}
 	}
 
 	public void Dispose()
 	{
 		// Subscriber only — no event subscriptions to tear down.
+	}
+
+	private bool IsDebugEnabled()
+		=> debugEnabled?.Invoke() ?? false;
+
+	private void Debug(string message)
+	{
+		if (log != null)
+			DebugBehavior.Debug(log, IsDebugEnabled(), "RSR", message);
+	}
+
+	private void DebugSoftFail(string operation, Exception ex)
+	{
+		if (log != null)
+			DebugBehavior.DebugThrottled(
+				log, IsDebugEnabled(), $"rsr.{operation}", 2_000, Environment.TickCount64, "RSR",
+				$"{operation} unavailable/soft-fail: {ex.Message}");
 	}
 }

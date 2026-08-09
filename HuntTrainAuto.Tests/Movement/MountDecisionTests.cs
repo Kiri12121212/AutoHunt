@@ -287,6 +287,8 @@ public sealed class MountDecisionTests
 			summonThrottleReady: true);
 		Assert.Equal(MountTickKind.Wait, r.Kind);
 		Assert.True(r.ForceCheckThrottle);
+		Assert.Equal(MountDecision.ActionRetryCooldownMs, r.ForceCheckCooldownMs);
+		Assert.True(r.ForceCheckCooldownMs < MountDecision.CheckMountCooldownMs);
 	}
 
 	[Fact]
@@ -386,6 +388,25 @@ public sealed class MountDecisionTests
 		Assert.Equal(99, r.RequestedMountId);
 		Assert.Equal(7, r.FallbackMountId);
 	}
+
+	[Theory]
+	[InlineData(MountTickKind.Done, MountWaitReason.None, 0, "done")]
+	[InlineData(MountTickKind.Wait, MountWaitReason.ActionUnavailable, 0, "wait (ActionUnavailable)")]
+	[InlineData(MountTickKind.SummonRandom, MountWaitReason.None, 0, "summon random")]
+	[InlineData(MountTickKind.SummonSpecific, MountWaitReason.None, 42, "summon mount 42")]
+	public void Describe_reports_outcome_and_reason(
+		MountTickKind kind,
+		MountWaitReason waitReason,
+		int mountId,
+		string expected)
+		=> Assert.Equal(
+			expected,
+			MountDecision.Describe(new MountTickResult
+			{
+				Kind = kind,
+				WaitReason = waitReason,
+				SummonMountId = mountId,
+			}));
 
 	[Fact]
 	public void CheckThrottle_force_extends_only()

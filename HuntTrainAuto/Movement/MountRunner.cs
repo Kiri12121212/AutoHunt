@@ -6,6 +6,7 @@ using Dalamud.Game.ClientState.Objects;
 using Dalamud.Plugin.Services;
 using FFXIVClientStructs.FFXIV.Client.Game;
 using FFXIVClientStructs.FFXIV.Client.Game.UI;
+using HuntTrainAuto.Logging;
 using Lumina.Excel.Sheets;
 using Lumina.Text.ReadOnly;
 
@@ -60,12 +61,12 @@ public sealed class MountRunner
 		if (MountDecision.ShouldSkipEnqueueAlreadyReady(mounted, inFlight))
 		{
 			session.Clear();
-			pluginLog.Debug("Mount job skipped (already mounted / in flight)");
+			DebugBehavior.Debug(pluginLog, enabled: true, "Mount", "job skipped (already mounted / in flight)");
 			return;
 		}
 
 		session.Enqueue(Environment.TickCount64);
-		pluginLog.Debug("Mount job enqueued");
+		DebugBehavior.Info(pluginLog, "Mount", "job enqueued");
 	}
 
 	public void Clear() => session.Clear();
@@ -81,7 +82,7 @@ public sealed class MountRunner
 		}
 		catch (Exception ex)
 		{
-			pluginLog.Debug($"MountRunner soft-fail: {ex.Message}");
+			DebugBehavior.Debug(pluginLog, enabled: true, "Mount", $"soft-fail: {ex.Message}");
 			session.Clear();
 		}
 	}
@@ -91,7 +92,7 @@ public sealed class MountRunner
 		var now = Environment.TickCount64;
 		if (MountDecision.IsSessionTimedOut(session.DeadlineMs, now))
 		{
-			pluginLog.Debug($"Mount job timed out after {MountDecision.SessionTimeoutMs}ms");
+			DebugBehavior.Debug(pluginLog, enabled: true, "Mount", $"job timed out after {MountDecision.SessionTimeoutMs}ms");
 			session.Clear();
 			return;
 		}
@@ -102,10 +103,13 @@ public sealed class MountRunner
 		var inFlight = condition[ConditionFlag.InFlight];
 		if (MountDecision.IsMountCompleteOrSkipped(mounted, inFlight, mountConfig))
 		{
-			pluginLog.Debug(
+			DebugBehavior.Debug(
+				pluginLog,
+				enabled: true,
+				"Mount",
 				session.Phase == MountPhase.WaitReady
-					? "Mount job complete (already ready; cleared WaitReady)"
-					: "Mount job complete");
+					? "job complete (already ready; cleared WaitReady)"
+					: "job complete");
 			session.Clear();
 			return;
 		}
@@ -129,7 +133,10 @@ public sealed class MountRunner
 			return;
 
 		if (session.Phase == MountPhase.WaitReady)
+		{
 			session.EnterMounting(now);
+			DebugBehavior.Debug(pluginLog, enabled: true, "Mount", "WaitReady → Mounting");
+		}
 
 		TickMounting(mountConfig, now);
 	}
@@ -160,9 +167,25 @@ public sealed class MountRunner
 			summonReady);
 
 		if (decision.ForceCheckThrottle)
-			session.NextCheckMs = MountDecision.ForceCheckThrottle(session.NextCheckMs, now);
+		{
+			var cooldown = decision.ForceCheckCooldownMs > 0
+				? decision.ForceCheckCooldownMs
+				: MountDecision.CheckMountCooldownMs;
+			session.NextCheckMs = MountDecision.ForceCheckThrottle(session.NextCheckMs, now, cooldown);
+		}
 
 		EmitWarnings(decision);
+		if (decision.Kind == MountTickKind.Wait)
+		{
+			DebugBehavior.DebugThrottled(
+				pluginLog,
+				enabled: true,
+				throttleKey: "mount.wait",
+				intervalMs: 2000,
+				nowMs: now,
+				area: "Mount",
+				message: MountDecision.Describe(decision));
+		}
 
 		switch (decision.Kind)
 		{
@@ -249,7 +272,7 @@ public sealed class MountRunner
 		}
 		catch (Exception ex)
 		{
-			pluginLog.Debug($"CollectUnlockedMountIds soft-fail: {ex.Message}");
+			DebugBehavior.Debug(pluginLog, enabled: true, "Mount", $"collect unlocked mounts soft-fail: {ex.Message}");
 		}
 
 		return result;
@@ -346,7 +369,7 @@ public sealed class MountRunner
 		}
 		catch (Exception ex)
 		{
-			pluginLog.Debug($"UseAction mount soft-fail: {ex.Message}");
+			DebugBehavior.Debug(pluginLog, enabled: true, "Mount", $"UseAction soft-fail: {ex.Message}");
 		}
 
 		chat.TryExecuteCommand("/mount");

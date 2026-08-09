@@ -6,6 +6,7 @@ using Dalamud.Game.ClientState.Objects;
 using Dalamud.Game.ClientState.Objects.Enums;
 using Dalamud.Game.ClientState.Objects.Types;
 using Dalamud.Plugin.Services;
+using HuntTrainAuto.Logging;
 
 namespace HuntTrainAuto.Combat;
 
@@ -24,19 +25,22 @@ public sealed class CombatTransitionHelper
 	private readonly ICondition condition;
 	private readonly IPluginLog pluginLog;
 	private readonly Func<float> getEngageRange;
+	private readonly Func<bool> holdCombatPhase;
 
 	public CombatTransitionHelper(
 		IObjectTable objectTable,
 		IPartyList partyList,
 		ICondition condition,
 		IPluginLog pluginLog,
-		Func<float> getEngageRange)
+		Func<float> getEngageRange,
+		Func<bool>? holdCombatPhase = null)
 	{
 		this.objectTable = objectTable;
 		this.partyList = partyList;
 		this.condition = condition;
 		this.pluginLog = pluginLog;
 		this.getEngageRange = getEngageRange;
+		this.holdCombatPhase = holdCombatPhase ?? (() => false);
 	}
 
 	/// <summary>Phase latch — Phase 6 observes <see cref="CombatSession.InCombatPhase"/>.</summary>
@@ -60,7 +64,7 @@ public sealed class CombatTransitionHelper
 		}
 		catch (Exception ex)
 		{
-			pluginLog.Debug($"CombatTransitionHelper soft-fail: {ex.Message}");
+			pluginLog.Debug($"[Combat] transition soft-fail: {ex.Message}");
 		}
 	}
 
@@ -70,7 +74,26 @@ public sealed class CombatTransitionHelper
 		var kind = CombatDecision.Decide(session.Phase, snap);
 
 		if (kind == CombatTransitionKind.StopFollow && session.Phase != CombatPhase.Idle)
-			pluginLog.Debug($"Combat transition: StopFollow from {session.Phase}");
+		{
+			pluginLog.Debug(
+				$"[Combat] {CombatDecision.Describe(kind)} from {session.Phase} "
+				+ $"playerInCombat={snap.PlayerInCombat} latchedMob={snap.LatchedEngageTargetInCombat} "
+				+ $"hold={snap.HoldCombatPhase} dead={snap.PlayerDead}");
+		}
+		else if (kind == CombatTransitionKind.StayFollow
+		         && session.Phase == CombatPhase.Combat
+		         && snap.HoldCombatPhase
+		         && DebugThrottle.Try("combat.hold", 2000, Environment.TickCount64))
+		{
+			pluginLog.Debug("[Combat] holding phase (FakeHunt / HoldCombatPhase)");
+		}
+		else if (kind == CombatTransitionKind.StayFollow
+		         && session.Phase == CombatPhase.Following
+		         && DebugThrottle.Try("combat.following.skip", 2000, Environment.TickCount64))
+		{
+			pluginLog.Debug(
+				$"[Combat] {CombatDecision.Describe(kind)} phase={session.Phase}; no engage signal");
+		}
 
 		session.Apply(kind);
 	}
@@ -79,9 +102,9 @@ public sealed class CombatTransitionHelper
 	{
 		var player = objectTable.LocalPlayer;
 		var playerDead = IsPlayerDead(player);
-		var playerInCombat = !playerDead && (
-			condition[ConditionFlag.InCombat]
-			|| (player != null && IsInCombat(player)));
+		// ConditionFlag only — StatusFlags.InCombat lingers ~7–10s after the
+		// condition clears and was delaying StopFollow / deferred flag flush / TP.
+		var playerInCombat = !playerDead && condition[ConditionFlag.InCombat];
 
 		var partyTargets = false;
 		float? distPartyMob = null;
@@ -94,6 +117,15 @@ public sealed class CombatTransitionHelper
 			ref anyAllyInCombat);
 
 		var latchedInCombat = IsLatchedEngageTargetInCombat();
+		var hold = false;
+		try
+		{
+			hold = holdCombatPhase();
+		}
+		catch
+		{
+			hold = false;
+		}
 
 		return new CombatEngageSnapshot
 		{
@@ -104,6 +136,7 @@ public sealed class CombatTransitionHelper
 			PlayerInCombat = playerInCombat,
 			AnyPartyAllyInCombat = anyAllyInCombat,
 			LatchedEngageTargetInCombat = latchedInCombat,
+			HoldCombatPhase = hold,
 			EngageRange = CombatDecision.ClampEngageRange(getEngageRange()),
 		};
 	}
@@ -120,7 +153,8 @@ public sealed class CombatTransitionHelper
 			{
 				if (!TryIsValid(obj) || TryEntityId(obj) != id.Value)
 					continue;
-				return obj is ICharacter ch && IsInCombat(ch);
+				// Dead / despawning corpses often keep StatusFlags.InCombat — treat HP≤0 as clear.
+				return obj is ICharacter ch && ch.CurrentHp > 0 && IsInCombat(ch);
 			}
 		}
 		catch
@@ -128,6 +162,7 @@ public sealed class CombatTransitionHelper
 			return false;
 		}
 
+		// Entity gone (despawned) — latch no longer holds combat.
 		return false;
 	}
 

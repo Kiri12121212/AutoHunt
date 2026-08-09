@@ -31,6 +31,26 @@ public sealed class TeleportDecisionTests
 	}
 
 	[Fact]
+	public void Result_Describe_includes_skip_reason_and_arrival_summary()
+	{
+		var skipped = new TeleportDecisionResult
+		{
+			Action = TeleportAction.Skip,
+			SkipReason = TeleportSkipReason.AlreadyClose,
+		};
+		var teleport = new TeleportDecisionResult
+		{
+			Action = TeleportAction.TeleportToZone,
+			Arrival = Arrival(aetheryte: 42, territory: 813, instance: 2),
+		};
+
+		Assert.Equal("action=Skip, skip=AlreadyClose, arrival=none", skipped.Describe());
+		Assert.Equal(
+			"action=TeleportToZone, arrival=aetheryte:42, territory:813, instance:2",
+			teleport.Describe());
+	}
+
+	[Fact]
 	public void Decide_skips_when_auto_teleport_disabled()
 	{
 		var result = TeleportDecision.Decide(
@@ -63,7 +83,7 @@ public sealed class TeleportDecisionTests
 			autoTeleport: false,
 			currentTerritory: 813,
 			flagTerritory: 813,
-			playerDistance: 40f,
+			playerDistance: 200f,
 			distanceThreshold: DefaultYalmThreshold,
 			currentInstance: 1,
 			targetInstance: 2,
@@ -135,9 +155,8 @@ public sealed class TeleportDecisionTests
 	}
 
 	[Fact]
-	public void Decide_switches_instance_when_same_zone_close_and_target_differs()
+	public void Decide_AlreadyClose_beats_instance_hint_when_close()
 	{
-		var arrival = Arrival(instance: 0);
 		var result = TeleportDecision.Decide(
 			enabled: true,
 			autoTeleport: true,
@@ -147,12 +166,28 @@ public sealed class TeleportDecisionTests
 			distanceThreshold: DefaultYalmThreshold,
 			currentInstance: 1,
 			targetInstance: 3,
-			arrival: arrival);
+			arrival: Arrival());
+
+		Assert.Equal(TeleportAction.Skip, result.Action);
+		Assert.Equal(TeleportSkipReason.AlreadyClose, result.SkipReason);
+		Assert.False(result.ShouldTeleport);
+	}
+
+	[Fact]
+	public void Decide_unknown_distance_still_switches_instance()
+	{
+		var result = TeleportDecision.Decide(
+			enabled: true,
+			autoTeleport: true,
+			currentTerritory: 813,
+			flagTerritory: 813,
+			playerDistance: null,
+			distanceThreshold: DefaultYalmThreshold,
+			currentInstance: 1,
+			targetInstance: 2,
+			arrival: Arrival());
 
 		Assert.Equal(TeleportAction.SwitchInstance, result.Action);
-		Assert.True(result.ShouldTeleport);
-		Assert.NotNull(result.Arrival);
-		Assert.Equal(3, result.Arrival.Instance);
 	}
 
 	[Theory]
@@ -160,8 +195,8 @@ public sealed class TeleportDecisionTests
 	[InlineData(1, 0, false)]
 	[InlineData(1, 1, false)]
 	[InlineData(2, 1, true)]
-	[InlineData(0, 2, true)]
-	public void NeedsInstanceSwitch_only_when_target_specified_and_differs(
+	[InlineData(0, 2, false)]
+	public void NeedsInstanceSwitch_only_when_both_known_and_differ(
 		int current,
 		int target,
 		bool expected)
@@ -259,31 +294,6 @@ public sealed class TeleportDecisionTests
 	}
 
 	[Fact]
-	public void Decide_unknown_distance_still_switches_instance()
-	{
-		var result = TeleportDecision.Decide(
-			enabled: true,
-			autoTeleport: true,
-			currentTerritory: 813,
-			flagTerritory: 813,
-			playerDistance: null,
-			distanceThreshold: DefaultYalmThreshold,
-			currentInstance: 1,
-			targetInstance: 2,
-			arrival: Arrival());
-
-		Assert.Equal(TeleportAction.SwitchInstance, result.Action);
-	}
-
-	[Theory]
-	[InlineData(false, 0)]
-	[InlineData(true, 1)]
-	public void ResolveZoneChangeInstance_matches_hta(bool autoSwitchToOne, int expected)
-	{
-		Assert.Equal(expected, TeleportDecision.ResolveZoneChangeInstance(autoSwitchToOne));
-	}
-
-	[Fact]
 	public void Evaluate_soft_fails_without_snapshot()
 	{
 		var flag = HuntFlag.FromMapLink(813u, 1u, 100, 200, "A", DateTimeOffset.UnixEpoch);
@@ -291,7 +301,6 @@ public sealed class TeleportDecisionTests
 			enabled: true,
 			autoTeleport: true,
 			distanceThreshold: DefaultYalmThreshold,
-			autoSwitchInstanceToOne: false,
 			flag,
 			snapshot: null);
 
@@ -300,7 +309,7 @@ public sealed class TeleportDecisionTests
 	}
 
 	[Fact]
-	public void Evaluate_zone_change_applies_auto_switch_instance_to_one()
+	public void Evaluate_zone_change_without_reported_instance_uses_zero()
 	{
 		var flag = HuntFlag.FromMapLink(813u, 1u, 100, 200, "A", DateTimeOffset.UnixEpoch);
 		var nearest = new NearestAetheryteResult(9u, "Fort Jobb");
@@ -317,13 +326,12 @@ public sealed class TeleportDecisionTests
 			enabled: true,
 			autoTeleport: true,
 			distanceThreshold: DefaultYalmThreshold,
-			autoSwitchInstanceToOne: true,
 			flag,
 			snapshot);
 
 		Assert.Equal(TeleportAction.TeleportToZone, result.Action);
 		Assert.NotNull(result.Arrival);
-		Assert.Equal(1, result.Arrival.Instance);
+		Assert.Equal(0, result.Arrival.Instance);
 		Assert.Equal(9u, result.Arrival.AetheryteId);
 		Assert.Same(result.Arrival, flag.Arrival);
 	}
@@ -343,7 +351,6 @@ public sealed class TeleportDecisionTests
 			enabled: true,
 			autoTeleport: true,
 			distanceThreshold: DefaultYalmThreshold,
-			autoSwitchInstanceToOne: true,
 			flag,
 			snapshot);
 
@@ -367,7 +374,6 @@ public sealed class TeleportDecisionTests
 			enabled: true,
 			autoTeleport: true,
 			distanceThreshold: DefaultYalmThreshold,
-			autoSwitchInstanceToOne: false,
 			flag,
 			snapshot);
 
@@ -377,7 +383,7 @@ public sealed class TeleportDecisionTests
 	}
 
 	[Fact]
-	public void Evaluate_same_zone_close_with_instance_hint_switches_instance()
+	public void Evaluate_same_zone_close_with_instance_hint_skips_AlreadyClose()
 	{
 		var flag = HuntFlag.FromMapLink(813u, 1u, 100, 200, "A", DateTimeOffset.UnixEpoch);
 		var snapshot = new TeleportPlayerSnapshot
@@ -393,13 +399,11 @@ public sealed class TeleportDecisionTests
 			enabled: true,
 			autoTeleport: true,
 			distanceThreshold: DefaultYalmThreshold,
-			autoSwitchInstanceToOne: false,
 			flag,
 			snapshot);
 
-		Assert.Equal(TeleportAction.SwitchInstance, result.Action);
-		Assert.True(result.ShouldTeleport);
-		Assert.Equal(2, result.Arrival!.Instance);
+		Assert.Equal(TeleportSkipReason.AlreadyClose, result.SkipReason);
+		Assert.False(result.ShouldTeleport);
 	}
 
 	[Fact]
@@ -412,7 +416,7 @@ public sealed class TeleportDecisionTests
 			CurrentTerritory = 813,
 			CurrentInstance = 1,
 			TargetInstance = 0,
-			PlayerDistance = 20f,
+			PlayerDistance = 200f,
 			Nearest = new NearestAetheryteResult(5u, "Near"),
 		};
 
@@ -420,7 +424,6 @@ public sealed class TeleportDecisionTests
 			enabled: true,
 			autoTeleport: true,
 			distanceThreshold: DefaultYalmThreshold,
-			autoSwitchInstanceToOne: false,
 			flag,
 			snapshot);
 
@@ -429,26 +432,18 @@ public sealed class TeleportDecisionTests
 	}
 
 	[Theory]
-	[InlineData(3, true, true, 3)]
-	[InlineData(3, true, false, 3)]
-	[InlineData(0, true, true, 1)]
-	[InlineData(0, true, false, 0)]
-	[InlineData(0, false, true, 0)]
-	[InlineData(2, false, true, 2)]
-	public void ResolveTargetInstance_prefers_reported_over_force_to_one(
-		int reported,
-		bool zoneChange,
-		bool autoSwitchToOne,
-		int expected)
-		=> Assert.Equal(
-			expected,
-			TeleportDecision.ResolveTargetInstance(reported, zoneChange, autoSwitchToOne));
+	[InlineData(3, 3)]
+	[InlineData(0, 0)]
+	[InlineData(2, 2)]
+	[InlineData(-1, 0)]
+	public void ResolveTargetInstance_uses_reported_or_zero(int reported, int expected)
+		=> Assert.Equal(expected, TeleportDecision.ResolveTargetInstance(reported));
 
 	[Fact]
 	public void Evaluate_throws_when_flag_null()
 	{
 		Assert.Throws<ArgumentNullException>(() => TeleportDecision.Evaluate(
-			true, true, DefaultYalmThreshold, false, null!, null));
+			true, true, DefaultYalmThreshold, null!, null));
 	}
 
 	[Fact]

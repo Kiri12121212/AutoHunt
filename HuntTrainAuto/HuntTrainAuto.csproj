@@ -2,7 +2,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
 	<PropertyGroup>
 		<Authors>Kiri12121212</Authors>
-		<Version>0.1.15.0</Version>
+		<Version>0.1.36.0</Version>
 		<RootNamespace>HuntTrainAuto</RootNamespace>
 		<AssemblyName>HuntTrainAuto</AssemblyName>
 	</PropertyGroup>

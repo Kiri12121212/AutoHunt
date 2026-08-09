@@ -208,6 +208,10 @@ public static class EngageTargetDecision
 		return new EngageTargetPick { Kind = EngageTargetKind.None, Index = -1 };
 	}
 
+	/// <summary>Compact, side-effect-free target diagnostic for helper logging.</summary>
+	public static string Describe(in EngageTargetPick pick)
+		=> $"target={pick.Kind}, index={pick.Index}";
+
 	/// <summary>Within engage range of the chosen mob → ready for combat phase.</summary>
 	public static bool ShouldEnterCombatOnMob(float? distanceToMob, float engageRange)
 		=> CombatDecision.IsWithinEngageRange(distanceToMob, engageRange);
@@ -237,6 +241,18 @@ public static class EngageTargetDecision
 	/// Higher = still descending toward the mob floor.
 	/// </summary>
 	public const float EngageUnmountMaxVerticalDelta = 3f;
+
+	/// <summary>
+	/// Once divert has enqueued unmount, keep holding land — do not restart fly Move.
+	/// Vertical flicker above <see cref="EngageUnmountMaxVerticalDelta"/> must not resume approach
+	/// (that climb/PathStop thrash is the Fake Hunt up/down loop).
+	/// </summary>
+	public static bool ShouldHoldDivertLandUnmount(bool unmountJobActive)
+		=> unmountJobActive;
+
+	/// <summary>PathStop only while vnav is still following (avoid per-tick IPC/log spam).</summary>
+	public static bool ShouldStopPathForDivertLand(bool pathIsRunning)
+		=> pathIsRunning;
 
 	/// <summary>
 	/// Mob is close enough to PathStop + Unmount (within engage range, mounted/flying,

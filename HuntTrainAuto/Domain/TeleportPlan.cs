@@ -54,6 +54,14 @@ public sealed class TeleportPlan
 			TeleportInvoked = true;
 	}
 
+	/// <summary>
+	/// Drop the invoke latch without clearing the plan (cancelled cast / stuck retry).
+	/// </summary>
+	public void ClearTeleportInvoked()
+	{
+		TeleportInvoked = false;
+	}
+
 	public void Clear()
 	{
 		Active = null;

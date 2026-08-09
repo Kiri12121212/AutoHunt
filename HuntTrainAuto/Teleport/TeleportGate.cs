@@ -8,6 +8,18 @@ namespace HuntTrainAuto.Teleport;
 /// </summary>
 public static class TeleportGate
 {
+	/// <summary>Compact, side-effect-free gate diagnostic for call-site logging.</summary>
+	public static string DescribeBlock(
+		bool inCombat,
+		bool betweenAreas,
+		bool betweenAreas51,
+		bool casting,
+		bool isMoving,
+		bool animationLocked,
+		bool teleportInvoked)
+		=> $"blocked: invoked={teleportInvoked}, combat={inCombat}, betweenAreas={betweenAreas || betweenAreas51}, "
+			+ $"casting={casting}, moving={isMoving}, animationLocked={animationLocked}";
+
 	/// <summary>
 	/// Soft screen-ready check (HTA <c>IsScreenReady</c> subset without ECommons).
 	/// </summary>
@@ -22,8 +34,16 @@ public static class TeleportGate
 			&& !watchingCutscene;
 
 	/// <summary>
+	/// Idle grace after cast ends (or invoke never cast) before releasing
+	/// <c>TeleportInvoked</c> for a retry. Must outlast normal cast→BetweenAreas
+	/// so a successful TP is not re-fired mid-transition.
+	/// </summary>
+	public const int PostInvokeIdleRetryMs = 6000;
+
+	/// <summary>
 	/// Whether the Framework loop may call Teleporter/Lifestream this tick
-	/// (HTA: <c>!InCombat &amp;&amp; !BetweenAreas* &amp;&amp; !Casting &amp;&amp; !IsMoving</c>, plus animation lock).
+	/// (HTA: <c>!InCombat &amp;&amp; !BetweenAreas* &amp;&amp; !Casting &amp;&amp; !IsMoving</c>,
+	/// plus animation lock; blocked while an invoke is already in flight).
 	/// </summary>
 	public static bool CanAttemptTeleport(
 		bool inCombat,
@@ -31,13 +51,38 @@ public static class TeleportGate
 		bool betweenAreas51,
 		bool casting,
 		bool isMoving,
-		bool animationLocked = false)
-		=> !inCombat
+		bool animationLocked = false,
+		bool teleportInvoked = false)
+		=> !teleportInvoked
+			&& !inCombat
 			&& !betweenAreas
 			&& !betweenAreas51
 			&& !casting
 			&& !isMoving
 			&& !animationLocked;
+
+	/// <summary>
+	/// Release <c>TeleportInvoked</c> so a cancelled / stuck TP can retry.
+	/// Requires continuous idle (not casting) for <paramref name="idleRetryMs"/>
+	/// without BetweenAreas — successful hops clear via plan handoff sooner.
+	/// <paramref name="idleSinceMs"/> ≤ 0 means not idle yet (still casting / just invoked).
+	/// </summary>
+	public static bool ShouldReleaseTeleportInvoked(
+		bool teleportInvoked,
+		bool casting,
+		bool isCasting,
+		bool betweenAreas,
+		bool betweenAreas51,
+		long idleSinceMs,
+		long nowMs,
+		int idleRetryMs = PostInvokeIdleRetryMs)
+	{
+		if (!teleportInvoked || IsBetweenAreas(betweenAreas, betweenAreas51))
+			return false;
+		if (casting || isCasting || idleSinceMs <= 0)
+			return false;
+		return nowMs - idleSinceMs >= idleRetryMs;
+	}
 
 	/// <summary>
 	/// Player is usable for teleport attempts (vanilla stand-in for ECommons <c>Player.Interactable</c>).

@@ -11,8 +11,19 @@ public enum UnmountTickKind
 	/// <summary>Wait another tick (throttle / transition / casting / path not ready).</summary>
 	Wait,
 
-	/// <summary>Dismount via GeneralAction 1 and/or <c>/dismount</c>.</summary>
+	/// <summary>Dismount via GeneralAction 23 (no chat fallback — wrong GA /ac spams errors).</summary>
 	Dismount,
+}
+
+/// <summary>Reason a <see cref="UnmountTickResult"/> did not dismount immediately.</summary>
+public enum UnmountWaitReason
+{
+	None,
+	TransitionOrCasting,
+	CheckThrottle,
+	ActionUnavailable,
+	AnimationLocked,
+	DismountThrottle,
 }
 
 /// <summary>Result of <see cref="UnmountDecision.DecideUnmountTick"/>.</summary>
@@ -20,8 +31,17 @@ public readonly struct UnmountTickResult
 {
 	public required UnmountTickKind Kind { get; init; }
 
+	/// <summary>Why <see cref="Kind"/> is <see cref="UnmountTickKind.Wait"/>.</summary>
+	public UnmountWaitReason WaitReason { get; init; }
+
 	/// <summary>Force-extend CheckUnmount throttle while transitioning/casting.</summary>
 	public bool ForceCheckThrottle { get; init; }
+
+	/// <summary>
+	/// Cooldown when <see cref="ForceCheckThrottle"/>; 0 → <see cref="UnmountDecision.CheckUnmountCooldownMs"/>.
+	/// Unusable GA uses <see cref="UnmountDecision.ActionRetryCooldownMs"/>.
+	/// </summary>
+	public int ForceCheckCooldownMs { get; init; }
 
 	/// <summary>
 	/// Unmount finished successfully (already unmounted or dismount path completed) —
@@ -36,14 +56,32 @@ public readonly struct UnmountTickResult
 /// </summary>
 public static class UnmountDecision
 {
-	/// <summary>GeneralAction id for Dismount.</summary>
-	public const uint DismountGeneralActionId = 1;
+	/// <summary>GeneralAction id for Dismount (not 1 — that is Auto-attack).</summary>
+	public const uint DismountGeneralActionId = 23;
 
 	/// <summary>Throttle while transitioning/casting (mirror CheckMount 2000ms).</summary>
 	public const int CheckUnmountCooldownMs = 2000;
 
+	/// <summary>
+	/// Retry when dismount GA is briefly unusable (flight / animation).
+	/// Full <see cref="CheckUnmountCooldownMs"/> made land-and-unmount feel stuck.
+	/// </summary>
+	public const int ActionRetryCooldownMs = 250;
+
 	/// <summary>Interval between dismount attempts.</summary>
 	public const int DismountCooldownMs = 500;
+
+	/// <summary>Human-readable decision outcome for runner debug logs.</summary>
+	public static string Describe(UnmountTickResult result)
+		=> result.Kind switch
+		{
+			UnmountTickKind.Done => result.ReadyForGroundFollow
+				? "done (ground follow ready)"
+				: "done",
+			UnmountTickKind.Wait => $"wait ({result.WaitReason})",
+			UnmountTickKind.Dismount => "dismount",
+			_ => $"unknown ({result.Kind})",
+		};
 
 	/// <summary>
 	/// Soft timeout while stuck in WaitReady (path / screen / instance gates).
@@ -86,6 +124,13 @@ public static class UnmountDecision
 	public static bool ShouldEnqueueIfEnabled(bool autoUnmountAtFlag) => autoUnmountAtFlag;
 
 	/// <summary>
+	/// Start a new unmount job only when config allows and no job is already running.
+	/// Divert used to call enqueue every tick and reset WaitReady — dismount never progressed.
+	/// </summary>
+	public static bool ShouldStartUnmountJob(bool autoUnmountAtFlag, bool alreadyActive)
+		=> autoUnmountAtFlag && !alreadyActive;
+
+	/// <summary>
 	/// One-shot enqueue when flag arrival is signaled and no job is already active/latched.
 	/// </summary>
 	public static bool ShouldEnqueueOnArrival(
@@ -126,7 +171,7 @@ public static class UnmountDecision
 	public static bool NeedsTransitionWait(bool mountOrOrnamentTransition, bool casting)
 		=> mountOrOrnamentTransition || casting;
 
-	/// <summary>GeneralAction 1 usable when status == 0.</summary>
+	/// <summary>GeneralAction Dismount (23) usable when status == 0.</summary>
 	public static bool IsDismountActionUsable(uint actionStatus) => actionStatus == 0;
 
 	/// <summary>
@@ -158,22 +203,37 @@ public static class UnmountDecision
 			{
 				Kind = UnmountTickKind.Wait,
 				ForceCheckThrottle = forceCheck,
+				WaitReason = forceCheck
+					? UnmountWaitReason.TransitionOrCasting
+					: UnmountWaitReason.CheckThrottle,
+			};
+		}
+
+		// Transient GA status (flight / animation / AM null) — retry, do not fire.
+		// Firing UseAction + /ac while unusable spammed "Cannot execute at this time".
+		if (!dismountActionUsable)
+		{
+			return new UnmountTickResult
+			{
+				Kind = UnmountTickKind.Wait,
+				ForceCheckThrottle = true,
+				ForceCheckCooldownMs = ActionRetryCooldownMs,
+				WaitReason = UnmountWaitReason.ActionUnavailable,
 			};
 		}
 
 		if (animationLocked || !dismountThrottleReady)
 		{
-			return new UnmountTickResult { Kind = UnmountTickKind.Wait };
+			return new UnmountTickResult
+			{
+				Kind = UnmountTickKind.Wait,
+				WaitReason = animationLocked
+					? UnmountWaitReason.AnimationLocked
+					: UnmountWaitReason.DismountThrottle,
+			};
 		}
 
-		// Still mounted: never Done-abandon on GA unusable. Transient status (flight, AM null)
-		// used to clear the job while Mounted; arrival latch then blocked re-enqueue.
-		// Runner TryDismount falls back to /dismount; session timeout still bounds the job.
-		return new UnmountTickResult
-		{
-			Kind = UnmountTickKind.Dismount,
-			ForceCheckThrottle = !dismountActionUsable,
-		};
+		return new UnmountTickResult { Kind = UnmountTickKind.Dismount };
 	}
 
 	/// <summary>Whether CheckUnmount throttle allows progress.</summary>

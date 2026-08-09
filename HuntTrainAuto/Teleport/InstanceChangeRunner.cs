@@ -6,6 +6,7 @@ using Dalamud.Game.ClientState.Objects;
 using Dalamud.Game.ClientState.Objects.Enums;
 using Dalamud.Game.ClientState.Objects.Types;
 using Dalamud.Plugin.Services;
+using HuntTrainAuto.Logging;
 
 namespace HuntTrainAuto.Teleport;
 
@@ -22,6 +23,7 @@ public sealed class InstanceChangeRunner
 	private readonly ITargetManager targetManager;
 	private readonly ICondition condition;
 	private readonly IPluginLog pluginLog;
+	private readonly Func<bool> debugEnabled;
 
 	public InstanceChangeRunner(
 		ILifestreamService lifestream,
@@ -30,7 +32,8 @@ public sealed class InstanceChangeRunner
 		IObjectTable objectTable,
 		ITargetManager targetManager,
 		ICondition condition,
-		IPluginLog pluginLog)
+		IPluginLog pluginLog,
+		Func<bool>? debugEnabled = null)
 	{
 		this.lifestream = lifestream;
 		this.chat = chat;
@@ -39,6 +42,7 @@ public sealed class InstanceChangeRunner
 		this.targetManager = targetManager;
 		this.condition = condition;
 		this.pluginLog = pluginLog;
+		this.debugEnabled = debugEnabled ?? (() => false);
 	}
 
 	public InstanceChangeSession Session => session;
@@ -48,14 +52,21 @@ public sealed class InstanceChangeRunner
 	public void Enqueue(int instance, uint territory)
 	{
 		if (!InstanceChangeDecision.ShouldEnqueue(instance))
+		{
+			DebugBehavior.Debug(
+				pluginLog,
+				debugEnabled(),
+				"Instance",
+				$"enqueue skipped: requested={instance}");
 			return;
+		}
 
 		// Replacing a mid-Approach job must stop automove (session.Enqueue clears the flag only).
 		if (session.AutomoveStarted)
 			StopAutomove();
 
 		session.Enqueue(instance, territory);
-		pluginLog.Debug($"Instance change enqueued: instance {instance}, territory {territory}");
+		DebugBehavior.Info(pluginLog, "Instance", $"enqueued: requested={instance}, territory={territory}");
 	}
 
 	public void Tick()
@@ -92,27 +103,51 @@ public sealed class InstanceChangeRunner
 	{
 		if (stopAutomove && session.AutomoveStarted)
 			StopAutomove();
+		DebugBehavior.Debug(
+			pluginLog,
+			debugEnabled(),
+			"Instance",
+			$"cleared: requested={session.Instance}, phase={session.Phase}");
 		session.Clear();
 	}
 
 	private void TickWaitLanded(bool territoryMatches, bool playerReady, bool betweenAreas)
 	{
 		if (!InstanceChangeDecision.IsLanded(territoryMatches, playerReady, betweenAreas))
+		{
+			DebugBehavior.DebugThrottled(
+				pluginLog,
+				debugEnabled(),
+				"instance.wait-landed",
+				1000,
+				Environment.TickCount64,
+				"Instance",
+				$"waiting to land: territoryMatches={territoryMatches}, playerReady={playerReady}, betweenAreas={betweenAreas}");
 			return;
+		}
 
 		var requested = session.Instance;
-		var current = lifestream.GetCurrentInstance();
+		var current = InstanceChangeDecision.ResolveCurrentInstance(
+			PublicInstanceReader.TryReadInstanceId(pluginLog, debugEnabled()),
+			lifestream.GetCurrentInstance(),
+			(int)clientState.Instance);
 		var count = lifestream.GetNumberOfInstances();
 
 		if (!InstanceChangeDecision.NeedsInstanceChange(requested, current, count))
 		{
-			pluginLog.Information(
-				$"Instance change no-op (requested={requested}, current={current}, instances={count})");
+			DebugBehavior.Info(
+				pluginLog,
+				"Instance",
+				$"no-op: requested={requested}, current={current}, instances={count}");
 			session.Clear();
 			return;
 		}
 
 		session.EnterApproach();
+		DebugBehavior.Info(
+			pluginLog,
+			"Instance",
+			$"landed; approaching aetheryte: requested={requested}, current={current}");
 	}
 
 	private void TickApproach(IGameObject? player, bool playerReady, long now)
@@ -124,9 +159,22 @@ public sealed class InstanceChangeRunner
 			condition[ConditionFlag.WatchingCutscene]);
 
 		if (!screenReady || !playerReady)
+		{
+			DebugBehavior.DebugThrottled(
+				pluginLog,
+				debugEnabled(),
+				"instance.approach-ready",
+				1000,
+				now,
+				"Instance",
+				$"approach waiting: screenReady={screenReady}, playerReady={playerReady}");
 			return;
+		}
 
-		var current = lifestream.GetCurrentInstance();
+		var current = InstanceChangeDecision.ResolveCurrentInstance(
+			PublicInstanceReader.TryReadInstanceId(pluginLog, debugEnabled()),
+			lifestream.GetCurrentInstance(),
+			(int)clientState.Instance);
 		if (InstanceChangeDecision.IsAlreadyOnInstance(session.Instance, current))
 		{
 			FinishSuccess();
@@ -143,6 +191,25 @@ public sealed class InstanceChangeRunner
 			targeted,
 			now >= session.NextTargetMs,
 			now >= session.NextLockonMs);
+		if (action == InstanceChangeDecision.ApproachAction.Wait)
+		{
+			DebugBehavior.DebugThrottled(
+				pluginLog,
+				debugEnabled(),
+				"instance.approach",
+				1000,
+				now,
+				"Instance",
+				$"{InstanceChangeDecision.Describe(action)}: requested={session.Instance}, current={current}, canChange={canChange}, targeted={targeted}");
+		}
+		else
+		{
+			DebugBehavior.Debug(
+				pluginLog,
+				debugEnabled(),
+				"Instance",
+				$"{InstanceChangeDecision.Describe(action)}: requested={session.Instance}, current={current}, canChange={canChange}, targeted={targeted}");
+		}
 
 		switch (action)
 		{
@@ -151,20 +218,26 @@ public sealed class InstanceChangeRunner
 			case InstanceChangeDecision.ApproachAction.SetTarget:
 				targetManager.Target = nearest;
 				session.NextTargetMs = now + InstanceChangeDecision.TargetThrottleMs;
+				DebugBehavior.Debug(pluginLog, debugEnabled(), "Instance", "aetheryte targeted");
 				return;
 			case InstanceChangeDecision.ApproachAction.LockonAndAutomove:
 				chat.TryExecuteCommand("/lockon");
 				chat.TryExecuteCommand("/automove on");
 				session.AutomoveStarted = true;
 				session.NextLockonMs = now + InstanceChangeDecision.LockonThrottleMs;
+				DebugBehavior.Info(pluginLog, "Instance", "lockon and automove started");
 				return;
 			case InstanceChangeDecision.ApproachAction.SoftAbortNoAetheryte:
-				pluginLog.Information(
-					$"Instance change soft-abort: not near aetheryte (wanted {session.Instance})");
+				DebugBehavior.Debug(
+					pluginLog,
+					debugEnabled(),
+					"Instance",
+					$"soft-abort: no targetable aetheryte, requested={session.Instance}");
 				Clear(stopAutomove: true);
 				return;
 			case InstanceChangeDecision.ApproachAction.ReadyToChange:
 				session.EnterChanging(now);
+				DebugBehavior.Info(pluginLog, "Instance", $"ready to change: requested={session.Instance}");
 				TickChanging(now);
 				return;
 		}
@@ -172,7 +245,10 @@ public sealed class InstanceChangeRunner
 
 	private void TickChanging(long now)
 	{
-		var current = lifestream.GetCurrentInstance();
+		var current = InstanceChangeDecision.ResolveCurrentInstance(
+			PublicInstanceReader.TryReadInstanceId(pluginLog, debugEnabled()),
+			lifestream.GetCurrentInstance(),
+			(int)clientState.Instance);
 		var already = InstanceChangeDecision.IsAlreadyOnInstance(session.Instance, current);
 		var timedOut = now >= session.ChangeDeadlineMs;
 		var canChange = lifestream.CanChangeInstance();
@@ -182,6 +258,14 @@ public sealed class InstanceChangeRunner
 			canChange,
 			session.ChangeIssued,
 			timedOut);
+		DebugBehavior.DebugThrottled(
+			pluginLog,
+			debugEnabled(),
+			"instance.changing",
+			1000,
+			now,
+			"Instance",
+			$"{InstanceChangeDecision.Describe(result)}: requested={session.Instance}, current={current}, canChange={canChange}, issued={session.ChangeIssued}");
 
 		switch (result)
 		{
@@ -189,8 +273,11 @@ public sealed class InstanceChangeRunner
 				FinishSuccess();
 				return;
 			case InstanceChangeDecision.ChangeTickResult.TimedOut:
-				pluginLog.Debug(
-					$"Instance change timed out after {InstanceChangeDecision.ChangeTimeoutMs}ms (wanted {session.Instance}, current {current})");
+				DebugBehavior.Debug(
+					pluginLog,
+					debugEnabled(),
+					$"Instance",
+					$"timed out after {InstanceChangeDecision.ChangeTimeoutMs}ms: requested={session.Instance}, current={current}");
 				Clear(stopAutomove: true);
 				return;
 			case InstanceChangeDecision.ChangeTickResult.IssueChange:
@@ -198,7 +285,7 @@ public sealed class InstanceChangeRunner
 					StopAutomove();
 				lifestream.ChangeInstance(session.Instance);
 				session.ChangeIssued = true;
-				pluginLog.Information($"Changing instance to {session.Instance}");
+				DebugBehavior.Info(pluginLog, "Instance", $"issuing change: requested={session.Instance}");
 				return;
 			case InstanceChangeDecision.ChangeTickResult.Continue:
 				return;
@@ -209,7 +296,7 @@ public sealed class InstanceChangeRunner
 	{
 		if (session.AutomoveStarted)
 			StopAutomove();
-		pluginLog.Information($"Instance change complete: {session.Instance}");
+		DebugBehavior.Info(pluginLog, "Instance", $"complete: instance={session.Instance}");
 		session.Clear();
 	}
 
@@ -217,6 +304,7 @@ public sealed class InstanceChangeRunner
 	{
 		chat.TryExecuteCommand("/automove off");
 		session.AutomoveStarted = false;
+		DebugBehavior.Debug(pluginLog, debugEnabled(), "Instance", "automove stopped");
 	}
 
 	private IGameObject? FindNearestTargetableAetheryte(IGameObject? player)

@@ -41,8 +41,10 @@ public enum CombatTransitionKind
 /// <para><b>Vanilla detection assumptions (no ECommons):</b></para>
 /// <list type="bullet">
 /// <item><description>
-/// Ally / local combat = character <c>StatusFlags.InCombat</c>
-/// (or local <c>ConditionFlag.InCombat</c> for the player).
+/// Local player combat exit uses <c>ConditionFlag.InCombat</c> only
+/// (StatusFlags linger after the condition clears and must not delay StopFollow).
+/// Allies / latched engage mobs still use character <c>StatusFlags.InCombat</c>
+/// (latched corpse HP≤0 counts as clear).
 /// </description></item>
 /// <item><description>
 /// "Hunt mob targeted by party" = party member (or local) who is <b>in combat</b>
@@ -70,7 +72,7 @@ public readonly struct CombatEngageSnapshot
 	/// <summary>Player → that targeted BattleNpc; null if none.</summary>
 	public float? DistanceToPartyHuntMob { get; init; }
 
-	/// <summary>Local player InCombat.</summary>
+	/// <summary>Local player <c>ConditionFlag.InCombat</c> (not StatusFlags).</summary>
 	public bool PlayerInCombat { get; init; }
 
 	/// <summary>Any other party ally InCombat (StatusFlags).</summary>
@@ -81,6 +83,12 @@ public readonly struct CombatEngageSnapshot
 	/// (latched EntityId).
 	/// </summary>
 	public bool LatchedEngageTargetInCombat { get; init; }
+
+	/// <summary>
+	/// Fake Hunt synthetic combat — no real ConditionFlag.InCombat / entity latch.
+	/// When true, stay in Combat until caller clears (auto/manual end).
+	/// </summary>
+	public bool HoldCombatPhase { get; init; }
 
 	/// <summary>Clamped <see cref="Configuration.EngageRange"/>.</summary>
 	public float EngageRange { get; init; }
@@ -146,14 +154,19 @@ public static class CombatDecision
 	}
 
 	/// <summary>
-	/// Combat ended when nobody relevant is fighting and no party hunt target remains.
-	/// Includes latched engage mob (may be outside the party list).
+	/// Combat ended when the local player and latched engage mob are clear.
+	/// Does not wait on distant party allies (PF adds / lagging InCombat) — that delayed
+	/// remount and deferred walk/TP after the A-rank was already dead.
+	/// Latched mob covers the pull we entered on (corpse/despawn cleared by wiring).
+	/// <see cref="CombatEngageSnapshot.HoldCombatPhase"/> keeps Fake Hunt synthetic combat
+	/// until auto/manual end (no real InCombat / entity).
 	/// </summary>
 	public static bool IsCombatEnded(in CombatEngageSnapshot snap)
-		=> !snap.PlayerInCombat
-			&& !snap.AnyPartyAllyInCombat
-			&& !snap.LatchedEngageTargetInCombat
-			&& !snap.PartyTargetsHuntMob;
+	{
+		if (snap.HoldCombatPhase)
+			return false;
+		return !snap.PlayerInCombat && !snap.LatchedEngageTargetInCombat;
+	}
 
 	/// <summary>
 	/// One transition decision from current phase + snapshot.
@@ -200,7 +213,7 @@ public static class CombatDecision
 			_ => phase,
 		};
 
+	/// <summary>Compact, side-effect-free transition diagnostic for helper logging.</summary>
 	public static string Describe(CombatTransitionKind kind)
 		=> $"transition={kind}";
-
 }

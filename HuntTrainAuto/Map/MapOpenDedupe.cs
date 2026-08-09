@@ -18,10 +18,9 @@ public static class MapOpenDedupe
 
 	/// <summary>
 	/// Whether <c>OpenMapWithMapLink</c> should run.
-	/// Open when no flag, different territory, distance &gt; threshold, or <paramref name="noDuplicateFlags"/> is false.
+	/// Open when no flag, different territory, or distance &gt; threshold (always skip near-dupes).
 	/// </summary>
 	public static bool ShouldOpenMap(
-		bool noDuplicateFlags,
 		bool isFlagMarkerSet,
 		uint existingTerritoryId,
 		float existingX,
@@ -34,12 +33,30 @@ public static class MapOpenDedupe
 		if (!isFlagMarkerSet || existingTerritoryId != linkTerritoryId)
 			return true;
 
-		if (!noDuplicateFlags)
-			return true;
-
 		var linkPos = LinkPosFromRaw(linkRawX, linkRawY);
 		var distance = Vector2.Distance(new Vector2(existingX, existingY), linkPos);
 		return distance > duplicateDistanceThreshold;
+	}
+
+	/// <summary>Stable debug description for an evaluated open-map decision.</summary>
+	public static string Describe(
+		bool shouldOpen,
+		bool isFlagMarkerSet,
+		uint existingTerritoryId,
+		uint linkTerritoryId,
+		float distance,
+		float duplicateDistanceThreshold = DuplicateDistanceThreshold)
+	{
+		if (!isFlagMarkerSet)
+			return shouldOpen ? "open: no existing flag" : "skip: no existing flag";
+		if (existingTerritoryId != linkTerritoryId)
+			return shouldOpen
+				? $"open: territory {existingTerritoryId} → {linkTerritoryId}"
+				: $"skip: territory {existingTerritoryId} → {linkTerritoryId}";
+
+		return shouldOpen
+			? $"open: distance {distance:0.00} > {duplicateDistanceThreshold:0.00}"
+			: $"skip duplicate: distance {distance:0.00} <= {duplicateDistanceThreshold:0.00}";
 	}
 
 	/// <summary>Light validation before calling game map APIs with chat-derived fields.</summary>

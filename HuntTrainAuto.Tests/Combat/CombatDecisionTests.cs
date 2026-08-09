@@ -90,11 +90,20 @@ public sealed class CombatDecisionTests
 	}
 
 	[Fact]
-	public void IsCombatEnded_false_while_party_fighting()
+	public void IsCombatEnded_false_while_player_or_latched_fighting()
 	{
-		Assert.False(CombatDecision.IsCombatEnded(Snap(anyAllyInCombat: true)));
 		Assert.False(CombatDecision.IsCombatEnded(Snap(playerInCombat: true)));
-		Assert.False(CombatDecision.IsCombatEnded(Snap(partyTargetsHuntMob: true)));
+		Assert.False(CombatDecision.IsCombatEnded(Snap(latchedEngageInCombat: true)));
+	}
+
+	[Fact]
+	public void Decide_Combat_StopFollow_when_condition_combat_clear()
+	{
+		// PlayerInCombat mirrors ConditionFlag only — StatusFlags linger must not hold Combat.
+		var snap = Snap(playerInCombat: false, latchedEngageInCombat: false);
+		Assert.Equal(
+			CombatTransitionKind.StopFollow,
+			CombatDecision.Decide(CombatPhase.Combat, snap));
 	}
 
 	[Fact]
@@ -216,6 +225,10 @@ public sealed class CombatDecisionTests
 	}
 
 	[Fact]
+	public void Describe_formats_transition()
+		=> Assert.Equal("transition=EnterCombat", CombatDecision.Describe(CombatTransitionKind.EnterCombat));
+
+	[Fact]
 	public void CombatSession_phase_signal_for_phase6()
 	{
 		var session = new CombatSession();
@@ -232,6 +245,26 @@ public sealed class CombatDecisionTests
 		Assert.False(session.InCombatPhase);
 	}
 
+	[Fact]
+	public void IsCombatEnded_false_when_hold_combat_phase()
+	{
+		var snap = Snap(holdCombatPhase: true);
+		Assert.False(CombatDecision.IsCombatEnded(snap));
+		Assert.Equal(
+			CombatTransitionKind.StayFollow,
+			CombatDecision.Decide(CombatPhase.Combat, snap));
+	}
+
+	[Fact]
+	public void IsCombatEnded_true_without_hold_when_no_combat_signals()
+	{
+		var snap = Snap();
+		Assert.True(CombatDecision.IsCombatEnded(snap));
+		Assert.Equal(
+			CombatTransitionKind.StopFollow,
+			CombatDecision.Decide(CombatPhase.Combat, snap));
+	}
+
 	private static CombatEngageSnapshot Snap(
 		bool pluginEnabled = true,
 		bool playerDead = false,
@@ -240,6 +273,7 @@ public sealed class CombatDecisionTests
 		bool playerInCombat = false,
 		bool anyAllyInCombat = false,
 		bool latchedEngageInCombat = false,
+		bool holdCombatPhase = false,
 		float engageRange = CombatDecision.DefaultEngageRange)
 		=> new()
 		{
@@ -250,6 +284,7 @@ public sealed class CombatDecisionTests
 			PlayerInCombat = playerInCombat,
 			AnyPartyAllyInCombat = anyAllyInCombat,
 			LatchedEngageTargetInCombat = latchedEngageInCombat,
+			HoldCombatPhase = holdCombatPhase,
 			EngageRange = engageRange,
 		};
 }

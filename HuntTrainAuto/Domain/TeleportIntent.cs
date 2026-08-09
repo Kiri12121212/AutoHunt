@@ -41,8 +41,7 @@ public readonly struct TeleportPlayerSnapshot
 	public int CurrentInstance { get; init; }
 
 	/// <summary>
-	/// Desired instance for the flag (0 = unspecified). Zone-change callers typically pass
-	/// <see cref="TeleportDecision.ResolveZoneChangeInstance"/>.
+	/// Desired instance for the flag (0 = unspecified). Prefer flag/conductor-reported instance.
 	/// </summary>
 	public int TargetInstance { get; init; }
 

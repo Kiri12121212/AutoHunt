@@ -5,12 +5,13 @@ using Dalamud.Game.Chat;
 using Dalamud.Game.Text.SeStringHandling;
 using Dalamud.Game.Text.SeStringHandling.Payloads;
 using Dalamud.Plugin.Services;
+using HuntTrainAuto.Logging;
 
 namespace HuntTrainAuto.Chat;
 
 /// <summary>
 /// Subscribes to <see cref="IChatGui.ChatMessage"/>. Sender match, map-link → <see cref="HuntFlag"/>,
-/// optional auto-open map with AgentMap dedupe, conductor highlight, and optional non-conductor suppress.
+/// optional auto-open map with AgentMap dedupe, and conductor highlight.
 /// Teleport decision is computed only (stored on <see cref="TeleportIntent"/>) — no Teleporter/Lifestream calls.
 /// </summary>
 public sealed class ChatMessageHandler : IDisposable
@@ -21,12 +22,18 @@ public sealed class ChatMessageHandler : IDisposable
 	private readonly IChatGui chatGui;
 	private readonly IGameGui gameGui;
 	private readonly Configuration config;
+	private readonly IPluginLog? log;
 
-	public ChatMessageHandler(IChatGui chatGui, IGameGui gameGui, Configuration config)
+	public ChatMessageHandler(
+		IChatGui chatGui,
+		IGameGui gameGui,
+		Configuration config,
+		IPluginLog? log = null)
 	{
 		this.chatGui = chatGui ?? throw new ArgumentNullException(nameof(chatGui));
 		this.gameGui = gameGui ?? throw new ArgumentNullException(nameof(gameGui));
 		this.config = config ?? throw new ArgumentNullException(nameof(config));
+		this.log = log;
 		chatGui.ChatMessage += OnChatMessage;
 	}
 
@@ -62,17 +69,22 @@ public sealed class ChatMessageHandler : IDisposable
 		ConductorSenderName = null;
 
 		if (!config.Enabled)
+		{
+			LogDebug("message ignored: plugin disabled");
 			return;
+		}
 
 		var isConductorMessage = TryDecodeSender(message.Sender, out var senderName)
 			&& ChatSender.IsConductor(config.Conductors, senderName);
-		var isMapLink = ContainsMapLink(message.Message);
+		LogDebug(isConductorMessage ? "conductor sender matched" : "sender rejected");
 
 		if (isConductorMessage)
 		{
 			IsConductorMessage = true;
 			ConductorSenderName = senderName;
 			TryExtractHuntFlag(message);
+			var isLastStop = ConductorLastStopParse.IsLastStop(message.Message.TextValue);
+			LogDebug(ConductorLastStopParse.Describe(isLastStop));
 			try
 			{
 				ConductorTextReceived?.Invoke(message.Message.TextValue);
@@ -80,18 +92,10 @@ public sealed class ChatMessageHandler : IDisposable
 			catch
 			{
 				// soft-fail subscriber
+				LogDebug("conductor text subscriber soft-fail");
 			}
 
 			message.Message = HighlightConductorMessage(message.Message);
-		}
-
-		if (ChatSuppress.ShouldSuppress(
-			config.SuppressChatOtherPlayers,
-			isMapLink,
-			isConductorMessage,
-			config.Conductors.Count))
-		{
-			message.PreventOriginal();
 		}
 	}
 
@@ -109,20 +113,6 @@ public sealed class ChatMessageHandler : IDisposable
 			builder.Add(payload);
 		builder.AddUiForegroundOff();
 		return builder.Build();
-	}
-
-	/// <summary>True when the message contains any <see cref="MapLinkPayload"/> (HTA <c>isMapLink</c>).</summary>
-	internal static bool ContainsMapLink(SeString message)
-	{
-		ArgumentNullException.ThrowIfNull(message);
-
-		foreach (var payload in message.Payloads)
-		{
-			if (payload is MapLinkPayload)
-				return true;
-		}
-
-		return false;
 	}
 
 	/// <summary>
@@ -145,19 +135,30 @@ public sealed class ChatMessageHandler : IDisposable
 
 			var instanceHint = ConductorInstanceParse.TryParse(message.Message.TextValue);
 			flag.ReportedInstance = instanceHint;
+			LogDebug($"flag accepted: territory={flag.TerritoryTypeId}, {ConductorInstanceParse.Describe(instanceHint)}");
 			LatestHuntFlag = flag;
 			TryEvaluateTeleportDecision(flag, instanceHint);
-			HuntFlagReceived?.Invoke(flag);
+			try
+			{
+				HuntFlagReceived?.Invoke(flag);
+			}
+			catch
+			{
+				LogDebug("flag subscriber soft-fail");
+			}
 
 			if (config.AutoOpenMap
 				&& MapOpenDedupe.IsPlausibleMapLink(flag.TerritoryTypeId, flag.MapId, flag.RawX, flag.RawY)
 				&& ShouldOpenForFreshLink(flag))
 			{
 				gameGui.OpenMapWithMapLink(mapLink);
+				LogDebug("map opened for fresh flag");
 			}
 
 			return;
 		}
+
+		LogDebug("flag rejected: no map link");
 	}
 
 	/// <summary>
@@ -177,11 +178,11 @@ public sealed class ChatMessageHandler : IDisposable
 				config.Enabled,
 				config.AutoTeleport,
 				config.AutoTeleportAetheryteDistanceDiff,
-				config.AutoSwitchInstanceToOne,
 				flag,
 				snapshot,
 				CreateTimeAwareSettings(config));
 			TeleportIntent.Set(decision);
+			LogDebug($"teleport decision: {decision.Describe()}");
 		}
 		catch
 		{
@@ -190,7 +191,14 @@ public sealed class ChatMessageHandler : IDisposable
 				Action = TeleportAction.Skip,
 				SkipReason = TeleportSkipReason.PlayerStateUnavailable,
 			});
+			LogDebug("teleport decision: action=Skip, skip=PlayerStateUnavailable");
 		}
+	}
+
+	private void LogDebug(string message)
+	{
+		if (log != null)
+			DebugBehavior.Debug(log, config.EnableDebugLogging, "Chat", message);
 	}
 
 	/// <summary>Dedupe against live AgentMap flag; acts on the fresh extract, not stale state alone.</summary>
@@ -198,7 +206,6 @@ public sealed class ChatMessageHandler : IDisposable
 	{
 		var hasFlag = AgentMapFlag.TryGet(out var territoryId, out var x, out var y);
 		return MapOpenDedupe.ShouldOpenMap(
-			config.NoDuplicateFlags,
 			hasFlag,
 			territoryId,
 			x,
@@ -225,7 +232,6 @@ public sealed class ChatMessageHandler : IDisposable
 
 	internal static SameZoneTimeAwareSettings CreateTimeAwareSettings(Configuration cfg)
 		=> SameZoneTravelCost.CreateSettings(
-			cfg.AutoTeleportTimeAware,
 			cfg.AutoTeleportCastSeconds,
 			cfg.AutoTeleportLoadEstimateSeconds,
 			cfg.AutoTeleportMountSpeedYalmsPerSec,

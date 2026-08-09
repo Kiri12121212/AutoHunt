@@ -44,6 +44,14 @@ public sealed class MeshPathfindRetryDecisionTests
 				nextAttemptMs: 0,
 				attempts: MeshPathfindRetryDecision.MaxAttempts));
 
+	[Theory]
+	[InlineData(MeshPathfindRetryKind.WaitNotReady, "wait (not ready)")]
+	[InlineData(MeshPathfindRetryKind.WaitCooldown, "wait (cooldown)")]
+	[InlineData(MeshPathfindRetryKind.Start, "start")]
+	[InlineData(MeshPathfindRetryKind.Exhausted, "exhausted")]
+	public void Describe_reports_outcome(MeshPathfindRetryKind kind, string expected)
+		=> Assert.Equal(expected, MeshPathfindRetryDecision.Describe(kind));
+
 	[Fact]
 	public void AfterStartAttempt_arms_cooldown_and_bumps_count()
 	{
@@ -91,17 +99,20 @@ public sealed class MeshPathfindRetryDecisionTests
 			MeshPathfindRetryDecision.ShouldResetOnMeshAcquire(wasOn, nowOn));
 
 	[Theory]
-	[InlineData(false, true, false, true)] // ground on-mesh
-	[InlineData(false, false, false, false)] // ground off-mesh
-	[InlineData(true, false, false, false)] // fly off-mesh, no prior nav → wait (0dv8)
-	[InlineData(true, false, true, true)] // fly off-mesh after prior nav → repath (8sy1)
-	[InlineData(true, true, false, true)] // fly on-mesh
+	[InlineData(false, true, false, false, true)] // ground on-mesh
+	[InlineData(false, false, false, false, false)] // ground off-mesh
+	[InlineData(true, false, false, false, false)] // fly off-mesh, no prior nav, not in flight → wait (0dv8)
+	[InlineData(true, false, true, false, true)] // fly off-mesh after prior nav → repath (8sy1)
+	[InlineData(true, false, false, true, true)] // fly off-mesh while InFlight → allow divert
+	[InlineData(true, true, false, false, true)] // fly on-mesh
 	public void CanStartPathfindOffMeshPolicy(
 		bool fly,
 		bool onMesh,
 		bool hadProgress,
+		bool inFlight,
 		bool expected)
 		=> Assert.Equal(
 			expected,
-			MeshPathfindRetryDecision.CanStartPathfindOffMeshPolicy(fly, onMesh, hadProgress));
+			MeshPathfindRetryDecision.CanStartPathfindOffMeshPolicy(
+				fly, onMesh, hadProgress, inFlight));
 }

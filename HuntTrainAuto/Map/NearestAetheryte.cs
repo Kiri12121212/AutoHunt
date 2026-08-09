@@ -25,6 +25,10 @@ public readonly struct NearestAetheryteResult
 
 	/// <summary>Map Y of the selected aetheryte (same units as flag map-link coords).</summary>
 	public float MapY { get; }
+
+	/// <summary>Stable debug description of the selected aetheryte.</summary>
+	public string Describe()
+		=> $"picked #{RowId} ({PlaceName}) at ({MapX:0.00}, {MapY:0.00})";
 }
 
 /// <summary>
@@ -87,6 +91,10 @@ public static class NearestAetheryte
 	/// <summary>Squared map distance between two map-coordinate points (HTA parity).</summary>
 	public static double SquaredDistance(float x1, float y1, float x2, float y2)
 		=> Math.Pow(x1 - x2, 2) + Math.Pow(y1 - y2, 2);
+
+	/// <summary>Stable debug description of a selection result.</summary>
+	public static string Describe(NearestAetheryteResult? result)
+		=> result is { } selected ? selected.Describe() : "no eligible aetheryte";
 
 	private static bool IsBlacklisted(IReadOnlyCollection<uint>? blacklist, uint rowId)
 	{

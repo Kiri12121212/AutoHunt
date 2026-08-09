@@ -2,7 +2,9 @@
 using System;
 using Dalamud.Plugin;
 using Dalamud.Plugin.Ipc;
+using Dalamud.Plugin.Services;
 using HuntTrainAuto.Contracts;
+using HuntTrainAuto.Logging;
 
 namespace HuntTrainAuto.Services;
 
@@ -29,9 +31,16 @@ public sealed class TeleporterIpc : ITeleporterService
 	private const byte ProbeSubIndex = byte.MaxValue;
 
 	private readonly ICallGateSubscriber<uint, byte, bool> teleport;
+	private readonly IPluginLog? log;
+	private readonly Func<bool>? debugEnabled;
 
-	public TeleporterIpc(IDalamudPluginInterface pluginInterface)
+	public TeleporterIpc(
+		IDalamudPluginInterface pluginInterface,
+		IPluginLog? log = null,
+		Func<bool>? debugEnabled = null)
 	{
+		this.log = log;
+		this.debugEnabled = debugEnabled;
 		teleport = pluginInterface.GetIpcSubscriber<uint, byte, bool>(TeleportChannel);
 	}
 
@@ -51,8 +60,9 @@ public sealed class TeleporterIpc : ITeleporterService
 				_ = teleport.InvokeFunc(ProbeAetheryteId, ProbeSubIndex);
 				return true;
 			}
-			catch
+			catch (Exception ex)
 			{
+				DebugSoftFail("availability probe", ex);
 				return false;
 			}
 		}
@@ -66,10 +76,15 @@ public sealed class TeleporterIpc : ITeleporterService
 	{
 		try
 		{
-			return teleport.InvokeFunc(aetheryteId, subIndex);
+			var accepted = teleport.InvokeFunc(aetheryteId, subIndex);
+			Debug(accepted
+				? $"teleport accepted: aetheryte={aetheryteId}, subIndex={subIndex}"
+				: $"teleport declined: aetheryte={aetheryteId}, subIndex={subIndex}");
+			return accepted;
 		}
-		catch
+		catch (Exception ex)
 		{
+			DebugSoftFail("Teleport", ex);
 			return false;
 		}
 	}
@@ -77,5 +92,22 @@ public sealed class TeleporterIpc : ITeleporterService
 	public void Dispose()
 	{
 		// Subscriber only — no event subscriptions to tear down.
+	}
+
+	private bool IsDebugEnabled()
+		=> debugEnabled?.Invoke() ?? false;
+
+	private void Debug(string message)
+	{
+		if (log != null)
+			DebugBehavior.Debug(log, IsDebugEnabled(), "Teleporter", message);
+	}
+
+	private void DebugSoftFail(string operation, Exception ex)
+	{
+		if (log != null)
+			DebugBehavior.DebugThrottled(
+				log, IsDebugEnabled(), $"teleporter.{operation}", 2_000, Environment.TickCount64, "Teleporter",
+				$"{operation} unavailable/soft-fail: {ex.Message}");
 	}
 }

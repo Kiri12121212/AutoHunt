@@ -42,22 +42,6 @@ public sealed class ConfigTabsTests
 		=> Assert.Equal(expected, ConfigTabs.LabelAt(index));
 
 	[Theory]
-	[InlineData(-1, "Never")]
-	[InlineData(0, "Random")]
-	[InlineData(15, "Mount #15")]
-	[InlineData(122, "Mount #122")]
-	public void FormatMountSelection_labels_ids(int mount, string expected)
-		=> Assert.Equal(expected, ConfigTabs.FormatMountSelection(mount));
-
-	[Theory]
-	[InlineData(-5, -1)]
-	[InlineData(-1, -1)]
-	[InlineData(0, 0)]
-	[InlineData(42, 42)]
-	public void ClampMountId_floors_at_never(int input, int expected)
-		=> Assert.Equal(expected, ConfigTabs.ClampMountId(input));
-
-	[Theory]
 	[InlineData(-10, 0)]
 	[InlineData(0, 0)]
 	[InlineData(700, 700)]

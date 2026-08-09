@@ -31,6 +31,7 @@ public readonly struct SameZoneTravelEstimate
 	/// <summary>Mesh path length aetheryte → flag (yalms); set when <see cref="Status"/> is Ready.</summary>
 	public float? AetherytePathLengthYalms { get; init; }
 
+	/// <summary>Compact, side-effect-free estimate diagnostic for call-site logging.</summary>
 	public string Describe()
 		=> $"status={Status}, direct={DirectPathLengthYalms?.ToString() ?? "none"}, "
 			+ $"aetheryte={AetherytePathLengthYalms?.ToString() ?? "none"}";
@@ -79,6 +80,15 @@ public readonly struct SameZoneTimeAwareSettings
 /// </summary>
 public static class SameZoneTravelCost
 {
+	/// <summary>Compact, side-effect-free time-comparison diagnostic for call-site logging.</summary>
+	public static string DescribeDecision(bool? skipTeleport)
+		=> skipTeleport switch
+		{
+			true => "time decision=skip teleport",
+			false => "time decision=teleport",
+			_ => "time decision=fallback",
+		};
+
 	public const float DefaultMountSpeedYalmsPerSec = 20f;
 	public const float DefaultCastSeconds = 5f;
 	public const float DefaultLoadEstimateSeconds = 8f;
@@ -205,9 +215,8 @@ public static class SameZoneTravelCost
 		return ((min + max) * 0.5f) / 1000f;
 	}
 
-	/// <summary>Build settings from config fields (pure).</summary>
+	/// <summary>Build settings from config fields (pure). Time-aware compare is always enabled.</summary>
 	public static SameZoneTimeAwareSettings CreateSettings(
-		bool enabled,
 		float castSeconds,
 		float loadEstimateSeconds,
 		float mountSpeedYalmsPerSec,
@@ -218,7 +227,7 @@ public static class SameZoneTravelCost
 		int teleportDelayMaxMs)
 		=> new()
 		{
-			Enabled = enabled,
+			Enabled = true,
 			PreDelaySeconds = PreDelaySecondsFromMs(
 				teleportDelayEnabled,
 				teleportDelayMinMs,

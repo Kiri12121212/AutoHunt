@@ -33,12 +33,47 @@ public static class InstanceChangeDecision
 		=> requestedInstance > 0 && currentInstance == requestedInstance;
 
 	/// <summary>
+	/// Merge live PublicInstance / Lifestream / ClientState into a decision-facing instance.
+	/// Unsplit public areas report <c>InstanceId == 0</c>; conductors/HA still label that as
+	/// instance 1 — coerce 0 → 1 so same-instance compares match.
+	/// </summary>
+	public static int ResolveCurrentInstance(
+		int publicInstanceId,
+		int lifestreamInstance,
+		int clientStateInstance)
+	{
+		var raw = publicInstanceId > 0
+			? publicInstanceId
+			: lifestreamInstance > 0
+				? lifestreamInstance
+				: clientStateInstance > 0
+					? clientStateInstance
+					: 0;
+		return raw > 0 ? raw : 1;
+	}
+
+	/// <summary>Raw merge without unsplit→1 coerce (tests / diagnostics).</summary>
+	public static int ResolveCurrentInstanceRaw(
+		int publicInstanceId,
+		int lifestreamInstance,
+		int clientStateInstance)
+		=> publicInstanceId > 0
+			? publicInstanceId
+			: lifestreamInstance > 0
+				? lifestreamInstance
+				: clientStateInstance > 0
+					? clientStateInstance
+					: 0;
+
+	/// <summary>
 	/// Whether to keep pursuing an instance change after land.
+	/// Requires a known current instance (non-zero) that differs from the request.
 	/// <paramref name="numberOfInstances"/> 0 = Lifestream cache unknown (still try when
 	/// current differs); positive = known max — skip when request is above it.
 	/// </summary>
 	public static bool NeedsInstanceChange(int requestedInstance, int currentInstance, int numberOfInstances)
 		=> requestedInstance > 0
+			&& currentInstance > 0
 			&& currentInstance != requestedInstance
 			&& (numberOfInstances == 0 || requestedInstance <= numberOfInstances);
 
@@ -67,6 +102,10 @@ public static class InstanceChangeDecision
 		SoftAbortNoAetheryte,
 		ReadyToChange,
 	}
+
+	/// <summary>Compact, side-effect-free approach diagnostic for call-site logging.</summary>
+	public static string Describe(ApproachAction action)
+		=> $"approach={action}";
 
 	/// <summary>
 	/// Decide aetheryte approach step when instance change is still needed.
@@ -98,6 +137,10 @@ public static class InstanceChangeDecision
 		TimedOut,
 		IssueChange,
 	}
+
+	/// <summary>Compact, side-effect-free change-tick diagnostic for call-site logging.</summary>
+	public static string Describe(ChangeTickResult result)
+		=> $"change={result}";
 
 	/// <summary>
 	/// Tick the change-instance wait (15s HTA parity). Prefer succeed on current==num.

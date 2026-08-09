@@ -114,7 +114,6 @@ public sealed class SameZoneTravelCostTests
 	public void CreateSettings_maps_config_fields()
 	{
 		var s = SameZoneTravelCost.CreateSettings(
-			enabled: true,
 			castSeconds: 5f,
 			loadEstimateSeconds: 8f,
 			mountSpeedYalmsPerSec: 20f,
@@ -132,7 +131,6 @@ public sealed class SameZoneTravelCostTests
 	public void CreateSettings_allows_zero_cast_estimate()
 	{
 		var s = SameZoneTravelCost.CreateSettings(
-			enabled: true,
 			castSeconds: 0f,
 			loadEstimateSeconds: 0f,
 			mountSpeedYalmsPerSec: 20f,
@@ -267,7 +265,7 @@ public sealed class TeleportDecisionTimeAwareTests
 			SameZoneTravelCost.ShouldSkipTeleportWhenPathCostUnavailable(player, aeth, threshold));
 
 	[Fact]
-	public void Decide_time_aware_instance_switch_beats_distance_floor()
+	public void Decide_time_aware_AlreadyClose_beats_instance_hint()
 	{
 		var result = TeleportDecision.Decide(
 			true, true, 813, 813, 40f, YalmThreshold, 1, 2, Arrival(),
@@ -278,8 +276,8 @@ public sealed class TeleportDecisionTimeAwareTests
 				DirectPathLengthYalms = 800f,
 				AetherytePathLengthYalms = 10f,
 			});
-		Assert.Equal(TeleportAction.SwitchInstance, result.Action);
-		Assert.Equal(2, result.Arrival!.Instance);
+		Assert.Equal(TeleportAction.Skip, result.Action);
+		Assert.Equal(TeleportSkipReason.AlreadyClose, result.SkipReason);
 	}
 
 	[Fact]
@@ -315,7 +313,7 @@ public sealed class TeleportDecisionTimeAwareTests
 			},
 		};
 		var result = TeleportDecision.Evaluate(
-			true, true, YalmThreshold, false, flag, snapshot, Aware());
+			true, true, YalmThreshold, flag, snapshot, Aware());
 		Assert.Equal(TeleportSkipReason.AlreadyClose, result.SkipReason);
 	}
 
@@ -335,7 +333,7 @@ public sealed class TeleportDecisionTimeAwareTests
 			},
 		};
 		var result = TeleportDecision.Evaluate(
-			true, true, 74.8f, false, flag, snapshot, Aware());
+			true, true, 74.8f, flag, snapshot, Aware());
 		Assert.Equal(TeleportSkipReason.AlreadyClose, result.SkipReason);
 	}
 }

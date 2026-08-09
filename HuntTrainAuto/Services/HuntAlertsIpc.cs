@@ -8,6 +8,7 @@ using Dalamud.Plugin.Services;
 using HuntTrainAuto.Contracts;
 using HuntTrainAuto.Domain;
 using HuntTrainAuto.HuntAlerts;
+using HuntTrainAuto.Logging;
 using HuntTrainAuto.Map;
 
 namespace HuntTrainAuto.Services;
@@ -74,8 +75,7 @@ public sealed class HuntAlertsIpc : IHuntAlertsService
 		{
 			onHuntTrain.Subscribe(OnHuntTrainMessageReceived);
 			subscribed = true;
-			log?.Information(
-				$"HuntAlerts IPC subscribed ({HuntAlertsAvailability.OnHuntTrainMessageReceivedChannel})");
+			Debug($"IPC subscribed channel={HuntAlertsAvailability.OnHuntTrainMessageReceivedChannel}");
 		}
 		catch (Exception ex)
 		{
@@ -84,7 +84,7 @@ public sealed class HuntAlertsIpc : IHuntAlertsService
 			lastIntakeStatus = HuntAlertsAvailability.FormatIntakeStatus(
 				"subscribe failed",
 				DateTimeOffset.UtcNow);
-			log?.Warning($"HuntAlerts IPC subscribe failed: {ex.Message}");
+			Debug($"IPC subscribe soft-fail: {ex.Message}");
 		}
 	}
 
@@ -150,22 +150,22 @@ public sealed class HuntAlertsIpc : IHuntAlertsService
 			{
 				var payloadType = payload?.GetType().FullName ?? "null";
 				RememberIntake($"rejected: bad IPC payload ({payloadType})", now);
-				log?.Warning($"HuntAlerts IPC: null/unusable payload type={payloadType}");
+				Debug($"IPC rejected unusable payload type={payloadType}");
 				return;
 			}
 
 			if (!config.HuntAlertsIntegration)
 			{
 				RememberIntake("rejected: integration off", now);
-				log?.Information(
-					$"HuntAlerts IPC ignored (integration off): type={message.huntType} kind={message.huntKind} world={message.huntWorld} territory={message.startTerritoryTypeId}");
+				Debug(
+					$"IPC rejected integration off: type={message.huntType} kind={message.huntKind} world={message.huntWorld} territory={message.startTerritoryTypeId}");
 				return;
 			}
 
 			if (!IsPluginLoaded)
 			{
 				RememberIntake("rejected: HuntAlerts not loaded", now);
-				log?.Warning("HuntAlerts IPC ignored (plugin not loaded)");
+				Debug("IPC rejected HuntAlerts not loaded");
 				return;
 			}
 
@@ -176,7 +176,7 @@ public sealed class HuntAlertsIpc : IHuntAlertsService
 				    out var accepted))
 			{
 				RememberIntake("rejected: accept gate", now);
-				log?.Information("HuntAlerts IPC ignored (accept gate)");
+				Debug("IPC rejected accept gate");
 				return;
 			}
 
@@ -188,7 +188,7 @@ public sealed class HuntAlertsIpc : IHuntAlertsService
 			}
 			catch (Exception ex)
 			{
-				log?.Debug($"HuntAlerts map-params soft-fail: {ex.Message}");
+				Debug($"map-params soft-fail territory={accepted.startTerritoryTypeId}: {ex.Message}");
 			}
 
 			try
@@ -197,7 +197,7 @@ public sealed class HuntAlertsIpc : IHuntAlertsService
 			}
 			catch (Exception ex)
 			{
-				log?.Debug($"HuntAlerts ExVersion soft-fail: {ex.Message}");
+				Debug($"ExVersion soft-fail territory={accepted.startTerritoryTypeId}: {ex.Message}");
 			}
 
 			HuntTrainMessageMapper.UnpackMapParams(
@@ -222,8 +222,8 @@ public sealed class HuntAlertsIpc : IHuntAlertsService
 				    expansionVersion: exVersion))
 			{
 				RememberIntake($"rejected: {rejectReason}", now);
-				log?.Information(
-					$"HuntAlerts map rejected ({rejectReason}): type={accepted.huntType} kind={accepted.huntKind} world={accepted.huntWorld} territory={accepted.startTerritoryTypeId} coords='{accepted.locationCoords}' xy={accepted.mapLocationX},{accepted.mapLocationY}");
+				Debug(
+					$"{HuntTrainMessageMapper.DescribeRejectReason(rejectReason)}: type={accepted.huntType} kind={accepted.huntKind} world={accepted.huntWorld} territory={accepted.startTerritoryTypeId} coords='{accepted.locationCoords}' xy={accepted.mapLocationX},{accepted.mapLocationY}");
 				return;
 			}
 
@@ -232,9 +232,10 @@ public sealed class HuntAlertsIpc : IHuntAlertsService
 			RememberIntake(
 				$"mapped {flag.HuntWorld ?? "?"} / {flag.PlaceName ?? $"territory {flag.TerritoryTypeId}"}",
 				now);
-			log?.Information(
-				$"HuntAlerts mapped: {flag.HuntWorld} / {flag.PlaceName} territory={flag.TerritoryTypeId}");
+			Debug($"mapped flag world={flag.HuntWorld} place={flag.PlaceName} territory={flag.TerritoryTypeId}");
 
+			DebugBehavior.Info(log!, "HuntAlerts",
+				$"flag handoff world={flag.HuntWorld} place={flag.PlaceName} territory={flag.TerritoryTypeId}");
 			onFlag?.Invoke(flag);
 
 			// Best-effort conductor from Message free text — after onFlag so save/parse never delays TP/nav.
@@ -243,7 +244,7 @@ public sealed class HuntAlertsIpc : IHuntAlertsService
 		catch (Exception ex)
 		{
 			RememberIntake($"rejected: callback error ({ex.GetType().Name})", DateTimeOffset.UtcNow);
-			log?.Warning($"HuntAlerts IPC callback soft-fail: {ex.Message}");
+			Debug($"IPC callback soft-fail: {ex.Message}");
 		}
 	}
 
@@ -253,7 +254,10 @@ public sealed class HuntAlertsIpc : IHuntAlertsService
 	private void TryAutoAssignConductor(string? message)
 	{
 		if (!config.HuntAlertsAutoConductor)
+		{
+			Debug("auto-conductor skipped: disabled");
 			return;
+		}
 
 		try
 		{
@@ -270,25 +274,22 @@ public sealed class HuntAlertsIpc : IHuntAlertsService
 					}
 					catch (Exception ex)
 					{
-						log?.Debug($"HuntAlerts auto-conductor save soft-fail: {ex.Message}");
+						Debug($"auto-conductor save soft-fail: {ex.Message}");
 					}
 
-					log?.Information(
-						result.World == null
-							? $"HuntAlerts auto-conductor: {result.Name}"
-							: $"HuntAlerts auto-conductor: {result.Name} @{result.World}");
+					Debug(HuntAlertsConductorDecision.Describe(result));
 					break;
 				case HuntAlertsConductorAssignKind.AlreadyPresent:
-					log?.Debug($"HuntAlerts auto-conductor already present: {result.Name}");
+					Debug(HuntAlertsConductorDecision.Describe(result));
 					break;
 				default:
-					log?.Debug("HuntAlerts auto-conductor: no name in message");
+					Debug(HuntAlertsConductorDecision.Describe(result));
 					break;
 			}
 		}
 		catch (Exception ex)
 		{
-			log?.Debug($"HuntAlerts auto-conductor soft-fail: {ex.Message}");
+			Debug($"auto-conductor soft-fail: {ex.Message}");
 		}
 	}
 
@@ -300,12 +301,17 @@ public sealed class HuntAlertsIpc : IHuntAlertsService
 		try
 		{
 			onHuntTrain.Unsubscribe(OnHuntTrainMessageReceived);
+			Debug("IPC unsubscribed");
 		}
-		catch
+		catch (Exception ex)
 		{
 			// HuntAlerts / CallGate may already be gone.
+			Debug($"IPC unsubscribe soft-fail: {ex.Message}");
 		}
 
 		subscribed = false;
 	}
+
+	private void Debug(string message)
+		=> DebugBehavior.Debug(log!, config.EnableDebugLogging, "HuntAlerts", message);
 }

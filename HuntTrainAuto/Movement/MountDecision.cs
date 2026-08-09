@@ -46,16 +46,36 @@ public enum MountTickKind
 	SummonSpecific,
 }
 
+/// <summary>Reason a <see cref="MountTickResult"/> did not summon immediately.</summary>
+public enum MountWaitReason
+{
+	None,
+	TransitionOrCasting,
+	CheckThrottle,
+	ActionUnavailable,
+	AnimationLocked,
+	SummonThrottle,
+}
+
 /// <summary>Result of <see cref="MountDecision.DecideMountTick"/>.</summary>
 public readonly struct MountTickResult
 {
 	public required MountTickKind Kind { get; init; }
+
+	/// <summary>Why <see cref="Kind"/> is <see cref="MountTickKind.Wait"/>.</summary>
+	public MountWaitReason WaitReason { get; init; }
 
 	/// <summary>When <see cref="Kind"/> is <see cref="MountTickKind.SummonSpecific"/>.</summary>
 	public int SummonMountId { get; init; }
 
 	/// <summary>Force-extend CheckMount throttle (HTA transition/casting → 2000ms).</summary>
 	public bool ForceCheckThrottle { get; init; }
+
+	/// <summary>
+	/// Cooldown when <see cref="ForceCheckThrottle"/>; 0 → <see cref="MountDecision.CheckMountCooldownMs"/>.
+	/// Unusable GA uses <see cref="MountDecision.ActionRetryCooldownMs"/>.
+	/// </summary>
+	public int ForceCheckCooldownMs { get; init; }
 
 	/// <summary>Log unlock fallback warning.</summary>
 	public bool WarnFallback { get; init; }
@@ -76,10 +96,10 @@ public readonly struct MountTickResult
 /// </summary>
 public static class MountDecision
 {
-	/// <summary>HTA: never mount (<c>Config.Mount == -1</c>).</summary>
+	/// <summary>Never mount (<c>-1</c>).</summary>
 	public const int NeverMount = -1;
 
-	/// <summary>HTA: random / GeneralAction 9 (<c>Config.Mount == 0</c>).</summary>
+	/// <summary>Random / GeneralAction 9 (<c>0</c>).</summary>
 	public const int RandomMount = 0;
 
 	/// <summary>GeneralAction id for Mount.</summary>
@@ -88,8 +108,25 @@ public static class MountDecision
 	/// <summary>HTA <c>EzThrottler.Throttle("CheckMount", 2000, true)</c> while transitioning/casting.</summary>
 	public const int CheckMountCooldownMs = 2000;
 
+	/// <summary>
+	/// Retry interval when mount GA is briefly unusable (post-combat / animation).
+	/// Must stay well below <see cref="CheckMountCooldownMs"/> — that 2s gate made remount feel stuck.
+	/// </summary>
+	public const int ActionRetryCooldownMs = 250;
+
 	/// <summary>HTA default <c>EzThrottler.Throttle("SummonMount")</c> interval.</summary>
 	public const int SummonCooldownMs = 500;
+
+	/// <summary>Human-readable decision outcome for runner debug logs.</summary>
+	public static string Describe(MountTickResult result)
+		=> result.Kind switch
+		{
+			MountTickKind.Done => "done",
+			MountTickKind.Wait => $"wait ({result.WaitReason})",
+			MountTickKind.SummonRandom => "summon random",
+			MountTickKind.SummonSpecific => $"summon mount {result.SummonMountId}",
+			_ => $"unknown ({result.Kind})",
+		};
 
 	/// <summary>
 	/// Soft timeout while stuck in WaitReady (screen / instance-change gates).
@@ -101,7 +138,7 @@ public static class MountDecision
 	/// <summary>Soft session timeout once Mounting has begun.</summary>
 	public const int SessionTimeoutMs = 60_000;
 
-	/// <summary>HTA <c>EnqueueIfEnabled</c> gate on <c>Config.UseMount</c>.</summary>
+	/// <summary>Gate for <c>EnqueueIfEnabled</c> (always true in product; kept for tests).</summary>
 	public static bool ShouldEnqueueIfEnabled(bool useMount) => useMount;
 
 	/// <summary>
@@ -277,17 +314,23 @@ public static class MountDecision
 			{
 				Kind = MountTickKind.Wait,
 				ForceCheckThrottle = forceCheck,
+				WaitReason = forceCheck
+					? MountWaitReason.TransitionOrCasting
+					: MountWaitReason.CheckThrottle,
 			};
 		}
 
 		// Transient GA status (post-combat, animation, AM null) — retry, do not abandon.
 		// Done-abandon dropped combat-end remount after a single falling-edge enqueue.
+		// Short retry — full CheckMount 2s made post-kill remount feel delayed.
 		if (!mountActionUsable)
 		{
 			return new MountTickResult
 			{
 				Kind = MountTickKind.Wait,
 				ForceCheckThrottle = true,
+				ForceCheckCooldownMs = ActionRetryCooldownMs,
+				WaitReason = MountWaitReason.ActionUnavailable,
 			};
 		}
 
@@ -310,6 +353,9 @@ public static class MountDecision
 				WarnFallback = resolve.FellBack,
 				RequestedMountId = resolve.RequestedMountId,
 				FallbackMountId = resolve.MountId,
+				WaitReason = animationLocked
+					? MountWaitReason.AnimationLocked
+					: MountWaitReason.SummonThrottle,
 			};
 		}
 

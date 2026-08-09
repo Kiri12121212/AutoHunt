@@ -7,6 +7,7 @@ using Dalamud.Game.ClientState.Objects;
 using Dalamud.Plugin.Services;
 using FFXIVClientStructs.FFXIV.Client.Game;
 using FFXIVClientStructs.FFXIV.Client.Game.UI;
+using HuntTrainAuto.Logging;
 using Lumina.Excel.Sheets;
 
 namespace HuntTrainAuto.Movement;
@@ -50,8 +51,33 @@ public sealed class MovementHelper
 		this.pluginLog = pluginLog;
 	}
 
-	/// <summary>Stop active vnavmesh path following.</summary>
-	public void Stop() => vnav.PathStop();
+	/// <summary>
+	/// Stop active vnavmesh path following. No-op when nothing is running so divert
+	/// land does not PathStop every Framework tick.
+	/// </summary>
+	/// <returns>True when a running path was stopped.</returns>
+	public bool Stop()
+	{
+		if (!vnav.PathIsRunning())
+			return false;
+
+		vnav.PathStop();
+		DebugBehavior.Debug(pluginLog, enabled: true, "Move", "PathStop requested");
+		return true;
+	}
+
+	/// <summary>Whether vnavmesh is currently following a path.</summary>
+	public bool IsPathRunning()
+	{
+		try
+		{
+			return vnav.PathIsRunning();
+		}
+		catch
+		{
+			return false;
+		}
+	}
 
 	/// <summary>
 	/// Clear soft-retry bookkeeping after territory change / new flag so the next Navigate
@@ -89,7 +115,7 @@ public sealed class MovementHelper
 		}
 		catch (Exception ex)
 		{
-			pluginLog.Debug($"IsFlyingSupported soft-fail: {ex.Message}");
+			DebugBehavior.Debug(pluginLog, enabled: true, "Move", $"flying support check soft-fail: {ex.Message}");
 			return false;
 		}
 	}
@@ -116,7 +142,7 @@ public sealed class MovementHelper
 		}
 		catch (Exception ex)
 		{
-			pluginLog.Debug($"MovementHelper.Move soft-fail: {ex.Message}");
+			DebugBehavior.Debug(pluginLog, enabled: true, "Move", $"soft-fail: {ex.Message}");
 			return false;
 		}
 	}
@@ -206,21 +232,48 @@ public sealed class MovementHelper
 		{
 			case MoveTickKind.WaitPlayerInvalid:
 			case MoveTickKind.Wait:
+				if (DebugThrottle.Try("move.wait", 3000, Environment.TickCount64))
+				{
+					DebugBehavior.Debug(
+						pluginLog,
+						enabled: true,
+						"Move",
+						$"{MovementDecision.Describe(decision)}: fly={decision.Fly} dist={distance:0.0} "
+						+ $"navReady={navReady} pathing={pathIsRunning} wps={numWaypoints} "
+						+ $"pfInProg={pathfindInProgress} onMesh={playerOnMesh}");
+				}
+
 				return false;
 			case MoveTickKind.Arrived:
 				if (decision.StopPath)
 					vnav.PathStop();
 				ResetMeshPathfindRetry();
+				DebugBehavior.Debug(pluginLog, enabled: true, "Move", $"{MovementDecision.Describe(decision)} dist={distance:0.0} fly={decision.Fly}");
 				return true;
 			case MoveTickKind.Takeoff:
+				if (DebugThrottle.Try("move.takeoff", 1000, Environment.TickCount64))
+					DebugBehavior.Debug(pluginLog, enabled: true, "Move", $"{MovementDecision.Describe(decision)} (Jump for flight)");
 				if (TryFireTakeoff())
 					TryJumpTakeoff();
 				return false;
 			case MoveTickKind.SetLastPointToleranceAndWait:
 				vnav.PathSetTolerance(lastPointTolerance);
+				DebugBehavior.DebugThrottled(
+					pluginLog,
+					enabled: true,
+					throttleKey: "move.lastPointTolerance",
+					intervalMs: 2000,
+					nowMs: Environment.TickCount64,
+					area: "Move",
+					message: $"{MovementDecision.Describe(decision)} tolerance={lastPointTolerance:0.00}");
 				return false;
 			case MoveTickKind.StartDirectPath:
 				chat.TryExecuteCommand("/automove off");
+				DebugBehavior.Debug(
+					pluginLog,
+					enabled: true,
+					"Move",
+					$"{MovementDecision.Describe(decision)} → ({position.X:0.0},{position.Y:0.0},{position.Z:0.0})");
 				vnav.PathMoveTo(new List<Vector3> { position }, decision.Fly);
 				return false;
 			case MoveTickKind.StartMeshPath:
@@ -237,7 +290,8 @@ public sealed class MovementHelper
 		var canStartOffMesh = MeshPathfindRetryDecision.CanStartPathfindOffMeshPolicy(
 			fly,
 			playerOnMesh,
-			meshPathfindHadNavProgress);
+			meshPathfindHadNavProgress,
+			condition[ConditionFlag.InFlight]);
 		var retry = MeshPathfindRetryDecision.Decide(
 			canStartMeshPathfind: canStartOffMesh,
 			now,
@@ -247,17 +301,39 @@ public sealed class MovementHelper
 		switch (retry)
 		{
 			case MeshPathfindRetryKind.WaitCooldown:
+				DebugBehavior.DebugThrottled(
+					pluginLog,
+					enabled: true,
+					throttleKey: "move.meshCooldown",
+					intervalMs: 2000,
+					nowMs: now,
+					area: "Move",
+					message: $"mesh pathfind {MeshPathfindRetryDecision.Describe(retry)}");
 				return false;
 			case MeshPathfindRetryKind.Exhausted:
 				if (!meshPathfindExhaustedLogged)
 				{
 					meshPathfindExhaustedLogged = true;
-					pluginLog.Debug(
-						$"Mesh pathfind soft-retry exhausted after {meshPathfindAttempts} attempts");
+					DebugBehavior.Debug(
+						pluginLog,
+						enabled: true,
+						"Move",
+						$"mesh pathfind {MeshPathfindRetryDecision.Describe(retry)} after {meshPathfindAttempts} attempts "
+						+ $"fly={fly} onMesh={playerOnMesh}");
 				}
 
 				return false;
 			case MeshPathfindRetryKind.WaitNotReady:
+				if (DebugThrottle.Try("move.meshNotReady", 2000, Environment.TickCount64))
+				{
+					DebugBehavior.Debug(
+						pluginLog,
+						enabled: true,
+						"Move",
+						$"mesh pathfind {MeshPathfindRetryDecision.Describe(retry)}: fly={fly} onMesh={playerOnMesh} "
+						+ $"hadNav={meshPathfindHadNavProgress}");
+				}
+
 				return false;
 			case MeshPathfindRetryKind.Start:
 			default:
@@ -266,6 +342,12 @@ public sealed class MovementHelper
 
 		chat.TryExecuteCommand("/automove off");
 		vnav.PathSetTolerance(tolerance);
+		DebugBehavior.Debug(
+			pluginLog,
+			enabled: true,
+			"Move",
+			$"mesh pathfind {MeshPathfindRetryDecision.Describe(retry)}: fly={fly} onMesh={playerOnMesh} "
+			+ $"→ ({position.X:0.0},{position.Y:0.0},{position.Z:0.0})");
 		_ = vnav.SimpleMovePathfindAndMoveTo(position, fly);
 		// Throttle always; only burn attempt budget when on-mesh (mid-air fly post-TP).
 		if (MeshPathfindRetryDecision.ShouldCountStartAttempt(playerOnMesh))
@@ -332,7 +414,7 @@ public sealed class MovementHelper
 		}
 		catch (Exception ex)
 		{
-			pluginLog.Debug($"Jump takeoff soft-fail: {ex.Message}");
+			DebugBehavior.Debug(pluginLog, enabled: true, "Move", $"Jump takeoff soft-fail: {ex.Message}");
 		}
 	}
 

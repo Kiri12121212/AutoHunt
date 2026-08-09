@@ -51,6 +51,18 @@ public sealed class EngageTargetDecisionTests
 	}
 
 	[Fact]
+	public void Describe_formats_target_pick()
+	{
+		var pick = new EngageTargetPick
+		{
+			Kind = EngageTargetKind.NearbyARank,
+			Index = 3,
+		};
+
+		Assert.Equal("target=NearbyARank, index=3", EngageTargetDecision.Describe(pick));
+	}
+
+	[Fact]
 	public void Resolve_prefers_conductor_fight_over_nearby_a_rank()
 	{
 		var candidates = new List<EngageMobCandidate>
@@ -281,6 +293,18 @@ public sealed class EngageTargetDecisionTests
 	[InlineData(-1f, 50f, false)]
 	public void ShouldDivertFromFlagNav(float dist, float range, bool expected)
 		=> Assert.Equal(expected, EngageTargetDecision.ShouldDivertFromFlagNav(dist, range));
+
+	[Theory]
+	[InlineData(true, true)]
+	[InlineData(false, false)]
+	public void ShouldHoldDivertLandUnmount(bool unmountActive, bool expected)
+		=> Assert.Equal(expected, EngageTargetDecision.ShouldHoldDivertLandUnmount(unmountActive));
+
+	[Theory]
+	[InlineData(true, true)]
+	[InlineData(false, false)]
+	public void ShouldStopPathForDivertLand(bool pathRunning, bool expected)
+		=> Assert.Equal(expected, EngageTargetDecision.ShouldStopPathForDivertLand(pathRunning));
 
 	[Theory]
 	[InlineData(true, false, 3f, 5f, 0f, true)]

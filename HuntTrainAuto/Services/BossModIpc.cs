@@ -4,8 +4,10 @@ using System.Collections.Generic;
 using System.Linq;
 using Dalamud.Plugin;
 using Dalamud.Plugin.Ipc;
+using Dalamud.Plugin.Services;
 using HuntTrainAuto.Combat;
 using HuntTrainAuto.Contracts;
+using HuntTrainAuto.Logging;
 
 namespace HuntTrainAuto.Services;
 
@@ -21,6 +23,8 @@ public sealed class BossModIpc : IBossModService
 	private readonly IDalamudPluginInterface pluginInterface;
 	private readonly IChatOutput chat;
 	private readonly Func<BossModPreference> resolvePreference;
+	private readonly IPluginLog? log;
+	private readonly Func<bool>? debugEnabled;
 
 	/// <summary>VBM signature: <c>Func&lt;IReadOnlyList&lt;string&gt;, bool, object&gt;</c>.</summary>
 	private readonly ICallGateSubscriber<IReadOnlyList<string>, bool, object> configurationVbm;
@@ -34,11 +38,15 @@ public sealed class BossModIpc : IBossModService
 	public BossModIpc(
 		IDalamudPluginInterface pluginInterface,
 		IChatOutput chat,
-		Func<BossModPreference> resolvePreference)
+		Func<BossModPreference> resolvePreference,
+		IPluginLog? log = null,
+		Func<bool>? debugEnabled = null)
 	{
 		this.pluginInterface = pluginInterface;
 		this.chat = chat;
 		this.resolvePreference = resolvePreference;
+		this.log = log;
+		this.debugEnabled = debugEnabled;
 		configurationVbm = pluginInterface.GetIpcSubscriber<IReadOnlyList<string>, bool, object>(
 			BossModCommands.ConfigurationChannel);
 		configurationBmr = pluginInterface.GetIpcSubscriber<List<string>, bool, object>(
@@ -58,8 +66,9 @@ public sealed class BossModIpc : IBossModService
 					pluginInterface.InstalledPlugins.Select(p => (p.InternalName, p.IsLoaded)),
 					BossModCommands.ClampPreference(resolvePreference()));
 			}
-			catch
+			catch (Exception ex)
 			{
+				DebugSoftFail("availability probe", ex);
 				return BossModProviderKind.None;
 			}
 		}
@@ -73,17 +82,22 @@ public sealed class BossModIpc : IBossModService
 	{
 		var provider = ActiveProvider;
 		if (provider == BossModProviderKind.None)
+		{
+			Debug("EnableAi skipped: provider unavailable");
 			return false;
+		}
 
 		if (coexistWithRsr)
 			ApplyCoexistenceSettings(provider);
 
-		return provider switch
+		var enabled = provider switch
 		{
 			BossModProviderKind.Vbm => EnableVbm(),
 			BossModProviderKind.Bmr => EnableBmr(),
 			_ => false,
 		};
+		Debug(enabled ? $"EnableAi succeeded: provider={provider}" : $"EnableAi failed: provider={provider}");
+		return enabled;
 	}
 
 	/// <inheritdoc />
@@ -91,14 +105,19 @@ public sealed class BossModIpc : IBossModService
 	{
 		var provider = ActiveProvider;
 		if (provider == BossModProviderKind.None)
+		{
+			Debug("DisableAi skipped: provider unavailable");
 			return false;
+		}
 
-		return provider switch
+		var disabled = provider switch
 		{
 			BossModProviderKind.Vbm => DisableVbm(),
 			BossModProviderKind.Bmr => DisableBmr(),
 			_ => false,
 		};
+		Debug(disabled ? $"DisableAi succeeded: provider={provider}" : $"DisableAi failed: provider={provider}");
+		return disabled;
 	}
 
 	private bool EnableVbm()
@@ -155,8 +174,9 @@ public sealed class BossModIpc : IBossModService
 			};
 			return ParseBoolConfig(raw);
 		}
-		catch
+		catch (Exception ex)
 		{
+			DebugSoftFail("GetAiEnabled", ex);
 			return null;
 		}
 	}
@@ -198,8 +218,9 @@ public sealed class BossModIpc : IBossModService
 			configurationVbm.InvokeFunc(args, true);
 			return true;
 		}
-		catch
+		catch (Exception ex)
 		{
+			DebugSoftFail("Configuration(VBM)", ex);
 			return false;
 		}
 	}
@@ -211,8 +232,9 @@ public sealed class BossModIpc : IBossModService
 			configurationBmr.InvokeFunc([.. args], true);
 			return true;
 		}
-		catch
+		catch (Exception ex)
 		{
+			DebugSoftFail("Configuration(BMR)", ex);
 			return false;
 		}
 	}
@@ -223,14 +245,31 @@ public sealed class BossModIpc : IBossModService
 		{
 			pauseMovement.InvokeAction(pause);
 		}
-		catch
+		catch (Exception ex)
 		{
-			// BMR may be absent or older build without AI.PauseMovement.
+			DebugSoftFail("PauseMovement", ex);
 		}
 	}
 
 	public void Dispose()
 	{
 		// Subscriber only — no event subscriptions to tear down.
+	}
+
+	private bool IsDebugEnabled()
+		=> debugEnabled?.Invoke() ?? false;
+
+	private void Debug(string message)
+	{
+		if (log != null)
+			DebugBehavior.Debug(log, IsDebugEnabled(), "BossMod", message);
+	}
+
+	private void DebugSoftFail(string operation, Exception ex)
+	{
+		if (log != null)
+			DebugBehavior.DebugThrottled(
+				log, IsDebugEnabled(), $"bossmod.{operation}", 2_000, Environment.TickCount64, "BossMod",
+				$"{operation} unavailable/soft-fail: {ex.Message}");
 	}
 }

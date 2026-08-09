@@ -5,8 +5,10 @@ using Dalamud.Game.Text.SeStringHandling;
 using Dalamud.Game.Text.SeStringHandling.Payloads;
 using Dalamud.Plugin;
 using Dalamud.Plugin.Ipc;
+using Dalamud.Plugin.Services;
 using HuntTrainAuto.Chat;
 using HuntTrainAuto.Contracts;
+using HuntTrainAuto.Logging;
 
 namespace HuntTrainAuto.Services;
 
@@ -19,6 +21,7 @@ public sealed class Chat2Ipc : IChat2Service
 	private readonly Configuration config;
 	private readonly Action saveConfig;
 	private readonly Action openConfigUi;
+	private readonly IPluginLog? log;
 	private readonly ICallGateSubscriber<string> register;
 	private readonly ICallGateSubscriber<string, object?> unregister;
 	private readonly ICallGateSubscriber<object?> available;
@@ -30,11 +33,13 @@ public sealed class Chat2Ipc : IChat2Service
 		IDalamudPluginInterface pluginInterface,
 		Configuration config,
 		Action saveConfig,
-		Action openConfigUi)
+		Action openConfigUi,
+		IPluginLog? log = null)
 	{
 		this.config = config;
 		this.saveConfig = saveConfig;
 		this.openConfigUi = openConfigUi;
+		this.log = log;
 
 		register = pluginInterface.GetIpcSubscriber<string>("ChatTwo.Register");
 		unregister = pluginInterface.GetIpcSubscriber<string, object?>("ChatTwo.Unregister");
@@ -63,19 +68,20 @@ public sealed class Chat2Ipc : IChat2Service
 				{
 					unregister.InvokeAction(id);
 				}
-				catch
+				catch (Exception ex)
 				{
-					// Previous registration may already be gone after ChatTwo reload.
+					DebugSoftFail("Unregister", ex);
 				}
 
 				id = null;
 			}
 
 			id = register.InvokeFunc();
+			Debug($"registered context menu: id={id}");
 		}
-		catch
+		catch (Exception ex)
 		{
-			// ChatTwo may be absent; Available will re-register when it loads.
+			DebugSoftFail("Register", ex);
 		}
 	}
 
@@ -99,6 +105,7 @@ public sealed class Chat2Ipc : IChat2Service
 			ConductorList.TryAdd(config.Conductors, sender.PlayerName);
 			saveConfig();
 			openConfigUi();
+			Debug($"conductor action: {sender.PlayerName}");
 		}
 	}
 
@@ -110,9 +117,9 @@ public sealed class Chat2Ipc : IChat2Service
 			{
 				unregister.InvokeAction(id);
 			}
-			catch
+			catch (Exception ex)
 			{
-				// ChatTwo may already be unloaded.
+				DebugSoftFail("Unregister on dispose", ex);
 			}
 
 			id = null;
@@ -120,5 +127,19 @@ public sealed class Chat2Ipc : IChat2Service
 
 		invoke.Unsubscribe(OnInvoke);
 		available.Unsubscribe(OnAvailable);
+	}
+
+	private void Debug(string message)
+	{
+		if (log != null)
+			DebugBehavior.Debug(log, config.EnableDebugLogging, "Chat2", message);
+	}
+
+	private void DebugSoftFail(string operation, Exception ex)
+	{
+		if (log != null)
+			DebugBehavior.DebugThrottled(
+				log, config.EnableDebugLogging, $"chat2.{operation}", 2_000, Environment.TickCount64, "Chat2",
+				$"{operation} unavailable/soft-fail: {ex.Message}");
 	}
 }

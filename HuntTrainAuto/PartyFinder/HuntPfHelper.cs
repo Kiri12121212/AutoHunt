@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using Dalamud.Game.ClientState.Conditions;
 using Dalamud.Game.Gui.PartyFinder.Types;
 using Dalamud.Plugin.Services;
+using HuntTrainAuto.Logging;
 
 namespace HuntTrainAuto.PartyFinder;
 
@@ -20,6 +21,7 @@ public sealed class HuntPfHelper : IDisposable
 	private readonly IPluginLog pluginLog;
 	private readonly Func<bool> isEnabled;
 	private readonly Func<int> getRetryIntervalMs;
+	private readonly Func<bool> isDebugEnabled;
 
 	private readonly object cacheLock = new();
 	private readonly Dictionary<ulong, HuntPfListingInfo> listings = new();
@@ -39,7 +41,8 @@ public sealed class HuntPfHelper : IDisposable
 		IGameGui gameGui,
 		IPluginLog pluginLog,
 		Func<bool> isEnabled,
-		Func<int> getRetryIntervalMs)
+		Func<int> getRetryIntervalMs,
+		Func<bool>? isDebugEnabled = null)
 	{
 		this.partyFinderGui = partyFinderGui ?? throw new ArgumentNullException(nameof(partyFinderGui));
 		this.partyList = partyList ?? throw new ArgumentNullException(nameof(partyList));
@@ -48,6 +51,7 @@ public sealed class HuntPfHelper : IDisposable
 		this.pluginLog = pluginLog ?? throw new ArgumentNullException(nameof(pluginLog));
 		this.isEnabled = isEnabled ?? throw new ArgumentNullException(nameof(isEnabled));
 		this.getRetryIntervalMs = getRetryIntervalMs ?? throw new ArgumentNullException(nameof(getRetryIntervalMs));
+		this.isDebugEnabled = isDebugEnabled ?? (() => false);
 
 		try
 		{
@@ -56,7 +60,7 @@ public sealed class HuntPfHelper : IDisposable
 		}
 		catch (Exception ex)
 		{
-			pluginLog.Debug($"HuntPfHelper subscribe soft-fail: {ex.Message}");
+			LogDebug($"subscribe soft-fail: {ex.Message}");
 		}
 	}
 
@@ -101,7 +105,7 @@ public sealed class HuntPfHelper : IDisposable
 		}
 		catch (Exception ex)
 		{
-			pluginLog.Debug($"HuntPfHelper soft-fail: {ex.Message}");
+			LogDebug($"tick soft-fail: {ex.Message}");
 		}
 	}
 
@@ -120,6 +124,9 @@ public sealed class HuntPfHelper : IDisposable
 		if (!enabled || !atHuntStart || inCombat)
 		{
 			seeking = false;
+			LogDebugThrottled(
+				nowMs,
+				$"join suppressed: enabled={enabled}, at-hunt-start={atHuntStart}, in-combat={inCombat}");
 			return;
 		}
 
@@ -138,7 +145,10 @@ public sealed class HuntPfHelper : IDisposable
 
 		// Throttle before addon walks / cache scans — ReadyForGroundFollow can last minutes.
 		if (!HuntPfDecision.IsActionReady(nowMs, nextActionMs))
+		{
+			LogDebugThrottled(nowMs, "join suppressed: action throttle pending");
 			return;
+		}
 
 		var best = PickBestCached();
 		var hasListing = best is not null;
@@ -146,9 +156,13 @@ public sealed class HuntPfHelper : IDisposable
 		var pluginOpened = openedListingId != 0
 			&& best is not null
 			&& best.Value.Id == openedListingId
-			&& HuntPfAgent.IsCurrentDetailListing(openedListingId);
+			&& HuntPfAgent.IsCurrentDetailListing(openedListingId, pluginLog, IsDebugEnabled());
 		var detailReady = pluginOpened
-			&& HuntPfAgent.IsDetailReadyToJoin(GetDetailAddonPtr(), openedListingId);
+			&& HuntPfAgent.IsDetailReadyToJoin(
+				GetDetailAddonPtr(),
+				openedListingId,
+				pluginLog,
+				IsDebugEnabled());
 		var kind = HuntPfDecision.Decide(
 			enabled,
 			atHuntStart,
@@ -166,11 +180,11 @@ public sealed class HuntPfHelper : IDisposable
 				lock (cacheLock)
 					listings.Clear();
 				openedListingId = 0;
-				var refreshed = HuntPfAgent.TryRequestHuntListings();
+				var refreshed = HuntPfAgent.TryRequestHuntListings(pluginLog, IsDebugEnabled());
 				nextActionMs = HuntPfDecision.NextActionAt(nowMs, getRetryIntervalMs());
-				pluginLog.Debug(refreshed
-					? "Hunt PF: requested The Hunt listings"
-					: "Hunt PF: RequestCategoryListings soft-fail; will retry");
+				LogDebug(refreshed
+					? $"requested The Hunt listings ({HuntPfDecision.Describe(kind)})"
+					: "RequestCategoryListings soft-fail; will retry");
 				break;
 
 			case HuntPfKind.OpenListing:
@@ -184,38 +198,38 @@ public sealed class HuntPfHelper : IDisposable
 					EvictListing(openedListingId);
 					openedListingId = 0;
 					nextActionMs = HuntPfDecision.NextActionAt(nowMs, getRetryIntervalMs());
-					pluginLog.Debug($"Hunt PF: drop listing id={best.Value.Id} (detail not ready); will refresh");
+					LogDebug($"drop listing id={best.Value.Id} (detail not ready); will refresh");
 					break;
 				}
 
-				var opened = HuntPfAgent.TryOpenListing(best.Value.Id);
+				var opened = HuntPfAgent.TryOpenListing(best.Value.Id, pluginLog, IsDebugEnabled());
 				if (opened)
 				{
 					openedListingId = best.Value.Id;
 					nextActionMs = HuntPfDecision.NextOpenSettleAt(
 						nowMs,
 						HuntPfDecision.DefaultOpenSettleMs);
-					pluginLog.Debug($"Hunt PF: OpenListing id={best.Value.Id}");
+					LogDebug($"OpenListing id={best.Value.Id} ({HuntPfDecision.Describe(kind)})");
 				}
 				else
 				{
 					nextActionMs = HuntPfDecision.NextActionAt(nowMs, getRetryIntervalMs());
-					pluginLog.Debug("Hunt PF: OpenListing soft-fail; will retry");
+					LogDebug("OpenListing soft-fail; will retry");
 				}
 
 				break;
 
 			case HuntPfKind.ClickJoin:
 				var clickId = openedListingId;
-				var clicked = HuntPfAgent.TryClickJoin(GetDetailAddonPtr(), clickId);
+				var clicked = HuntPfAgent.TryClickJoin(GetDetailAddonPtr(), clickId, pluginLog, IsDebugEnabled());
 				nextActionMs = HuntPfDecision.NextActionAt(nowMs, getRetryIntervalMs());
 				if (clicked)
 				{
-					pluginLog.Information($"Hunt PF: ClickJoin listing={clickId}");
+					DebugBehavior.Info(pluginLog, "PF", $"ClickJoin listing={clickId}");
 				}
 				else
 				{
-					pluginLog.Debug("Hunt PF: ClickJoin soft-fail; will retry");
+					LogDebug("ClickJoin soft-fail; will retry");
 					// Drop listing so Decide can RefreshListings (hasSuitableListing otherwise traps).
 					if (openedListingId != 0)
 					{
@@ -253,7 +267,7 @@ public sealed class HuntPfHelper : IDisposable
 		}
 		catch (Exception ex)
 		{
-			pluginLog.Debug($"HuntPfHelper ReceiveListing soft-fail: {ex.Message}");
+			LogDebug($"ReceiveListing soft-fail: {ex.Message}");
 		}
 	}
 
@@ -347,4 +361,29 @@ public sealed class HuntPfHelper : IDisposable
 			LeaderName = name,
 		};
 	}
+
+	private bool IsDebugEnabled()
+	{
+		try
+		{
+			return isDebugEnabled();
+		}
+		catch
+		{
+			return false;
+		}
+	}
+
+	private void LogDebug(string message)
+		=> DebugBehavior.Debug(pluginLog, IsDebugEnabled(), "PF", message);
+
+	private void LogDebugThrottled(long nowMs, string message)
+		=> DebugBehavior.DebugThrottled(
+			pluginLog,
+			IsDebugEnabled(),
+			"pf.join-suppressed",
+			HuntPfDecision.DefaultRetryIntervalMs,
+			nowMs,
+			"PF",
+			message);
 }

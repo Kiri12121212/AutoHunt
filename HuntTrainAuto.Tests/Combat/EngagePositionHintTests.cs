@@ -30,6 +30,21 @@ public sealed class EngagePositionHintTests
 	}
 
 	[Fact]
+	public void Describe_formats_stored_hint()
+	{
+		var hint = new EngagePositionHint();
+		hint.Remember(new Vector3(12f, 5f, 34f), 100, EngagePositionHintSource.HuntAlerts);
+
+		Assert.Equal(
+			"hint=HuntAlerts, territory=100, position=(12.0,5.0,34.0)",
+			hint.Describe());
+	}
+
+	[Fact]
+	public void Describe_formats_absent_hint()
+		=> Assert.Equal("hint=none", new EngagePositionHint().Describe());
+
+	[Fact]
 	public void WorldPosForTerritory_rejects_other_zone()
 	{
 		var hint = new EngagePositionHint();

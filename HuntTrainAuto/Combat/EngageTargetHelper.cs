@@ -7,6 +7,7 @@ using Dalamud.Game.ClientState.Objects.Enums;
 using Dalamud.Game.ClientState.Objects.SubKinds;
 using Dalamud.Game.ClientState.Objects.Types;
 using Dalamud.Plugin.Services;
+using HuntTrainAuto.Logging;
 using Lumina.Excel.Sheets;
 
 namespace HuntTrainAuto.Combat;
@@ -59,6 +60,8 @@ public sealed class EngageTargetHelper
 	private readonly Func<float> getARankScanRange;
 	private readonly Func<bool> getPreferNearHint;
 	private readonly Func<Vector3?> getPositionHint;
+	private readonly Func<Vector3?> getFakeARankWorldPos;
+	private readonly System.Action? onFakeARankEnteredCombat;
 
 	private readonly List<EngageMobCandidate> candidates = [];
 	private readonly List<IGameObject> candidateObjects = [];
@@ -78,7 +81,9 @@ public sealed class EngageTargetHelper
 		Func<float> getEngageRange,
 		Func<float> getARankScanRange,
 		Func<bool>? getPreferNearHint = null,
-		Func<Vector3?>? getPositionHint = null)
+		Func<Vector3?>? getPositionHint = null,
+		Func<Vector3?>? getFakeARankWorldPos = null,
+		System.Action? onFakeARankEnteredCombat = null)
 	{
 		this.objectTable = objectTable;
 		this.partyList = partyList;
@@ -90,6 +95,8 @@ public sealed class EngageTargetHelper
 		this.getARankScanRange = getARankScanRange;
 		this.getPreferNearHint = getPreferNearHint ?? (() => false);
 		this.getPositionHint = getPositionHint ?? (() => null);
+		this.getFakeARankWorldPos = getFakeARankWorldPos ?? (() => null);
+		this.onFakeARankEnteredCombat = onFakeARankEnteredCombat;
 	}
 
 	public EngageTargetKind LastKind => lastKind;
@@ -113,7 +120,14 @@ public sealed class EngageTargetHelper
 		{
 			var player = objectTable.LocalPlayer;
 			if (player == null)
+			{
+				LogProbeSkip("player unavailable");
 				return EngageProbeResult.None;
+			}
+
+			// Fake Hunt synthetic A wins so divert/unmount is deterministic without a live mob.
+			if (TryFakeARankProbe(player.Position, flagWorldPos, out var fakeProbe))
+				return fakeProbe;
 
 			EnsureARankIndex();
 			BuildCandidates(player, conductors, flagWorldPos);
@@ -123,7 +137,10 @@ public sealed class EngageTargetHelper
 				getARankScanRange(),
 				getPreferNearHint());
 			if (!pick.Found || pick.Index < 0 || pick.Index >= candidateObjects.Count)
+			{
+				LogProbeSkip(EngageTargetDecision.Describe(pick));
 				return EngageProbeResult.None;
+			}
 
 			var mob = candidateObjects[pick.Index];
 			var candidate = candidates[pick.Index];
@@ -139,7 +156,7 @@ public sealed class EngageTargetHelper
 		}
 		catch (Exception ex)
 		{
-			pluginLog.Debug($"EngageTargetHelper.Probe soft-fail: {ex.Message}");
+			pluginLog.Debug($"[Engage] probe soft-fail: {ex.Message}");
 			return EngageProbeResult.None;
 		}
 	}
@@ -181,7 +198,7 @@ public sealed class EngageTargetHelper
 		}
 		catch (Exception ex)
 		{
-			pluginLog.Debug($"EngageTargetHelper soft-fail: {ex.Message}");
+			pluginLog.Debug($"[Engage] tick soft-fail: {ex.Message}");
 			try
 			{
 				Clear();
@@ -204,6 +221,17 @@ public sealed class EngageTargetHelper
 	{
 		if (!pluginEnabled || playerDead)
 		{
+			if (DebugThrottle.Try("engage.disabled", 2000, Environment.TickCount64))
+			{
+				var reason = !pluginEnabled ? "plugin disabled" : "player dead";
+				pluginLog.Debug(
+					$"[Engage] skipped ({reason}); "
+					+ EngageTargetDecision.Describe(new EngageTargetPick
+					{
+						Kind = EngageTargetKind.None,
+						Index = -1,
+					}));
+			}
 			Clear();
 			if (combat.Phase != CombatPhase.Idle)
 				combat.Clear();
@@ -222,12 +250,21 @@ public sealed class EngageTargetHelper
 				// soft-fail
 			}
 
+			if (DebugThrottle.Try("engage.combat.skip", 2000, Environment.TickCount64))
+				pluginLog.Debug("[Engage] skipped; combat phase already active");
 			return true;
 		}
 
 		var player = objectTable.LocalPlayer;
 		if (player == null)
+		{
+			if (DebugThrottle.Try("engage.player.skip", 2000, Environment.TickCount64))
+				pluginLog.Debug("[Engage] skipped; player unavailable");
 			return false;
+		}
+
+		if (TryTickFakeARank(combat, player.Position, flagWorldPos))
+			return combat.InCombatPhase;
 
 		EnsureARankIndex();
 		BuildCandidates(player, conductors, flagWorldPos);
@@ -238,6 +275,8 @@ public sealed class EngageTargetHelper
 			getPreferNearHint());
 		if (!pick.Found || pick.Index < 0 || pick.Index >= candidateObjects.Count)
 		{
+			if (DebugThrottle.Try("engage.target.skip", 2000, Environment.TickCount64))
+				pluginLog.Debug($"[Engage] skipped; {EngageTargetDecision.Describe(pick)}");
 			lastKind = EngageTargetKind.None;
 			lastTargetIsARank = false;
 			lockedEntityId = null;
@@ -262,12 +301,19 @@ public sealed class EngageTargetHelper
 			movement.Stop();
 			combat.Apply(CombatTransitionKind.EnterCombat, entityId);
 			pluginLog.Information(
-				$"Engage: EnterCombat via {pick.Kind} dist={dist:0.0} range={engageRange:0.0} (vnav stop)");
+				$"[Engage] {CombatDecision.Describe(CombatTransitionKind.EnterCombat)} via {pick.Kind} "
+				+ $"dist={dist:0.0} range={engageRange:0.0} (vnav stop)");
 			return true;
 		}
 
 		// Path toward mob on foot until engage range.
 		combat.EnterFollowing();
+		if (DebugThrottle.Try("engage.following", 2000, Environment.TickCount64))
+		{
+			pluginLog.Debug(
+				$"[Engage] following {EngageTargetDecision.Describe(pick)} "
+				+ $"dist={dist:0.0} range={engageRange:0.0}");
+		}
 		movement.Move(
 			mob.Position,
 			tolerance: 1f,
@@ -275,6 +321,93 @@ public sealed class EngageTargetHelper
 			fly: false,
 			useMesh: true);
 		return false;
+	}
+
+	private bool TryFakeARankProbe(
+		Vector3 playerPos,
+		Vector3? flagWorldPos,
+		out EngageProbeResult result)
+	{
+		result = EngageProbeResult.None;
+		Vector3? fakePos;
+		try
+		{
+			fakePos = getFakeARankWorldPos();
+		}
+		catch
+		{
+			return false;
+		}
+
+		if (fakePos is not { } mob || mob == Vector3.Zero)
+			return false;
+
+		var playerToMob = Vector3.Distance(playerPos, mob);
+		float? flagToMob = null;
+		if (flagWorldPos is { } fp && fp != Vector3.Zero)
+			flagToMob = Vector3.Distance(fp, mob);
+
+		result = new EngageProbeResult
+		{
+			Found = true,
+			Kind = EngageTargetKind.NearbyARank,
+			Distance = playerToMob,
+			EligibilityDistance = EngageTargetDecision.EligibilityDistance(playerToMob, flagToMob),
+			MobPosition = mob,
+			IsARank = true,
+		};
+		return true;
+	}
+
+	/// <summary>
+	/// Path / EnterCombat against Fake Hunt synthetic A (no object-table entity / no hard-target).
+	/// </summary>
+	private bool TryTickFakeARank(CombatSession combat, Vector3 playerPos, Vector3? flagWorldPos)
+	{
+		if (!TryFakeARankProbe(playerPos, flagWorldPos, out var probe) || !probe.Found)
+			return false;
+
+		lastKind = EngageTargetKind.NearbyARank;
+		lastTargetIsARank = true;
+		lockedEntityId = null;
+
+		var engageRange = CombatDecision.ClampEngageRange(getEngageRange());
+		if (EngageTargetDecision.ShouldEnterCombatOnMob(probe.Distance, engageRange))
+		{
+			if (combat.InCombatPhase)
+				return true;
+
+			movement.Stop();
+			combat.Apply(CombatTransitionKind.EnterCombat, latchedEngageEntityId: null);
+			pluginLog.Information(
+				$"[FakeHunt] Engage: EnterCombat via NearbyARank dist={probe.Distance:0.0} "
+				+ $"range={engageRange:0.0} (synthetic A)");
+			try
+			{
+				onFakeARankEnteredCombat?.Invoke();
+			}
+			catch
+			{
+				// soft-fail notify
+			}
+
+			return true;
+		}
+
+		combat.EnterFollowing();
+		if (DebugThrottle.Try("engage.fakeFollow", 2000, Environment.TickCount64))
+		{
+			pluginLog.Debug(
+				$"[FakeHunt] Following synthetic A dist={probe.Distance:0.0} range={engageRange:0.0}");
+		}
+
+		movement.Move(
+			probe.MobPosition,
+			tolerance: 1f,
+			lastPointTolerance: Math.Max(2f, engageRange),
+			fly: false,
+			useMesh: true);
+		return true;
 	}
 
 	private void EnsureARankIndex()
@@ -299,11 +432,11 @@ public sealed class EngageTargetHelper
 		}
 		catch (Exception ex)
 		{
-			pluginLog.Debug($"A-rank sheet soft-fail: {ex.Message}");
+			pluginLog.Debug($"[Engage] A-rank sheet soft-fail: {ex.Message}");
 		}
 
 		aRankIds = ARankHuntIndex.BuildARankIds(rows);
-		pluginLog.Debug($"A-rank index size={aRankIds.Count}");
+		pluginLog.Debug($"[Engage] A-rank index size={aRankIds.Count}");
 	}
 
 	private void BuildCandidates(
@@ -457,8 +590,14 @@ public sealed class EngageTargetHelper
 		}
 		catch (Exception ex)
 		{
-			pluginLog.Debug($"Set target soft-fail: {ex.Message}");
+			pluginLog.Debug($"[Engage] set target soft-fail: {ex.Message}");
 		}
+	}
+
+	private void LogProbeSkip(string reason)
+	{
+		if (DebugThrottle.Try("engage.probe.skip", 2000, Environment.TickCount64))
+			pluginLog.Debug($"[Engage] probe skipped; {reason}");
 	}
 
 	private static bool TryGetLivingBattleNpc(IGameObject? source, out IGameObject? battleNpc)

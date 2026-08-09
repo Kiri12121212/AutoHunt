@@ -2,7 +2,9 @@
 using System;
 using Dalamud.Plugin;
 using Dalamud.Plugin.Ipc;
+using Dalamud.Plugin.Services;
 using HuntTrainAuto.Contracts;
+using HuntTrainAuto.Logging;
 
 namespace HuntTrainAuto.Services;
 
@@ -63,9 +65,16 @@ public sealed class LifestreamIpc : ILifestreamService
 	private readonly ICallGateSubscriber<string, bool> canVisitSameDc;
 	private readonly ICallGateSubscriber<string, bool> canVisitCrossDc;
 	private readonly ICallGateSubscriber<string, bool> changeWorld;
+	private readonly IPluginLog? log;
+	private readonly Func<bool>? debugEnabled;
 
-	public LifestreamIpc(IDalamudPluginInterface pluginInterface)
+	public LifestreamIpc(
+		IDalamudPluginInterface pluginInterface,
+		IPluginLog? log = null,
+		Func<bool>? debugEnabled = null)
 	{
+		this.log = log;
+		this.debugEnabled = debugEnabled;
 		teleport = pluginInterface.GetIpcSubscriber<uint, byte, bool>(TeleportChannel);
 		changeInstance = pluginInterface.GetIpcSubscriber<int, object>(ChangeInstanceChannel);
 		getCurrentInstance = pluginInterface.GetIpcSubscriber<int>(GetCurrentInstanceChannel);
@@ -94,8 +103,9 @@ public sealed class LifestreamIpc : ILifestreamService
 				_ = teleport.InvokeFunc(ProbeAetheryteId, ProbeSubIndex);
 				return true;
 			}
-			catch
+			catch (Exception ex)
 			{
+				DebugSoftFail("availability probe", ex);
 				return false;
 			}
 		}
@@ -109,10 +119,15 @@ public sealed class LifestreamIpc : ILifestreamService
 	{
 		try
 		{
-			return teleport.InvokeFunc(aetheryteId, subIndex);
+			var accepted = teleport.InvokeFunc(aetheryteId, subIndex);
+			Debug(accepted
+				? $"teleport accepted: aetheryte={aetheryteId}, subIndex={subIndex}"
+				: $"teleport declined: aetheryte={aetheryteId}, subIndex={subIndex}");
+			return accepted;
 		}
-		catch
+		catch (Exception ex)
 		{
+			DebugSoftFail("Teleport", ex);
 			return false;
 		}
 	}
@@ -125,10 +140,11 @@ public sealed class LifestreamIpc : ILifestreamService
 		try
 		{
 			changeInstance.InvokeAction(instance);
+			Debug($"ChangeInstance requested: {instance}");
 		}
-		catch
+		catch (Exception ex)
 		{
-			// Lifestream may be absent or busy.
+			DebugSoftFail("ChangeInstance", ex);
 		}
 	}
 
@@ -142,8 +158,9 @@ public sealed class LifestreamIpc : ILifestreamService
 		{
 			return getCurrentInstance.InvokeFunc();
 		}
-		catch
+		catch (Exception ex)
 		{
+			DebugSoftFail("GetCurrentInstance", ex);
 			return 0;
 		}
 	}
@@ -158,8 +175,9 @@ public sealed class LifestreamIpc : ILifestreamService
 		{
 			return getNumberOfInstances.InvokeFunc();
 		}
-		catch
+		catch (Exception ex)
 		{
+			DebugSoftFail("GetNumberOfInstances", ex);
 			return 0;
 		}
 	}
@@ -174,8 +192,9 @@ public sealed class LifestreamIpc : ILifestreamService
 		{
 			return canChangeInstance.InvokeFunc();
 		}
-		catch
+		catch (Exception ex)
 		{
+			DebugSoftFail("CanChangeInstance", ex);
 			return false;
 		}
 	}
@@ -191,8 +210,9 @@ public sealed class LifestreamIpc : ILifestreamService
 		{
 			return isBusy.InvokeFunc();
 		}
-		catch
+		catch (Exception ex)
 		{
+			DebugSoftFail("IsBusy", ex);
 			return false;
 		}
 	}
@@ -206,10 +226,11 @@ public sealed class LifestreamIpc : ILifestreamService
 		try
 		{
 			abort.InvokeAction();
+			Debug("Abort requested");
 		}
-		catch
+		catch (Exception ex)
 		{
-			// Lifestream may be absent.
+			DebugSoftFail("Abort", ex);
 		}
 	}
 
@@ -223,8 +244,9 @@ public sealed class LifestreamIpc : ILifestreamService
 		{
 			return canVisitSameDc.InvokeFunc(world);
 		}
-		catch
+		catch (Exception ex)
 		{
+			DebugSoftFail("CanVisitSameDC", ex);
 			return false;
 		}
 	}
@@ -239,8 +261,9 @@ public sealed class LifestreamIpc : ILifestreamService
 		{
 			return canVisitCrossDc.InvokeFunc(world);
 		}
-		catch
+		catch (Exception ex)
 		{
+			DebugSoftFail("CanVisitCrossDC", ex);
 			return false;
 		}
 	}
@@ -253,10 +276,13 @@ public sealed class LifestreamIpc : ILifestreamService
 	{
 		try
 		{
-			return changeWorld.InvokeFunc(world);
+			var accepted = changeWorld.InvokeFunc(world);
+			Debug(accepted ? $"ChangeWorld accepted: {world}" : $"ChangeWorld declined: {world}");
+			return accepted;
 		}
-		catch
+		catch (Exception ex)
 		{
+			DebugSoftFail("ChangeWorld", ex);
 			return false;
 		}
 	}
@@ -264,5 +290,22 @@ public sealed class LifestreamIpc : ILifestreamService
 	public void Dispose()
 	{
 		// Subscriber only — no event subscriptions to tear down.
+	}
+
+	private bool IsDebugEnabled()
+		=> debugEnabled?.Invoke() ?? false;
+
+	private void Debug(string message)
+	{
+		if (log != null)
+			DebugBehavior.Debug(log, IsDebugEnabled(), "Lifestream", message);
+	}
+
+	private void DebugSoftFail(string operation, Exception ex)
+	{
+		if (log != null)
+			DebugBehavior.DebugThrottled(
+				log, IsDebugEnabled(), $"lifestream.{operation}", 2_000, Environment.TickCount64, "Lifestream",
+				$"{operation} unavailable/soft-fail: {ex.Message}");
 	}
 }

@@ -5,6 +5,7 @@ using Dalamud.Game.Text;
 using Dalamud.Game.Text.SeStringHandling;
 using Dalamud.Plugin.Services;
 using HuntTrainAuto.Chat;
+using HuntTrainAuto.Logging;
 using Lumina.Excel.Sheets;
 
 namespace HuntTrainAuto.Services;
@@ -73,10 +74,11 @@ public sealed class ContextMenuService : IDisposable
 				return;
 
 			args.AddMenuItem(menuItem);
+			Debug($"added conductor action for {name}");
 		}
 		catch (Exception ex)
 		{
-			pluginLog.Debug($"ContextMenuService.OnMenuOpened soft-fail: {ex.Message}");
+			Debug($"menu open soft-fail: {ex.Message}");
 		}
 	}
 
@@ -89,14 +91,18 @@ public sealed class ContextMenuService : IDisposable
 
 			var name = target.TargetName?.Trim() ?? string.Empty;
 			if (!ConductorList.TryAdd(config.Conductors, name))
+			{
+				Debug($"conductor action skipped: {name}");
 				return;
+			}
 
 			saveConfig();
 			openConfigUi();
+			Debug($"conductor action succeeded: {name}");
 		}
 		catch (Exception ex)
 		{
-			pluginLog.Debug($"ContextMenuService.AssignConductor soft-fail: {ex.Message}");
+			Debug($"conductor action soft-fail: {ex.Message}");
 		}
 	}
 
@@ -113,6 +119,9 @@ public sealed class ContextMenuService : IDisposable
 			return true;
 		}
 	}
+
+	private void Debug(string message)
+		=> DebugBehavior.Debug(pluginLog, config.EnableDebugLogging, "Chat2", message);
 
 	public void Dispose() => contextMenu.OnMenuOpened -= OnMenuOpened;
 }

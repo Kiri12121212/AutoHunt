@@ -27,6 +27,13 @@ public sealed class ConfigWindow : Window, IDisposable
 	private readonly Action? openAlertInfo;
 	private readonly Func<StatusSnapshot> getStatus;
 	private readonly DebugEventLog debugLog;
+	private readonly Func<string?>? startFakeHuntNear;
+	private readonly Func<string?>? startFakeHuntFar;
+	private readonly Func<string?>? startFakeHuntMapFlag;
+	private readonly Func<string?>? startFakeHuntInstanceSwap;
+	private readonly Func<string?>? endFakeHuntCombat;
+	private readonly Func<string?>? clearFakeHunt;
+	private string? fakeHuntStatusMessage;
 	private string conductorInput = string.Empty;
 	private int selectedConductor;
 	private int selectedTab;
@@ -45,7 +52,13 @@ public sealed class ConfigWindow : Window, IDisposable
 		DebugEventLog debugLog,
 		Func<string?>? getHuntAlertsLastIntake = null,
 		Func<HuntTrainMessage?>? getHuntAlertsLastMessage = null,
-		Action? openAlertInfo = null) : base(PluginVersion.WindowTitle)
+		Action? openAlertInfo = null,
+		Func<string?>? startFakeHuntNear = null,
+		Func<string?>? startFakeHuntFar = null,
+		Func<string?>? startFakeHuntMapFlag = null,
+		Func<string?>? startFakeHuntInstanceSwap = null,
+		Func<string?>? endFakeHuntCombat = null,
+		Func<string?>? clearFakeHunt = null) : base(PluginVersion.WindowTitle)
 	{
 		this.config = config;
 		this.saveConfig = saveConfig;
@@ -61,6 +74,12 @@ public sealed class ConfigWindow : Window, IDisposable
 		this.openAlertInfo = openAlertInfo;
 		this.getStatus = getStatus;
 		this.debugLog = debugLog;
+		this.startFakeHuntNear = startFakeHuntNear;
+		this.startFakeHuntFar = startFakeHuntFar;
+		this.startFakeHuntMapFlag = startFakeHuntMapFlag;
+		this.startFakeHuntInstanceSwap = startFakeHuntInstanceSwap;
+		this.endFakeHuntCombat = endFakeHuntCombat;
+		this.clearFakeHunt = clearFakeHunt;
 		SizeConstraints = new WindowSizeConstraints
 		{
 			MinimumSize = new Vector2(420, 420),
@@ -200,6 +219,10 @@ public sealed class ConfigWindow : Window, IDisposable
 			snap.BossModAvailable,
 			snap.BossModProviderName));
 		ImGui.Text(StatusDisplay.FormatBossModAi(snap.BossModAiActive));
+		ImGui.Text(StatusDisplay.FormatFakeHuntLine(
+			snap.FakeHuntActive,
+			snap.FakeARankSet,
+			snap.FakeHuntSummary));
 
 		ImGui.Spacing();
 		ImGui.Separator();
@@ -227,38 +250,10 @@ public sealed class ConfigWindow : Window, IDisposable
 			saveConfig();
 		}
 
-		var suppressChat = config.SuppressChatOtherPlayers;
-		if (ImGui.Checkbox("Suppress chat from other players", ref suppressChat))
-		{
-			config.SuppressChatOtherPlayers = suppressChat;
-			saveConfig();
-		}
-
 		var contextMenu = config.ContextMenu;
 		if (ImGui.Checkbox("Context menu (Add as conductor)", ref contextMenu))
 		{
 			config.ContextMenu = contextMenu;
-			saveConfig();
-		}
-
-		var noDuplicateFlags = config.NoDuplicateFlags;
-		if (ImGui.Checkbox("Skip duplicate flags (same zone, ≤10)", ref noDuplicateFlags))
-		{
-			config.NoDuplicateFlags = noDuplicateFlags;
-			saveConfig();
-		}
-
-		var autoSwitchInstance = config.AutoSwitchInstanceToOne;
-		if (ImGui.Checkbox("Auto-switch instance to 1 after TP", ref autoSwitchInstance))
-		{
-			config.AutoSwitchInstanceToOne = autoSwitchInstance;
-			saveConfig();
-		}
-
-		var distanceHack = config.DistanceCompensationHack;
-		if (ImGui.Checkbox("Distance compensation hack", ref distanceHack))
-		{
-			config.DistanceCompensationHack = distanceHack;
 			saveConfig();
 		}
 
@@ -273,13 +268,6 @@ public sealed class ConfigWindow : Window, IDisposable
 			    "%.1f"))
 		{
 			config.AutoTeleportAetheryteDistanceDiff = ConfigTabs.ClampAutoTeleportSkipDistance(skipDist);
-			saveConfig();
-		}
-
-		var timeAware = config.AutoTeleportTimeAware;
-		if (ImGui.Checkbox("Time-aware same-zone TP (vnav path cost)", ref timeAware))
-		{
-			config.AutoTeleportTimeAware = timeAware;
 			saveConfig();
 		}
 
@@ -404,27 +392,7 @@ public sealed class ConfigWindow : Window, IDisposable
 
 	private void DrawMountTab()
 	{
-		var useMount = config.UseMount;
-		if (ImGui.Checkbox("Use mount (before TP / before nav)", ref useMount))
-		{
-			config.UseMount = useMount;
-			saveConfig();
-		}
-
-		ImGui.TextWrapped(
-			"Mount id: -1 = never, 0 = random, other = specific Mount RowId.");
-		var mount = config.Mount;
-		ImGui.SetNextItemWidth(200f);
-		if (ImGui.InputInt("Mount selection", ref mount))
-			config.Mount = ConfigTabs.ClampMountId(mount);
-		// Persist only when editing finishes — avoid saving partial multi-digit RowIds.
-		if (ImGui.IsItemDeactivatedAfterEdit())
-		{
-			config.Mount = ConfigTabs.ClampMountId(config.Mount);
-			saveConfig();
-		}
-
-		ImGui.TextDisabled(ConfigTabs.FormatMountSelection(config.Mount));
+		ImGui.TextDisabled("Mount: always on (random / GeneralAction 9).");
 
 		var autoUnmount = config.AutoUnmountAtFlag;
 		if (ImGui.Checkbox("Auto-unmount at flag", ref autoUnmount))
@@ -701,6 +669,63 @@ public sealed class ConfigWindow : Window, IDisposable
 		if (ImGui.SmallButton("Clear log"))
 			debugLog.Clear();
 
+		ImGui.Spacing();
+		ImGui.Separator();
+		ImGui.Text("Fake Hunt");
+		ImGui.TextWrapped(
+			"Inject a conductor-style flag + synthetic A-rank near it (also places the map pin). "
+			+ "Tests mount/TP/nav, divert, land/unmount, engage, auto combat-end remount. "
+			+ "Instance swap: far flag + wrong-instance hint (SwitchInstance / ChangeInstance). "
+			+ "Does not enable RSR/BossMod (no real target). "
+			+ "Plugin must be Enabled. Enables event recording.");
+		ImGui.Spacing();
+
+		if (ImGui.Button("Near (~250y)"))
+			fakeHuntStatusMessage = FormatFakeHuntUiResult(
+				startFakeHuntNear?.Invoke(),
+				"OK: Fake Hunt armed — watch Status / movement");
+		ImGui.SameLine();
+		if (ImGui.Button("Far (~1000y)"))
+			fakeHuntStatusMessage = FormatFakeHuntUiResult(
+				startFakeHuntFar?.Invoke(),
+				"OK: Fake Hunt armed — watch Status / movement");
+		ImGui.SameLine();
+		if (ImGui.Button("Map flag"))
+			fakeHuntStatusMessage = FormatFakeHuntUiResult(
+				startFakeHuntMapFlag?.Invoke(),
+				"OK: Fake Hunt armed — watch Status / movement");
+		ImGui.SameLine();
+		if (ImGui.Button("Instance swap"))
+			fakeHuntStatusMessage = FormatFakeHuntUiResult(
+				startFakeHuntInstanceSwap?.Invoke(),
+				"OK: Fake Hunt instance swap — watch SwitchInstance / ChangeInstance");
+
+		if (ImGui.Button("End fake combat"))
+			fakeHuntStatusMessage = FormatFakeHuntUiResult(
+				endFakeHuntCombat?.Invoke(),
+				"OK: Fake combat ended");
+		ImGui.SameLine();
+		if (ImGui.Button("Clear fake hunt"))
+			fakeHuntStatusMessage = FormatFakeHuntUiResult(
+				clearFakeHunt?.Invoke(),
+				"OK: Fake Hunt cleared");
+
+		if (!string.IsNullOrEmpty(fakeHuntStatusMessage))
+		{
+			var err = !fakeHuntStatusMessage.StartsWith("OK:", StringComparison.Ordinal);
+			ImGui.TextColored(err ? MissingColor : AvailableColor, fakeHuntStatusMessage);
+		}
+		else
+		{
+			var snap = StatusDisplay.SafeCapture(getStatus);
+			ImGui.TextDisabled(StatusDisplay.FormatFakeHuntLine(
+				snap.FakeHuntActive,
+				snap.FakeARankSet,
+				snap.FakeHuntSummary));
+		}
+
+		ImGui.Spacing();
+		ImGui.Separator();
 		ImGui.TextDisabled($"Recent events ({debugLog.Count}/{debugLog.Capacity}, newest first)");
 		ImGui.Spacing();
 
@@ -720,6 +745,9 @@ public sealed class ConfigWindow : Window, IDisposable
 
 		ImGui.EndChild();
 	}
+
+	private static string FormatFakeHuntUiResult(string? errorOrNull, string okMessage)
+		=> errorOrNull ?? okMessage;
 
 	private static void DrawDependencyLine(string displayName, Func<bool> probe)
 	{

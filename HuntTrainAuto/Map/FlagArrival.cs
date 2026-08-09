@@ -19,6 +19,18 @@ public readonly struct FlagArrivalResult
 
 	/// <summary>XZ distance to flag world pos; <see cref="float.MaxValue"/> when world pos missing/invalid.</summary>
 	public float Distance { get; init; }
+
+	/// <summary>Stable debug description of the evaluated arrival outcome.</summary>
+	public string Describe()
+	{
+		if (Distance == float.MaxValue)
+			return "waiting: flag world position unavailable";
+		if (ShouldStopPath)
+			return $"arrived: stop path (distance {Distance:0.00})";
+		return IsArrived
+			? $"arrived: path already stopped (distance {Distance:0.00})"
+			: $"moving: distance {Distance:0.00}";
+	}
 }
 
 /// <summary>

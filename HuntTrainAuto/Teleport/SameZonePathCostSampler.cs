@@ -13,6 +13,10 @@ namespace HuntTrainAuto.Teleport;
 /// </summary>
 public static class SameZonePathCostSampler
 {
+	/// <summary>Compact, side-effect-free sampler diagnostic for call-site logging.</summary>
+	public static string Describe(SameZoneTravelEstimate estimate)
+		=> $"path sampler {estimate.Describe()}";
+
 	/// <summary>Soft-timeout before treating pending pathfind as unavailable.</summary>
 	public const int DefaultTimeoutMs = 3000;
 
