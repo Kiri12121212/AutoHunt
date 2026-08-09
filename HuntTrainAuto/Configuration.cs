@@ -129,6 +129,13 @@ public sealed class Configuration : IPluginConfiguration
 	public float ARankScanRange { get; set; } = EngageTargetDecision.DefaultARankScanRange;
 
 	/// <summary>
+	/// When multiple A-ranks are in scan range, prefer the one nearest the last
+	/// hunt position hint (conductor / HuntAlerts flag, or soft Sonar chat map-link).
+	/// Default on. Sonar is a soft dependency (chat only; no Sonar IPC).
+	/// </summary>
+	public bool PreferARankNearHuntHint { get; set; } = true;
+
+	/// <summary>
 	/// Max distance (yalms) to engage target before PathStop + combat phase.
 	/// Default <see cref="CombatDecision.DefaultEngageRange"/>.
 	/// Clamped to

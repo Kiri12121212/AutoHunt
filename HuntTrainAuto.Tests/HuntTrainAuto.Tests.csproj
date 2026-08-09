@@ -53,6 +53,8 @@
 		<Compile Include="..\HuntTrainAuto\Movement\MovementDecision.cs" Link="Movement\MovementDecision.cs" />
 		<Compile Include="..\HuntTrainAuto\Movement\MeshPathfindRetryDecision.cs" Link="Movement\MeshPathfindRetryDecision.cs" />
 		<Compile Include="..\HuntTrainAuto\Combat\CombatDecision.cs" Link="Combat\CombatDecision.cs" />
+		<Compile Include="..\HuntTrainAuto\Chat\SonarChatHintDecision.cs" Link="Chat\SonarChatHintDecision.cs" />
+		<Compile Include="..\HuntTrainAuto\Combat\EngagePositionHint.cs" Link="Combat\EngagePositionHint.cs" />
 		<Compile Include="..\HuntTrainAuto\Combat\EngageTargetDecision.cs" Link="Combat\EngageTargetDecision.cs" />
 		<Compile Include="..\HuntTrainAuto\Combat\RsrEnums.cs" Link="Combat\RsrEnums.cs" />
 		<Compile Include="..\HuntTrainAuto\Combat\RsrCommands.cs" Link="Combat\RsrCommands.cs" />

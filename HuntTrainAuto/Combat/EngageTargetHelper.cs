@@ -35,8 +35,10 @@ public readonly struct EngageProbeResult
 }
 
 /// <summary>
-/// After flag unmount: join conductor's fight, else a party ally's fight, else nearest A-rank.
+/// After flag unmount: join conductor's fight, else a party ally's fight, else nearby A-rank
+/// (optionally biased toward last Sonar/HA/conductor position hint).
 /// Does <b>not</b> follow players. Soft-fails; never throws to Framework.
+/// Sonar is a soft dependency (chat map-links only — no public Sonar IPC).
 /// </summary>
 public sealed class EngageTargetHelper
 {
@@ -48,6 +50,8 @@ public sealed class EngageTargetHelper
 	private readonly MovementHelper movement;
 	private readonly Func<float> getEngageRange;
 	private readonly Func<float> getARankScanRange;
+	private readonly Func<bool> getPreferNearHint;
+	private readonly Func<Vector3?> getPositionHint;
 
 	private readonly List<EngageMobCandidate> candidates = [];
 	private readonly List<IGameObject> candidateObjects = [];
@@ -65,7 +69,9 @@ public sealed class EngageTargetHelper
 		IPluginLog pluginLog,
 		MovementHelper movement,
 		Func<float> getEngageRange,
-		Func<float> getARankScanRange)
+		Func<float> getARankScanRange,
+		Func<bool>? getPreferNearHint = null,
+		Func<Vector3?>? getPositionHint = null)
 	{
 		this.objectTable = objectTable;
 		this.partyList = partyList;
@@ -75,6 +81,8 @@ public sealed class EngageTargetHelper
 		this.movement = movement;
 		this.getEngageRange = getEngageRange;
 		this.getARankScanRange = getARankScanRange;
+		this.getPreferNearHint = getPreferNearHint ?? (() => false);
+		this.getPositionHint = getPositionHint ?? (() => null);
 	}
 
 	public EngageTargetKind LastKind => lastKind;
@@ -100,7 +108,10 @@ public sealed class EngageTargetHelper
 			EnsureARankIndex();
 			BuildCandidates(player, conductors);
 
-			var pick = EngageTargetDecision.Resolve(candidates, getARankScanRange());
+			var pick = EngageTargetDecision.Resolve(
+				candidates,
+				getARankScanRange(),
+				getPreferNearHint());
 			if (!pick.Found || pick.Index < 0 || pick.Index >= candidateObjects.Count)
 				return EngageProbeResult.None;
 
@@ -204,7 +215,10 @@ public sealed class EngageTargetHelper
 		EnsureARankIndex();
 		BuildCandidates(player, conductors);
 
-		var pick = EngageTargetDecision.Resolve(candidates, getARankScanRange());
+		var pick = EngageTargetDecision.Resolve(
+			candidates,
+			getARankScanRange(),
+			getPreferNearHint());
 		if (!pick.Found || pick.Index < 0 || pick.Index >= candidateObjects.Count)
 		{
 			lastKind = EngageTargetKind.None;
@@ -284,6 +298,17 @@ public sealed class EngageTargetHelper
 		var aIds = aRankIds ?? [];
 		IGameObject? conductorFightTarget = null;
 		var partyFightTargets = new HashSet<uint>();
+		Vector3? hintPos = null;
+		try
+		{
+			hintPos = getPositionHint();
+			if (hintPos is { } hp && hp == Vector3.Zero)
+				hintPos = null;
+		}
+		catch
+		{
+			hintPos = null;
+		}
 
 		foreach (var obj in objectTable)
 		{
@@ -334,6 +359,9 @@ public sealed class EngageTargetHelper
 
 			var index = candidateObjects.Count;
 			candidateObjects.Add(obj);
+			var distToHint = hintPos is { } hint
+				? EngagePositionHint.DistanceXZ(obj.Position, hint)
+				: float.PositiveInfinity;
 			candidates.Add(new EngageMobCandidate
 			{
 				Index = index,
@@ -341,6 +369,7 @@ public sealed class EngageTargetHelper
 				IsPartyFightTarget = isPartyPull,
 				IsARank = isA,
 				Distance = Vector3.Distance(playerPos, obj.Position),
+				DistanceToHint = distToHint,
 				IsAlive = true,
 			});
 		}
