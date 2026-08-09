@@ -13,7 +13,6 @@ public enum HuntTrainPhase
 	Mount,
 	Navigate,
 	Unmount,
-	FollowParty,
 	Combat,
 }
 
@@ -44,10 +43,16 @@ public enum HuntTrainEvent
 	/// <summary>Navigate → Unmount when within flag arrival tolerance.</summary>
 	FlagArrived,
 
-	/// <summary>Unmount → FollowParty when dismounted / ReadyForGroundFollow.</summary>
+	/// <summary>
+	/// Legacy latch signal (PF / engage-on-foot). Not phase-advancing —
+	/// Unmount stays until <see cref="EnterCombat"/>.
+	/// </summary>
 	ReadyForGroundFollow,
 
-	/// <summary>FollowParty → Combat when party engage / combat phase entered.</summary>
+	/// <summary>
+	/// Navigate / Mount / Unmount → Combat when divert/engage fires
+	/// (<see cref="HuntTrainTickSnapshot.PartyEngaged"/>).
+	/// </summary>
 	EnterCombat,
 
 	/// <summary>Combat → Idle when hunt dead / combat ended / clear.</summary>
@@ -87,7 +92,10 @@ public readonly struct HuntTrainTickSnapshot
 	/// <summary>Within flag arrival tolerance / arrival signaled.</summary>
 	public bool WithinFlagArrival { get; init; }
 
-	/// <summary>Dismounted / ReadyForGroundFollow.</summary>
+	/// <summary>
+	/// Dismounted / ReadyForGroundFollow latch (PF / engage gates).
+	/// Does not advance the train phase.
+	/// </summary>
 	public bool ReadyForGroundFollow { get; init; }
 
 	/// <summary>Party engage / combat phase entered.</summary>
@@ -130,9 +138,10 @@ public static class HuntTrainTransition
 			(HuntTrainPhase.Idle, HuntTrainEvent.StartNavigate) => HuntTrainPhase.Navigate,
 			(HuntTrainPhase.Teleport, HuntTrainEvent.TeleportArrived) => HuntTrainPhase.Mount,
 			(HuntTrainPhase.Mount, HuntTrainEvent.MountReady) => HuntTrainPhase.Navigate,
+			(HuntTrainPhase.Mount, HuntTrainEvent.EnterCombat) => HuntTrainPhase.Combat,
 			(HuntTrainPhase.Navigate, HuntTrainEvent.FlagArrived) => HuntTrainPhase.Unmount,
-			(HuntTrainPhase.Unmount, HuntTrainEvent.ReadyForGroundFollow) => HuntTrainPhase.FollowParty,
-			(HuntTrainPhase.FollowParty, HuntTrainEvent.EnterCombat) => HuntTrainPhase.Combat,
+			(HuntTrainPhase.Navigate, HuntTrainEvent.EnterCombat) => HuntTrainPhase.Combat,
+			(HuntTrainPhase.Unmount, HuntTrainEvent.EnterCombat) => HuntTrainPhase.Combat,
 			(HuntTrainPhase.Combat, HuntTrainEvent.CombatEnded) => HuntTrainPhase.Idle,
 			_ => from,
 		};
@@ -151,6 +160,7 @@ public static class HuntTrainTransition
 	/// <summary>
 	/// Choose at most one event for the current phase from a soft snapshot.
 	/// Priority when Idle: NeedsTeleport → AlreadyMountedOrSkipMount → SameZoneReady.
+	/// Divert/engage: PartyEngaged wins over MountReady / FlagArrived while in Mount/Navigate.
 	/// Master off / Abort → <see cref="HuntTrainEvent.Abort"/> when not Idle.
 	/// </summary>
 	public static HuntTrainEvent Decide(HuntTrainPhase phase, in HuntTrainTickSnapshot snap)
@@ -164,16 +174,17 @@ public static class HuntTrainTransition
 			HuntTrainPhase.Teleport => snap.TeleportComplete
 				? HuntTrainEvent.TeleportArrived
 				: HuntTrainEvent.None,
-			HuntTrainPhase.Mount => snap.MountComplete
-				? HuntTrainEvent.MountReady
-				: HuntTrainEvent.None,
-			HuntTrainPhase.Navigate => snap.WithinFlagArrival
-				? HuntTrainEvent.FlagArrived
-				: HuntTrainEvent.None,
-			HuntTrainPhase.Unmount => snap.ReadyForGroundFollow
-				? HuntTrainEvent.ReadyForGroundFollow
-				: HuntTrainEvent.None,
-			HuntTrainPhase.FollowParty => snap.PartyEngaged
+			HuntTrainPhase.Mount => snap.PartyEngaged
+				? HuntTrainEvent.EnterCombat
+				: snap.MountComplete
+					? HuntTrainEvent.MountReady
+					: HuntTrainEvent.None,
+			HuntTrainPhase.Navigate => snap.PartyEngaged
+				? HuntTrainEvent.EnterCombat
+				: snap.WithinFlagArrival
+					? HuntTrainEvent.FlagArrived
+					: HuntTrainEvent.None,
+			HuntTrainPhase.Unmount => snap.PartyEngaged
 				? HuntTrainEvent.EnterCombat
 				: HuntTrainEvent.None,
 			HuntTrainPhase.Combat => snap.CombatEnded

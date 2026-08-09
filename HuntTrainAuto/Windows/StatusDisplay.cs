@@ -46,7 +46,6 @@ public static class StatusDisplay
 			HuntTrainPhase.Mount => "Mount",
 			HuntTrainPhase.Navigate => "Navigate",
 			HuntTrainPhase.Unmount => "Unmount",
-			HuntTrainPhase.FollowParty => "Approach target",
 			HuntTrainPhase.Combat => "Combat",
 			_ => phase.ToString(),
 		};

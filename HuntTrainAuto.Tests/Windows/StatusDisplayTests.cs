@@ -11,7 +11,6 @@ public sealed class StatusDisplayTests
 	[InlineData(HuntTrainPhase.Mount, "Mount")]
 	[InlineData(HuntTrainPhase.Navigate, "Navigate")]
 	[InlineData(HuntTrainPhase.Unmount, "Unmount")]
-	[InlineData(HuntTrainPhase.FollowParty, "Approach target")]
 	[InlineData(HuntTrainPhase.Combat, "Combat")]
 	public void FormatPhase_labels_pipeline(HuntTrainPhase phase, string expected)
 		=> Assert.Equal(expected, StatusDisplay.FormatPhase(phase));

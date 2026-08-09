@@ -153,10 +153,11 @@ public sealed class HuntTrainObserveTests
 			HuntTrainObserve.BuildProgressSnapshot(pluginEnabled: true, withinFlagArrival: true));
 		Assert.Equal(HuntTrainPhase.Unmount, phase);
 
+		// ReadyForGroundFollow latch alone does not leave Unmount.
 		phase = HuntTrainTransition.Tick(
 			phase,
 			HuntTrainObserve.BuildProgressSnapshot(pluginEnabled: true, readyForGroundFollow: true));
-		Assert.Equal(HuntTrainPhase.FollowParty, phase);
+		Assert.Equal(HuntTrainPhase.Unmount, phase);
 
 		phase = HuntTrainTransition.Tick(
 			phase,
@@ -174,5 +175,16 @@ public sealed class HuntTrainObserveTests
 	{
 		var snap = HuntTrainObserve.BuildProgressSnapshot(pluginEnabled: true);
 		Assert.Equal(HuntTrainEvent.None, HuntTrainTransition.Decide(HuntTrainPhase.Idle, snap));
+	}
+
+	[Fact]
+	public void BuildProgressSnapshot_Navigate_divert_PartyEngaged_enters_Combat()
+	{
+		var snap = HuntTrainObserve.BuildProgressSnapshot(
+			pluginEnabled: true,
+			inCombatPhase: true);
+		Assert.True(snap.PartyEngaged);
+		Assert.Equal(HuntTrainEvent.EnterCombat, HuntTrainTransition.Decide(HuntTrainPhase.Navigate, snap));
+		Assert.Equal(HuntTrainPhase.Combat, HuntTrainTransition.Tick(HuntTrainPhase.Navigate, snap));
 	}
 }

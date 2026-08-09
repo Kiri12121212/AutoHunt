@@ -61,7 +61,7 @@ public sealed class FlagRestartDecisionTests
 	{
 		var plan = FlagRestartDecision.Decide(
 			pluginEnabled: true,
-			phase: HuntTrainPhase.FollowParty,
+			phase: HuntTrainPhase.Unmount,
 			hasInFlightWork: false,
 			teleportPlanActive: false,
 			alreadyCloseSkip: true,

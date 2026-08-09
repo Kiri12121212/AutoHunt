@@ -1622,8 +1622,7 @@ public sealed class Plugin : IDalamudPlugin
 			if (train.Phase is not (
 				    HuntTrainPhase.Navigate
 				    or HuntTrainPhase.Mount
-				    or HuntTrainPhase.Unmount
-				    or HuntTrainPhase.FollowParty))
+				    or HuntTrainPhase.Unmount))
 				return;
 
 			var probe = engage.Probe(Config.Conductors);

@@ -10,9 +10,10 @@ public sealed class HuntTrainTransitionTests
 	[InlineData(HuntTrainPhase.Idle, HuntTrainEvent.StartNavigate, HuntTrainPhase.Navigate)]
 	[InlineData(HuntTrainPhase.Teleport, HuntTrainEvent.TeleportArrived, HuntTrainPhase.Mount)]
 	[InlineData(HuntTrainPhase.Mount, HuntTrainEvent.MountReady, HuntTrainPhase.Navigate)]
+	[InlineData(HuntTrainPhase.Mount, HuntTrainEvent.EnterCombat, HuntTrainPhase.Combat)]
 	[InlineData(HuntTrainPhase.Navigate, HuntTrainEvent.FlagArrived, HuntTrainPhase.Unmount)]
-	[InlineData(HuntTrainPhase.Unmount, HuntTrainEvent.ReadyForGroundFollow, HuntTrainPhase.FollowParty)]
-	[InlineData(HuntTrainPhase.FollowParty, HuntTrainEvent.EnterCombat, HuntTrainPhase.Combat)]
+	[InlineData(HuntTrainPhase.Navigate, HuntTrainEvent.EnterCombat, HuntTrainPhase.Combat)]
+	[InlineData(HuntTrainPhase.Unmount, HuntTrainEvent.EnterCombat, HuntTrainPhase.Combat)]
 	[InlineData(HuntTrainPhase.Combat, HuntTrainEvent.CombatEnded, HuntTrainPhase.Idle)]
 	public void Apply_legal_happy_path(HuntTrainPhase from, HuntTrainEvent ev, HuntTrainPhase expected)
 	{
@@ -26,7 +27,6 @@ public sealed class HuntTrainTransitionTests
 	[InlineData(HuntTrainPhase.Mount)]
 	[InlineData(HuntTrainPhase.Navigate)]
 	[InlineData(HuntTrainPhase.Unmount)]
-	[InlineData(HuntTrainPhase.FollowParty)]
 	[InlineData(HuntTrainPhase.Combat)]
 	public void Abort_from_active_goes_Idle(HuntTrainPhase from)
 	{
@@ -61,9 +61,7 @@ public sealed class HuntTrainTransitionTests
 	[InlineData(HuntTrainPhase.Navigate, HuntTrainEvent.MountReady)]
 	[InlineData(HuntTrainPhase.Navigate, HuntTrainEvent.ReadyForGroundFollow)]
 	[InlineData(HuntTrainPhase.Unmount, HuntTrainEvent.FlagArrived)]
-	[InlineData(HuntTrainPhase.Unmount, HuntTrainEvent.EnterCombat)]
-	[InlineData(HuntTrainPhase.FollowParty, HuntTrainEvent.ReadyForGroundFollow)]
-	[InlineData(HuntTrainPhase.FollowParty, HuntTrainEvent.CombatEnded)]
+	[InlineData(HuntTrainPhase.Unmount, HuntTrainEvent.ReadyForGroundFollow)]
 	[InlineData(HuntTrainPhase.Combat, HuntTrainEvent.EnterCombat)]
 	[InlineData(HuntTrainPhase.Combat, HuntTrainEvent.StartTeleport)]
 	public void Apply_illegal_or_None_is_noop(HuntTrainPhase from, HuntTrainEvent ev)
@@ -85,8 +83,6 @@ public sealed class HuntTrainTransitionTests
 		Assert.Equal(HuntTrainPhase.Navigate, phase);
 		phase = HuntTrainTransition.Apply(phase, HuntTrainEvent.FlagArrived);
 		Assert.Equal(HuntTrainPhase.Unmount, phase);
-		phase = HuntTrainTransition.Apply(phase, HuntTrainEvent.ReadyForGroundFollow);
-		Assert.Equal(HuntTrainPhase.FollowParty, phase);
 		phase = HuntTrainTransition.Apply(phase, HuntTrainEvent.EnterCombat);
 		Assert.Equal(HuntTrainPhase.Combat, phase);
 		phase = HuntTrainTransition.Apply(phase, HuntTrainEvent.CombatEnded);
@@ -142,8 +138,7 @@ public sealed class HuntTrainTransitionTests
 	[InlineData(HuntTrainPhase.Teleport, true, false, false, false, false, false, HuntTrainEvent.TeleportArrived, HuntTrainPhase.Mount)]
 	[InlineData(HuntTrainPhase.Mount, false, true, false, false, false, false, HuntTrainEvent.MountReady, HuntTrainPhase.Navigate)]
 	[InlineData(HuntTrainPhase.Navigate, false, false, true, false, false, false, HuntTrainEvent.FlagArrived, HuntTrainPhase.Unmount)]
-	[InlineData(HuntTrainPhase.Unmount, false, false, false, true, false, false, HuntTrainEvent.ReadyForGroundFollow, HuntTrainPhase.FollowParty)]
-	[InlineData(HuntTrainPhase.FollowParty, false, false, false, false, true, false, HuntTrainEvent.EnterCombat, HuntTrainPhase.Combat)]
+	[InlineData(HuntTrainPhase.Unmount, false, false, false, true, true, false, HuntTrainEvent.EnterCombat, HuntTrainPhase.Combat)]
 	[InlineData(HuntTrainPhase.Combat, false, false, false, false, false, true, HuntTrainEvent.CombatEnded, HuntTrainPhase.Idle)]
 	public void Decide_and_Tick_progress_signals(
 		HuntTrainPhase from,
@@ -171,6 +166,49 @@ public sealed class HuntTrainTransitionTests
 	}
 
 	[Fact]
+	public void Decide_Unmount_ReadyForGroundFollow_alone_stays()
+	{
+		var snap = new HuntTrainTickSnapshot
+		{
+			PluginEnabled = true,
+			ReadyForGroundFollow = true,
+		};
+		Assert.Equal(HuntTrainEvent.None, HuntTrainTransition.Decide(HuntTrainPhase.Unmount, snap));
+		Assert.Equal(HuntTrainPhase.Unmount, HuntTrainTransition.Tick(HuntTrainPhase.Unmount, snap));
+	}
+
+	[Theory]
+	[InlineData(HuntTrainPhase.Navigate)]
+	[InlineData(HuntTrainPhase.Mount)]
+	[InlineData(HuntTrainPhase.Unmount)]
+	public void Decide_divert_PartyEngaged_enters_Combat(HuntTrainPhase from)
+	{
+		var snap = new HuntTrainTickSnapshot
+		{
+			PluginEnabled = true,
+			PartyEngaged = true,
+			MountComplete = true,
+			WithinFlagArrival = true,
+			ReadyForGroundFollow = true,
+		};
+		Assert.Equal(HuntTrainEvent.EnterCombat, HuntTrainTransition.Decide(from, snap));
+		Assert.Equal(HuntTrainPhase.Combat, HuntTrainTransition.Tick(from, snap));
+	}
+
+	[Fact]
+	public void Decide_Navigate_PartyEngaged_beats_FlagArrived()
+	{
+		var snap = new HuntTrainTickSnapshot
+		{
+			PluginEnabled = true,
+			PartyEngaged = true,
+			WithinFlagArrival = true,
+		};
+		Assert.Equal(HuntTrainEvent.EnterCombat, HuntTrainTransition.Decide(HuntTrainPhase.Navigate, snap));
+		Assert.Equal(HuntTrainPhase.Combat, HuntTrainTransition.Tick(HuntTrainPhase.Navigate, snap));
+	}
+
+	[Fact]
 	public void Decide_master_off_aborts_active()
 	{
 		var snap = new HuntTrainTickSnapshot { PluginEnabled = false };
@@ -190,8 +228,8 @@ public sealed class HuntTrainTransitionTests
 	public void Decide_Abort_flag_aborts_active()
 	{
 		var snap = new HuntTrainTickSnapshot { PluginEnabled = true, Abort = true };
-		Assert.Equal(HuntTrainEvent.Abort, HuntTrainTransition.Decide(HuntTrainPhase.FollowParty, snap));
-		Assert.Equal(HuntTrainPhase.Idle, HuntTrainTransition.Tick(HuntTrainPhase.FollowParty, snap));
+		Assert.Equal(HuntTrainEvent.Abort, HuntTrainTransition.Decide(HuntTrainPhase.Unmount, snap));
+		Assert.Equal(HuntTrainPhase.Idle, HuntTrainTransition.Tick(HuntTrainPhase.Unmount, snap));
 	}
 
 	[Fact]
