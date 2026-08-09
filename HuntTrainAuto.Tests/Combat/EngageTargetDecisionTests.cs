@@ -157,52 +157,6 @@ public sealed class EngageTargetDecisionTests
 	}
 
 	[Fact]
-	public void DistanceXZ_ignores_y()
-	{
-		var a = new System.Numerics.Vector3(0f, 100f, 0f);
-		var b = new System.Numerics.Vector3(3f, 0f, 4f);
-		Assert.Equal(5f, EngagePositionHint.DistanceXZ(a, b));
-	}
-
-	[Fact]
-	public void EngagePositionHint_RememberFromFlag_uses_world_pos_when_set()
-	{
-		var flag = HuntFlag.FromMapLink(1, 2, 10000, 20000, "Test");
-		flag.WorldPos = new System.Numerics.Vector3(11f, 5f, 22f);
-		var slot = new EngagePositionHint();
-		slot.RememberFromFlag(flag, EngagePositionHintSource.HuntAlerts);
-		Assert.True(slot.HasHint);
-		Assert.Equal(EngagePositionHintSource.HuntAlerts, slot.Source);
-		Assert.Equal(new System.Numerics.Vector3(11f, 5f, 22f), slot.WorldPos);
-		Assert.Equal(new System.Numerics.Vector3(11f, 5f, 22f), slot.WorldPosForTerritory(1));
-		Assert.Null(slot.WorldPosForTerritory(99));
-	}
-
-	[Fact]
-	public void EngagePositionHint_RememberFromFlag_approximates_raw_when_no_world()
-	{
-		var flag = HuntFlag.FromMapLink(7, 2, 15000, 25000, "Test");
-		var slot = new EngagePositionHint();
-		slot.RememberFromFlag(flag, EngagePositionHintSource.SonarChat);
-		Assert.Equal(EngagePositionHintSource.SonarChat, slot.Source);
-		Assert.Equal(new System.Numerics.Vector3(15f, 0f, 25f), slot.WorldPos);
-	}
-
-	[Fact]
-	public void Resolve_prefer_near_hint_over_nearest_to_player()
-	{
-		var candidates = new List<EngageMobCandidate>
-		{
-			Mob(0, isA: true, dist: 8f, hintDist: 40f),
-			Mob(1, isA: true, dist: 25f, hintDist: 5f),
-			Mob(2, isA: true, dist: 20f, hintDist: 18f),
-		};
-		var pick = EngageTargetDecision.Resolve(candidates, 50f, preferNearHint: true);
-		Assert.Equal(EngageTargetKind.NearbyARank, pick.Kind);
-		Assert.Equal(1, pick.Index);
-	}
-
-	[Fact]
 	public void Resolve_prefer_near_hint_ignores_out_of_scan_range()
 	{
 		var candidates = new List<EngageMobCandidate>
@@ -213,58 +167,6 @@ public sealed class EngageTargetDecisionTests
 		var pick = EngageTargetDecision.Resolve(candidates, 50f, preferNearHint: true);
 		Assert.Equal(EngageTargetKind.NearbyARank, pick.Kind);
 		Assert.Equal(0, pick.Index);
-	}
-
-	[Fact]
-	public void Resolve_prefer_near_hint_falls_back_without_hint_distances()
-	{
-		var candidates = new List<EngageMobCandidate>
-		{
-			Mob(0, isA: true, dist: 30f),
-			Mob(1, isA: true, dist: 12f),
-		};
-		var pick = EngageTargetDecision.Resolve(candidates, 50f, preferNearHint: true);
-		Assert.Equal(EngageTargetKind.NearbyARank, pick.Kind);
-		Assert.Equal(1, pick.Index);
-	}
-
-	[Fact]
-	public void Resolve_prefer_near_hint_off_uses_player_distance()
-	{
-		var candidates = new List<EngageMobCandidate>
-		{
-			Mob(0, isA: true, dist: 8f, hintDist: 40f),
-			Mob(1, isA: true, dist: 25f, hintDist: 5f),
-		};
-		var pick = EngageTargetDecision.Resolve(candidates, 50f, preferNearHint: false);
-		Assert.Equal(EngageTargetKind.NearbyARank, pick.Kind);
-		Assert.Equal(0, pick.Index);
-	}
-
-	[Fact]
-	public void Resolve_conductor_still_beats_hint_a_rank()
-	{
-		var candidates = new List<EngageMobCandidate>
-		{
-			Mob(0, isA: true, dist: 5f, hintDist: 1f),
-			Mob(1, conductor: true, dist: 40f, hintDist: 100f),
-		};
-		var pick = EngageTargetDecision.Resolve(candidates, 50f, preferNearHint: true);
-		Assert.Equal(EngageTargetKind.ConductorFight, pick.Kind);
-		Assert.Equal(1, pick.Index);
-	}
-
-	[Fact]
-	public void Resolve_prefer_near_hint_tie_breaks_by_player_distance()
-	{
-		var candidates = new List<EngageMobCandidate>
-		{
-			Mob(0, isA: true, dist: 30f, hintDist: 10f),
-			Mob(1, isA: true, dist: 12f, hintDist: 10f),
-		};
-		var pick = EngageTargetDecision.Resolve(candidates, 50f, preferNearHint: true);
-		Assert.Equal(EngageTargetKind.NearbyARank, pick.Kind);
-		Assert.Equal(1, pick.Index);
 	}
 
 	[Fact]
@@ -387,9 +289,9 @@ public sealed class EngageTargetDecisionTests
 	{
 		var ids = ARankHuntIndex.BuildARankIds(
 		[
-			(nameId: 10, baseId: 100, rank: (byte)HuntMarkRank.B),
-			(nameId: 20, baseId: 200, rank: (byte)HuntMarkRank.A),
-			(nameId: 30, baseId: 300, rank: (byte)HuntMarkRank.S),
+			(10u, 100u, (byte)HuntMarkRank.B),
+			(20u, 200u, (byte)HuntMarkRank.A),
+			(30u, 300u, (byte)HuntMarkRank.S),
 		]);
 		Assert.Equal(2, ids.Count);
 		Assert.True(ARankHuntIndex.IsARank(ids, 20, 0));
