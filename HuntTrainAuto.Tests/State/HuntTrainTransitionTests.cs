@@ -8,7 +8,8 @@ public sealed class HuntTrainTransitionTests
 	[InlineData(HuntTrainPhase.Idle, HuntTrainEvent.StartTeleport, HuntTrainPhase.Teleport)]
 	[InlineData(HuntTrainPhase.Idle, HuntTrainEvent.StartMount, HuntTrainPhase.Mount)]
 	[InlineData(HuntTrainPhase.Idle, HuntTrainEvent.StartNavigate, HuntTrainPhase.Navigate)]
-	[InlineData(HuntTrainPhase.Teleport, HuntTrainEvent.TeleportArrived, HuntTrainPhase.Mount)]
+	[InlineData(HuntTrainPhase.Mount, HuntTrainEvent.StartTeleport, HuntTrainPhase.Teleport)]
+	[InlineData(HuntTrainPhase.Teleport, HuntTrainEvent.TeleportArrived, HuntTrainPhase.Navigate)]
 	[InlineData(HuntTrainPhase.Mount, HuntTrainEvent.MountReady, HuntTrainPhase.Navigate)]
 	[InlineData(HuntTrainPhase.Mount, HuntTrainEvent.EnterCombat, HuntTrainPhase.Combat)]
 	[InlineData(HuntTrainPhase.Navigate, HuntTrainEvent.FlagArrived, HuntTrainPhase.Unmount)]
@@ -60,6 +61,7 @@ public sealed class HuntTrainTransitionTests
 	[InlineData(HuntTrainPhase.Mount, HuntTrainEvent.FlagArrived)]
 	[InlineData(HuntTrainPhase.Navigate, HuntTrainEvent.MountReady)]
 	[InlineData(HuntTrainPhase.Navigate, HuntTrainEvent.ReadyForGroundFollow)]
+	[InlineData(HuntTrainPhase.Navigate, HuntTrainEvent.StartTeleport)]
 	[InlineData(HuntTrainPhase.Unmount, HuntTrainEvent.FlagArrived)]
 	[InlineData(HuntTrainPhase.Unmount, HuntTrainEvent.ReadyForGroundFollow)]
 	[InlineData(HuntTrainPhase.Combat, HuntTrainEvent.EnterCombat)]
@@ -72,14 +74,14 @@ public sealed class HuntTrainTransitionTests
 	}
 
 	[Fact]
-	public void Full_pipeline_via_Apply()
+	public void Full_pipeline_via_Apply_mount_before_tp()
 	{
 		var phase = HuntTrainPhase.Idle;
+		phase = HuntTrainTransition.Apply(phase, HuntTrainEvent.StartMount);
+		Assert.Equal(HuntTrainPhase.Mount, phase);
 		phase = HuntTrainTransition.Apply(phase, HuntTrainEvent.StartTeleport);
 		Assert.Equal(HuntTrainPhase.Teleport, phase);
 		phase = HuntTrainTransition.Apply(phase, HuntTrainEvent.TeleportArrived);
-		Assert.Equal(HuntTrainPhase.Mount, phase);
-		phase = HuntTrainTransition.Apply(phase, HuntTrainEvent.MountReady);
 		Assert.Equal(HuntTrainPhase.Navigate, phase);
 		phase = HuntTrainTransition.Apply(phase, HuntTrainEvent.FlagArrived);
 		Assert.Equal(HuntTrainPhase.Unmount, phase);
@@ -87,6 +89,16 @@ public sealed class HuntTrainTransitionTests
 		Assert.Equal(HuntTrainPhase.Combat, phase);
 		phase = HuntTrainTransition.Apply(phase, HuntTrainEvent.CombatEnded);
 		Assert.Equal(HuntTrainPhase.Idle, phase);
+	}
+
+	[Fact]
+	public void Full_pipeline_via_Apply_already_mounted_tp()
+	{
+		var phase = HuntTrainPhase.Idle;
+		phase = HuntTrainTransition.Apply(phase, HuntTrainEvent.StartTeleport);
+		Assert.Equal(HuntTrainPhase.Teleport, phase);
+		phase = HuntTrainTransition.Apply(phase, HuntTrainEvent.TeleportArrived);
+		Assert.Equal(HuntTrainPhase.Navigate, phase);
 	}
 
 	[Fact]
@@ -135,11 +147,12 @@ public sealed class HuntTrainTransitionTests
 	}
 
 	[Theory]
-	[InlineData(HuntTrainPhase.Teleport, true, false, false, false, false, false, HuntTrainEvent.TeleportArrived, HuntTrainPhase.Mount)]
-	[InlineData(HuntTrainPhase.Mount, false, true, false, false, false, false, HuntTrainEvent.MountReady, HuntTrainPhase.Navigate)]
-	[InlineData(HuntTrainPhase.Navigate, false, false, true, false, false, false, HuntTrainEvent.FlagArrived, HuntTrainPhase.Unmount)]
-	[InlineData(HuntTrainPhase.Unmount, false, false, false, true, true, false, HuntTrainEvent.EnterCombat, HuntTrainPhase.Combat)]
-	[InlineData(HuntTrainPhase.Combat, false, false, false, false, false, true, HuntTrainEvent.CombatEnded, HuntTrainPhase.Idle)]
+	[InlineData(HuntTrainPhase.Teleport, true, false, false, false, false, false, false, HuntTrainEvent.TeleportArrived, HuntTrainPhase.Navigate)]
+	[InlineData(HuntTrainPhase.Mount, false, true, false, false, false, false, false, HuntTrainEvent.MountReady, HuntTrainPhase.Navigate)]
+	[InlineData(HuntTrainPhase.Mount, false, true, false, false, false, false, true, HuntTrainEvent.StartTeleport, HuntTrainPhase.Teleport)]
+	[InlineData(HuntTrainPhase.Navigate, false, false, true, false, false, false, false, HuntTrainEvent.FlagArrived, HuntTrainPhase.Unmount)]
+	[InlineData(HuntTrainPhase.Unmount, false, false, false, true, true, false, false, HuntTrainEvent.EnterCombat, HuntTrainPhase.Combat)]
+	[InlineData(HuntTrainPhase.Combat, false, false, false, false, false, true, false, HuntTrainEvent.CombatEnded, HuntTrainPhase.Idle)]
 	public void Decide_and_Tick_progress_signals(
 		HuntTrainPhase from,
 		bool teleportComplete,
@@ -148,6 +161,7 @@ public sealed class HuntTrainTransitionTests
 		bool readyFollow,
 		bool partyEngaged,
 		bool combatEnded,
+		bool needsTeleport,
 		HuntTrainEvent expectedEvent,
 		HuntTrainPhase expectedPhase)
 	{
@@ -160,6 +174,7 @@ public sealed class HuntTrainTransitionTests
 			ReadyForGroundFollow = readyFollow,
 			PartyEngaged = partyEngaged,
 			CombatEnded = combatEnded,
+			NeedsTeleport = needsTeleport,
 		};
 		Assert.Equal(expectedEvent, HuntTrainTransition.Decide(from, snap));
 		Assert.Equal(expectedPhase, HuntTrainTransition.Tick(from, snap));

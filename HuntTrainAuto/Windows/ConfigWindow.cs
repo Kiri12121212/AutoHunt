@@ -405,7 +405,7 @@ public sealed class ConfigWindow : Window, IDisposable
 	private void DrawMountTab()
 	{
 		var useMount = config.UseMount;
-		if (ImGui.Checkbox("Use mount (after TP / before nav)", ref useMount))
+		if (ImGui.Checkbox("Use mount (before TP / before nav)", ref useMount))
 		{
 			config.UseMount = useMount;
 			saveConfig();

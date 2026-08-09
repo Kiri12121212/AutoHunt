@@ -35,10 +35,26 @@ public sealed class FlagRestartDecisionTests
 			useMount: true);
 
 		Assert.Equal(FlagRestartKind.StartFromIdle, plan.Kind);
-		Assert.Equal(HuntTrainEvent.StartTeleport, plan.StartEvent);
+		Assert.Equal(HuntTrainEvent.StartMount, plan.StartEvent);
 		Assert.False(plan.StopNavPath);
 		Assert.False(plan.ResetTrainController);
 		AssertJobClears(plan);
+	}
+
+	[Fact]
+	public void Decide_Idle_teleport_already_mounted_starts_Teleport()
+	{
+		var plan = FlagRestartDecision.Decide(
+			pluginEnabled: true,
+			phase: HuntTrainPhase.Idle,
+			hasInFlightWork: false,
+			teleportPlanActive: true,
+			alreadyCloseSkip: false,
+			useMount: true,
+			alreadyMountedOrSkipMount: true);
+
+		Assert.Equal(FlagRestartKind.StartFromIdle, plan.Kind);
+		Assert.Equal(HuntTrainEvent.StartTeleport, plan.StartEvent);
 	}
 
 	[Fact]
@@ -86,7 +102,7 @@ public sealed class FlagRestartDecisionTests
 			useMount: true);
 
 		Assert.Equal(FlagRestartKind.AbortThenRestart, plan.Kind);
-		Assert.Equal(HuntTrainEvent.StartTeleport, plan.StartEvent);
+		Assert.Equal(HuntTrainEvent.StartMount, plan.StartEvent);
 		Assert.True(plan.StopNavPath);
 		Assert.True(plan.ResetTrainController);
 	}
@@ -123,20 +139,21 @@ public sealed class FlagRestartDecisionTests
 			useMount: true);
 
 		Assert.Equal(FlagRestartKind.AbortThenRestart, plan.Kind);
+		Assert.Equal(HuntTrainEvent.StartMount, plan.StartEvent);
 		if (plan.ResetTrainController)
 			c.Reset();
 		Assert.Equal(HuntTrainPhase.Idle, c.Phase);
-		Assert.Equal(HuntTrainPhase.Teleport, c.Apply(plan.StartEvent));
+		Assert.Equal(HuntTrainPhase.Mount, c.Apply(plan.StartEvent));
 	}
 
 	[Fact]
-	public void Without_abort_Start_mid_pipeline_is_noop_bug()
+	public void Without_abort_StartTeleport_from_Mount_advances_mount_before_tp()
 	{
-		// Documents the 7.2 gap this helper fixes: Start* from non-Idle stays put.
+		// Mount→Teleport is legal (mount-before-TP). Other Start* from wrong phases stay put.
 		var c = new HuntTrainController();
 		c.Apply(HuntTrainEvent.StartMount);
 		Assert.Equal(HuntTrainPhase.Mount, c.Phase);
-		Assert.Equal(HuntTrainPhase.Mount, c.Apply(HuntTrainEvent.StartTeleport));
+		Assert.Equal(HuntTrainPhase.Teleport, c.Apply(HuntTrainEvent.StartTeleport));
 	}
 
 	[Fact]

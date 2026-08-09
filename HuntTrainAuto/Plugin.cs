@@ -1053,12 +1053,16 @@ public sealed class Plugin : IDalamudPlugin
 				{ Action: TeleportAction.Skip, SkipReason: TeleportSkipReason.AlreadyClose };
 		}
 
+		var alreadyMounted = MountDecision.ShouldSkipEnqueueAlreadyReady(
+			condition[ConditionFlag.Mounted],
+			condition[ConditionFlag.InFlight]);
 		var plan = FlagRestartDecision.Decide(
 			Config.Enabled,
 			pipelineActive,
 			teleportPlan.HasActive,
 			alreadyClose,
-			Config.UseMount);
+			Config.UseMount,
+			alreadyMountedOrSkipMount: alreadyMounted);
 
 		ApplyFlagRestart(plan);
 		// Probe post-abort Idle/clears before Start* so mid-pipeline restarts do not
@@ -1067,12 +1071,16 @@ public sealed class Plugin : IDalamudPlugin
 
 		if (directInstanceChange && decision!.Value.Arrival is { Instance: > 0 } arr)
 		{
-			EnqueueChangeInstanceAfterTeleport(arr.Instance, arr.Territory);
+			// Mount before instance approach when needed; ChangeInstance works mounted.
 			mount.EnqueueIfEnabled(Config.UseMount);
+			EnqueueChangeInstanceAfterTeleport(arr.Instance, arr.Territory);
 			pluginLog.Information($"Engaging instance switch → {arr.Instance}");
 		}
 		else if (adopted)
 		{
+			// Mount-before-TP: enqueue mount when StartMount; cast only in Teleport phase.
+			if (plan.StartEvent == HuntTrainEvent.StartMount)
+				mount.EnqueueIfEnabled(Config.UseMount);
 			ApplyDelayTeleport();
 			pluginLog.Information(
 				switchInstance
@@ -1081,8 +1089,7 @@ public sealed class Plugin : IDalamudPlugin
 		}
 		else if (alreadyClose)
 		{
-			// Same-zone close enough: no TP — still mount before later nav (HTA mount-on-ready).
-			// Enqueue after ClearMount so AbortThenRestart does not wipe this job.
+			// Same-zone close enough: no TP — mount before nav.
 			mount.EnqueueIfEnabled(Config.UseMount);
 		}
 
@@ -1321,7 +1328,9 @@ public sealed class Plugin : IDalamudPlugin
 		var player = objectTable.LocalPlayer;
 		var active = teleportPlan.Active;
 
-		if (TeleportGate.IsPlayerReady(
+		// Cast TP only in Teleport phase (mount-before-TP: Mount must finish first).
+		if (train.Phase == HuntTrainPhase.Teleport
+			&& TeleportGate.IsPlayerReady(
 				player != null,
 				player is { CurrentHp: > 0 },
 				condition[ConditionFlag.Unconscious])
@@ -2159,12 +2168,27 @@ public sealed class Plugin : IDalamudPlugin
 				pluginLog.Information(
 					$"Engaging autoteleport for instance → {switchArr.Instance} (time-aware)");
 				if (train.Phase == HuntTrainPhase.Idle)
-					train.Apply(HuntTrainEvent.StartTeleport);
+				{
+					var alreadyMountedTp = MountDecision.ShouldSkipEnqueueAlreadyReady(
+						condition[ConditionFlag.Mounted],
+						condition[ConditionFlag.InFlight]);
+					var startTp = HuntTrainObserve.DecideFlagStart(
+						Config.Enabled,
+						teleportPlanActive: true,
+						alreadyCloseSkip: false,
+						Config.UseMount,
+						alreadyMountedTp);
+					if (startTp == HuntTrainEvent.StartMount)
+						mount.EnqueueIfEnabled(Config.UseMount);
+					if (startTp != HuntTrainEvent.None)
+						train.Apply(startTp);
+				}
+
 				return;
 			}
 
-			EnqueueChangeInstanceAfterTeleport(switchArr.Instance, switchArr.Territory);
 			mount.EnqueueIfEnabled(Config.UseMount);
+			EnqueueChangeInstanceAfterTeleport(switchArr.Instance, switchArr.Territory);
 			pluginLog.Information($"Engaging instance switch → {switchArr.Instance} (time-aware)");
 			if (train.Phase == HuntTrainPhase.Idle)
 				train.Apply(Config.UseMount ? HuntTrainEvent.StartMount : HuntTrainEvent.StartNavigate);
@@ -2180,7 +2204,22 @@ public sealed class Plugin : IDalamudPlugin
 			ApplyDelayTeleport();
 			pluginLog.Information("Engaging autoteleport (time-aware)");
 			if (train.Phase == HuntTrainPhase.Idle)
-				train.Apply(HuntTrainEvent.StartTeleport);
+			{
+				var alreadyMounted = MountDecision.ShouldSkipEnqueueAlreadyReady(
+					condition[ConditionFlag.Mounted],
+					condition[ConditionFlag.InFlight]);
+				var start = HuntTrainObserve.DecideFlagStart(
+					Config.Enabled,
+					teleportPlanActive: true,
+					alreadyCloseSkip: false,
+					Config.UseMount,
+					alreadyMounted);
+				if (start == HuntTrainEvent.StartMount)
+					mount.EnqueueIfEnabled(Config.UseMount);
+				if (start != HuntTrainEvent.None)
+					train.Apply(start);
+			}
+
 			return;
 		}
 
@@ -2191,13 +2230,13 @@ public sealed class Plugin : IDalamudPlugin
 		if (train.Phase != HuntTrainPhase.Idle)
 			return;
 
-		var start = HuntTrainObserve.DecideFlagStart(
+		var closeStart = HuntTrainObserve.DecideFlagStart(
 			Config.Enabled,
 			teleportPlanActive: false,
 			alreadyCloseSkip: true,
 			Config.UseMount);
-		if (start != HuntTrainEvent.None)
-			train.Apply(start);
+		if (closeStart != HuntTrainEvent.None)
+			train.Apply(closeStart);
 	}
 
 	private uint? GetIntendedUseRowId(uint territoryId) =>

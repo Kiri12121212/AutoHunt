@@ -34,10 +34,10 @@ public enum HuntTrainEvent
 	/// <summary>Idle → Navigate when already mounted / mount skipped.</summary>
 	StartNavigate,
 
-	/// <summary>Teleport → Mount when TP plan clears / arrived in zone.</summary>
+	/// <summary>Teleport → Navigate when TP plan clears / arrived in zone.</summary>
 	TeleportArrived,
 
-	/// <summary>Mount → Navigate when mounted or mount skipped.</summary>
+	/// <summary>Mount → Navigate when mounted/skipped and no pending TP.</summary>
 	MountReady,
 
 	/// <summary>Navigate → Unmount when within flag arrival tolerance.</summary>
@@ -74,7 +74,9 @@ public readonly struct HuntTrainTickSnapshot
 	/// <summary>Hard abort / reset request.</summary>
 	public bool Abort { get; init; }
 
-	/// <summary>Flag needs teleport (Idle only).</summary>
+	/// <summary>
+	/// Teleport plan active — Idle start and Mount→Teleport after mount-before-TP.
+	/// </summary>
 	public bool NeedsTeleport { get; init; }
 
 	/// <summary>Same-zone / ready to mount (Idle only; after NeedsTeleport).</summary>
@@ -136,7 +138,9 @@ public static class HuntTrainTransition
 			(HuntTrainPhase.Idle, HuntTrainEvent.StartTeleport) => HuntTrainPhase.Teleport,
 			(HuntTrainPhase.Idle, HuntTrainEvent.StartMount) => HuntTrainPhase.Mount,
 			(HuntTrainPhase.Idle, HuntTrainEvent.StartNavigate) => HuntTrainPhase.Navigate,
-			(HuntTrainPhase.Teleport, HuntTrainEvent.TeleportArrived) => HuntTrainPhase.Mount,
+			// Mount before TP: after mount ready with a pending plan, cast teleport.
+			(HuntTrainPhase.Mount, HuntTrainEvent.StartTeleport) => HuntTrainPhase.Teleport,
+			(HuntTrainPhase.Teleport, HuntTrainEvent.TeleportArrived) => HuntTrainPhase.Navigate,
 			(HuntTrainPhase.Mount, HuntTrainEvent.MountReady) => HuntTrainPhase.Navigate,
 			(HuntTrainPhase.Mount, HuntTrainEvent.EnterCombat) => HuntTrainPhase.Combat,
 			(HuntTrainPhase.Navigate, HuntTrainEvent.FlagArrived) => HuntTrainPhase.Unmount,
@@ -160,6 +164,7 @@ public static class HuntTrainTransition
 	/// <summary>
 	/// Choose at most one event for the current phase from a soft snapshot.
 	/// Priority when Idle: NeedsTeleport → AlreadyMountedOrSkipMount → SameZoneReady.
+	/// Mount: PartyEngaged → else MountComplete+NeedsTeleport → StartTeleport → else MountReady.
 	/// Divert/engage: PartyEngaged wins over MountReady / FlagArrived while in Mount/Navigate.
 	/// Master off / Abort → <see cref="HuntTrainEvent.Abort"/> when not Idle.
 	/// </summary>
@@ -176,9 +181,11 @@ public static class HuntTrainTransition
 				: HuntTrainEvent.None,
 			HuntTrainPhase.Mount => snap.PartyEngaged
 				? HuntTrainEvent.EnterCombat
-				: snap.MountComplete
-					? HuntTrainEvent.MountReady
-					: HuntTrainEvent.None,
+				: snap.MountComplete && snap.NeedsTeleport
+					? HuntTrainEvent.StartTeleport
+					: snap.MountComplete
+						? HuntTrainEvent.MountReady
+						: HuntTrainEvent.None,
 			HuntTrainPhase.Navigate => snap.PartyEngaged
 				? HuntTrainEvent.EnterCombat
 				: snap.WithinFlagArrival

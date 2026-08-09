@@ -11,7 +11,8 @@ public static class HuntTrainObserve
 {
 	/// <summary>
 	/// Idle start event when a hunt flag is adopted.
-	/// Teleport plan active → <see cref="HuntTrainEvent.StartTeleport"/>;
+	/// Teleport plan + mount needed → <see cref="HuntTrainEvent.StartMount"/> (mount before TP);
+	/// teleport plan and already mounted / mount off → <see cref="HuntTrainEvent.StartTeleport"/>;
 	/// already-close skip → Mount or Navigate by <paramref name="useMount"/>;
 	/// otherwise <see cref="HuntTrainEvent.None"/>.
 	/// </summary>
@@ -19,13 +20,19 @@ public static class HuntTrainObserve
 		bool pluginEnabled,
 		bool teleportPlanActive,
 		bool alreadyCloseSkip,
-		bool useMount)
+		bool useMount,
+		bool alreadyMountedOrSkipMount = false)
 	{
 		if (!pluginEnabled)
 			return HuntTrainEvent.None;
 
 		if (teleportPlanActive)
+		{
+			// Mount before casting TP when UseMount and not already travel-ready.
+			if (useMount && !alreadyMountedOrSkipMount)
+				return HuntTrainEvent.StartMount;
 			return HuntTrainEvent.StartTeleport;
+		}
 
 		if (!alreadyCloseSkip)
 			return HuntTrainEvent.None;
@@ -35,7 +42,8 @@ public static class HuntTrainObserve
 
 	/// <summary>
 	/// Progress snapshot for <see cref="HuntTrainController.Tick"/>.
-	/// Idle start fields stay false — flag starts use <see cref="DecideFlagStart"/> + Apply.
+	/// Idle start fields stay false except <see cref="HuntTrainTickSnapshot.NeedsTeleport"/>
+	/// (Mount→Teleport after mount-before-TP). Flag starts use <see cref="DecideFlagStart"/> + Apply.
 	/// </summary>
 	/// <param name="pluginEnabled">Master <c>Config.Enabled</c>.</param>
 	/// <param name="abort">Hard abort request.</param>
@@ -62,7 +70,8 @@ public static class HuntTrainObserve
 		{
 			PluginEnabled = pluginEnabled,
 			Abort = abort,
-			// Meaningful only while Teleport / Mount — Decide ignores otherwise.
+			// Mount Decide uses this for Mount→Teleport; Teleport Decide uses TeleportComplete.
+			NeedsTeleport = teleportPlanActive,
 			TeleportComplete = !teleportPlanActive,
 			// Already mounted/in-flight completes Mount even if a WaitReady job is stuck.
 			MountComplete = MountDecision.IsTrainMountComplete(

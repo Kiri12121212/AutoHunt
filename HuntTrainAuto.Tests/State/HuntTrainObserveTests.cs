@@ -17,7 +17,20 @@ public sealed class HuntTrainObserveTests
 	}
 
 	[Fact]
-	public void DecideFlagStart_teleport_plan_starts_Teleport()
+	public void DecideFlagStart_teleport_plan_with_mount_starts_Mount()
+	{
+		Assert.Equal(
+			HuntTrainEvent.StartMount,
+			HuntTrainObserve.DecideFlagStart(
+				pluginEnabled: true,
+				teleportPlanActive: true,
+				alreadyCloseSkip: false,
+				useMount: true,
+				alreadyMountedOrSkipMount: false));
+	}
+
+	[Fact]
+	public void DecideFlagStart_teleport_plan_already_mounted_starts_Teleport()
 	{
 		Assert.Equal(
 			HuntTrainEvent.StartTeleport,
@@ -25,19 +38,33 @@ public sealed class HuntTrainObserveTests
 				pluginEnabled: true,
 				teleportPlanActive: true,
 				alreadyCloseSkip: false,
-				useMount: true));
+				useMount: true,
+				alreadyMountedOrSkipMount: true));
 	}
 
 	[Fact]
-	public void DecideFlagStart_teleport_beats_AlreadyClose()
+	public void DecideFlagStart_teleport_plan_mount_off_starts_Teleport()
 	{
 		Assert.Equal(
 			HuntTrainEvent.StartTeleport,
 			HuntTrainObserve.DecideFlagStart(
 				pluginEnabled: true,
 				teleportPlanActive: true,
+				alreadyCloseSkip: false,
+				useMount: false));
+	}
+
+	[Fact]
+	public void DecideFlagStart_teleport_beats_AlreadyClose_still_mount_first()
+	{
+		Assert.Equal(
+			HuntTrainEvent.StartMount,
+			HuntTrainObserve.DecideFlagStart(
+				pluginEnabled: true,
+				teleportPlanActive: true,
 				alreadyCloseSkip: true,
-				useMount: true));
+				useMount: true,
+				alreadyMountedOrSkipMount: false));
 	}
 
 	[Fact]
@@ -114,6 +141,7 @@ public sealed class HuntTrainObserveTests
 		Assert.False(snap.MountComplete);
 		Assert.True(snap.PartyEngaged);
 		Assert.False(snap.CombatEnded);
+		Assert.True(snap.NeedsTeleport);
 	}
 
 	[Fact]
@@ -137,15 +165,20 @@ public sealed class HuntTrainObserveTests
 	[Fact]
 	public void BuildProgressSnapshot_drives_full_progress_pipeline()
 	{
-		var phase = HuntTrainPhase.Teleport;
+		// Mount before TP: Idle→Mount→Teleport→Navigate…
+		var phase = HuntTrainPhase.Mount;
 		phase = HuntTrainTransition.Tick(
 			phase,
-			HuntTrainObserve.BuildProgressSnapshot(pluginEnabled: true, teleportPlanActive: false));
-		Assert.Equal(HuntTrainPhase.Mount, phase);
+			HuntTrainObserve.BuildProgressSnapshot(
+				pluginEnabled: true,
+				teleportPlanActive: true,
+				mountJobActive: false,
+				mounted: true));
+		Assert.Equal(HuntTrainPhase.Teleport, phase);
 
 		phase = HuntTrainTransition.Tick(
 			phase,
-			HuntTrainObserve.BuildProgressSnapshot(pluginEnabled: true, mountJobActive: false));
+			HuntTrainObserve.BuildProgressSnapshot(pluginEnabled: true, teleportPlanActive: false));
 		Assert.Equal(HuntTrainPhase.Navigate, phase);
 
 		phase = HuntTrainTransition.Tick(

@@ -48,7 +48,10 @@ public readonly struct TerritoryCleanupPlan
 	/// </summary>
 	public bool EnqueueInstanceChangeIfNeeded { get; init; }
 
-	/// <summary>Enqueue mount after TP arrival (HTA <c>TaskMount.EnqueueIfEnabled</c>).</summary>
+	/// <summary>
+	/// Remount after TP only when still on foot (TP often keeps mount).
+	/// Caller should skip enqueue when already Mounted/InFlight.
+	/// </summary>
 	public bool EnqueueMount { get; init; }
 
 	public bool ClearInstanceChange { get; init; }
@@ -132,6 +135,7 @@ public static class TerritoryCleanupDecision
 			Kind = TerritoryCleanupKind.TpArrivalHandoff,
 			ClearTeleportPlan = true,
 			EnqueueInstanceChangeIfNeeded = true,
+			// Remount only if land wiped mount; MountRunner skips when already mounted.
 			EnqueueMount = true,
 			// Path may still be running from the previous zone; stop without aborting handoff.
 			StopNavPath = true,
@@ -142,7 +146,7 @@ public static class TerritoryCleanupDecision
 			ClearFlagArrival = true,
 			ClearUnmount = true,
 			// Mount / instance are the handoff — do not clear them after enqueue.
-			// Train stays in Teleport until Framework sees plan cleared → Mount.
+			// Train stays in Teleport until Framework sees plan cleared → Navigate.
 		};
 
 	public static TerritoryCleanupPlan LeaveHuntingFull()

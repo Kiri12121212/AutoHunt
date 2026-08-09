@@ -63,8 +63,9 @@ public static class FlagRestartDecision
 
 	/// <summary>
 	/// Decide abort-then-restart vs start-from-idle for a newly adopted flag.
-	/// <paramref name="teleportPlanActive"/> / <paramref name="alreadyCloseSkip"/> are post-adopt
-	/// observables used only for <see cref="HuntTrainObserve.DecideFlagStart"/>.
+	/// <paramref name="teleportPlanActive"/> / <paramref name="alreadyCloseSkip"/> /
+	/// <paramref name="alreadyMountedOrSkipMount"/> are post-adopt observables for
+	/// <see cref="HuntTrainObserve.DecideFlagStart"/>.
 	/// <paramref name="pipelineActive"/> is the pre-clear snapshot (phase or in-flight work).
 	/// </summary>
 	public static FlagRestartPlan Decide(
@@ -72,13 +73,15 @@ public static class FlagRestartDecision
 		bool pipelineActive,
 		bool teleportPlanActive,
 		bool alreadyCloseSkip,
-		bool useMount)
+		bool useMount,
+		bool alreadyMountedOrSkipMount = false)
 	{
 		var start = HuntTrainObserve.DecideFlagStart(
 			pluginEnabled,
 			teleportPlanActive,
 			alreadyCloseSkip,
-			useMount);
+			useMount,
+			alreadyMountedOrSkipMount);
 
 		return pipelineActive
 			? AbortThenRestart(start)
@@ -94,13 +97,15 @@ public static class FlagRestartDecision
 		bool hasInFlightWork,
 		bool teleportPlanActive,
 		bool alreadyCloseSkip,
-		bool useMount)
+		bool useMount,
+		bool alreadyMountedOrSkipMount = false)
 		=> Decide(
 			pluginEnabled,
 			IsPipelineActive(phase, hasInFlightWork),
 			teleportPlanActive,
 			alreadyCloseSkip,
-			useMount);
+			useMount,
+			alreadyMountedOrSkipMount);
 
 	public static FlagRestartPlan StartFromIdle(HuntTrainEvent startEvent)
 		=> new()
