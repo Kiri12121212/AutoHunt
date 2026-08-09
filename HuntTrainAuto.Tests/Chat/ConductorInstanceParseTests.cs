@@ -35,4 +35,11 @@ public sealed class ConductorInstanceParseTests
 	[Fact]
 	public void TryParse_glyph_beats_ascii()
 		=> Assert.Equal(2, ConductorInstanceParse.TryParse("i3 \uE0B2"));
+
+	[Theory]
+	[InlineData(0, "instance=none")]
+	[InlineData(3, "instance=3")]
+	[InlineData(10, "instance=none")]
+	public void Describe_reports_parse_outcome(int instance, string expected)
+		=> Assert.Equal(expected, ConductorInstanceParse.Describe(instance));
 }

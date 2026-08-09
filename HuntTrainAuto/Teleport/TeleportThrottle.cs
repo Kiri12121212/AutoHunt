@@ -9,6 +9,10 @@ namespace HuntTrainAuto.Teleport;
 /// </summary>
 public static class TeleportThrottle
 {
+	/// <summary>Compact, side-effect-free throttle diagnostic for call-site logging.</summary>
+	public static string Describe(long nextAllowedMs, long nowMs)
+		=> $"throttle: ready={IsReady(nextAllowedMs, nowMs)}, remainingMs={RemainingMs(nextAllowedMs, nowMs)}";
+
 	/// <summary>Default cooldown after a successful <see cref="TryFire"/> (HTA default interval).</summary>
 	public const int DefaultCooldownMs = 500;
 

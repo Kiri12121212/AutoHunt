@@ -48,4 +48,8 @@ public static class ConductorInstanceParse
 
 		return 0;
 	}
+
+	/// <summary>Compact, side-effect-free parse diagnostic for call-site logging.</summary>
+	public static string Describe(int instance)
+		=> instance is >= 1 and <= 9 ? $"instance={instance}" : "instance=none";
 }

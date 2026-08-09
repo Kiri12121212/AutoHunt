@@ -52,6 +52,10 @@ public static class HuntAlertsFlagDedupe
 	/// </summary>
 	public static readonly TimeSpan DefaultCrossSourceWindow = TimeSpan.FromSeconds(30);
 
+	/// <summary>Compact, log-safe dedupe outcome summary.</summary>
+	public static string Describe(bool suppressed, string scope)
+		=> suppressed ? $"dedupe suppressed: {scope}" : $"dedupe accepted: {scope}";
+
 	/// <summary>
 	/// True when <paramref name="incoming"/> is the same territory and within
 	/// <paramref name="distanceThreshold"/> of <paramref name="active"/> (scaled coords).

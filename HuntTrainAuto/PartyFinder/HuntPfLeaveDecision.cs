@@ -34,6 +34,10 @@ public static class HuntPfLeaveDecision
 	/// <summary>Throttle between /leave retries.</summary>
 	public const int DefaultRetryIntervalMs = 3_000;
 
+	/// <summary>Compact, side-effect-free decision diagnostic for call-site logging.</summary>
+	public static string Describe(HuntPfLeaveKind kind)
+		=> $"action={kind}";
+
 	public static int ClampIdleLeaveMs(int ms)
 	{
 		if (ms < MinIdleLeaveMs)

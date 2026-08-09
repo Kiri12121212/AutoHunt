@@ -30,6 +30,18 @@ public static class HuntAlertsConductorDecision
 {
 	public readonly record struct Result(HuntAlertsConductorAssignKind Kind, string? Name, string? World);
 
+	/// <summary>Compact, log-safe decision summary.</summary>
+	public static string Describe(Result result)
+		=> result.Kind switch
+		{
+			HuntAlertsConductorAssignKind.Added => result.World == null
+				? $"added conductor '{result.Name}'"
+				: $"added conductor '{result.Name}' @{result.World}",
+			HuntAlertsConductorAssignKind.AlreadyPresent => $"conductor already present '{result.Name}'",
+			HuntAlertsConductorAssignKind.Disabled => "auto-conductor disabled",
+			_ => "no conductor name",
+		};
+
 	/// <summary>
 	/// Parse <paramref name="message"/> and, on success, <see cref="ConductorList.TryAdd"/> the
 	/// bare character name. Never throws for bad input; caller soft-fails around IPC.

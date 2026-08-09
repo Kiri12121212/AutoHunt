@@ -20,6 +20,12 @@ public static class HuntTrainMessageMapper
 	/// <summary>Fallback <c>Map.SizeFactor</c> when sheets are unavailable.</summary>
 	public const float DefaultSizeFactor = 100f;
 
+	/// <summary>Normalize a mapper rejection into a log-safe summary.</summary>
+	public static string DescribeRejectReason(string? rejectReason)
+		=> string.IsNullOrWhiteSpace(rejectReason)
+			? "mapping rejected"
+			: $"mapping rejected: {rejectReason.Trim()}";
+
 	/// <summary>
 	/// Unpack sheet-resolved params for <see cref="TryMap"/>, or defaults when
 	/// <paramref name="resolved"/> is null (sheets missing / territory unknown).

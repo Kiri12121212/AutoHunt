@@ -75,6 +75,30 @@ public enum HuntAlertsBusyDeferKind
 /// </summary>
 public static class HuntAlertsPipelineIntake
 {
+	/// <summary>Compact, log-safe intake outcome summary.</summary>
+	public static string Describe(HuntAlertsPipelineIntakeKind result)
+		=> result switch
+		{
+			HuntAlertsPipelineIntakeKind.EnterPipeline => "enter pipeline",
+			HuntAlertsPipelineIntakeKind.DeferUntilOnWorld => "defer until on hunt world",
+			_ => "skip pipeline",
+		};
+
+	/// <summary>Compact, log-safe pending-enter outcome summary.</summary>
+	public static string Describe(HuntAlertsEnterWithPendingKind result)
+		=> result switch
+		{
+			HuntAlertsEnterWithPendingKind.Enter => "enter with no pending defer",
+			HuntAlertsEnterWithPendingKind.ReplacePendingKeepDefer => "replace pending flag and keep defer",
+			_ => "abort prior visit then enter",
+		};
+
+	/// <summary>Compact, log-safe busy-defer outcome summary.</summary>
+	public static string Describe(HuntAlertsBusyDeferKind result)
+		=> result == HuntAlertsBusyDeferKind.RefreshFlagKeepWorld
+			? "refresh pending flag and keep destination"
+			: "skip conflicting busy defer";
+
 	/// <summary>
 	/// Decide skip / enter / defer from the world-visit outcome.
 	/// <see cref="HuntAlertsWorldVisitAction.RequestWorldVisit"/> must not also start TP

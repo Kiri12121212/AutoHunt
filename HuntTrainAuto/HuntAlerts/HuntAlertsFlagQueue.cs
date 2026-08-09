@@ -23,6 +23,10 @@ namespace HuntTrainAuto.HuntAlerts;
 /// </summary>
 public static class HuntAlertsFlagQueue
 {
+	/// <summary>Compact, log-safe queue action summary.</summary>
+	public static string Describe(string action, int count = 0)
+		=> count > 0 ? $"{action} count={count}" : action;
+
 	/// <summary>
 	/// Whether Framework HA drain Accept/Adopt should Clear the IPC queue.
 	/// Always false: Clear during handle drops flags enqueued later in the same tick.
@@ -83,11 +87,15 @@ public static class HuntAlertsFlagQueue
 		=> clearPendingDefer;
 
 	/// <summary>Enqueue from the HuntAlerts CallGate callback (any thread).</summary>
-	public static void Enqueue(ConcurrentQueue<HuntFlag> queue, HuntFlag flag)
+	public static void Enqueue(
+		ConcurrentQueue<HuntFlag> queue,
+		HuntFlag flag,
+		Action<string>? onDebug = null)
 	{
 		ArgumentNullException.ThrowIfNull(queue);
 		ArgumentNullException.ThrowIfNull(flag);
 		queue.Enqueue(flag);
+		onDebug?.Invoke(Describe("enqueued mapped flag", queue.Count));
 	}
 
 	/// <summary>
@@ -100,10 +108,14 @@ public static class HuntAlertsFlagQueue
 	/// queue — Plugin must also suppress Drain for the remainder of the Framework tick
 	/// (conductor-wins; see <see cref="SuppressDrainAfterChatClear"/>).
 	/// </summary>
-	public static void Clear(ConcurrentQueue<HuntFlag> queue)
+	public static void Clear(ConcurrentQueue<HuntFlag> queue, Action<string>? onDebug = null)
 	{
 		ArgumentNullException.ThrowIfNull(queue);
-		while (queue.TryDequeue(out _)) { }
+		var count = 0;
+		while (queue.TryDequeue(out _))
+			count++;
+		if (count > 0)
+			onDebug?.Invoke(Describe("cleared queued flags", count));
 	}
 
 	/// <summary>
@@ -135,22 +147,30 @@ public static class HuntAlertsFlagQueue
 	/// then handles only <see cref="SelectNewestForTick"/> (newest wins for the tick).
 	/// Handlers must not Clear this queue during handle.
 	/// </summary>
-	public static void Drain(ConcurrentQueue<HuntFlag> queue, Action<HuntFlag> handle)
+	public static void Drain(
+		ConcurrentQueue<HuntFlag> queue,
+		Action<HuntFlag> handle,
+		Action<string>? onDebug = null)
 	{
 		ArgumentNullException.ThrowIfNull(queue);
 		ArgumentNullException.ThrowIfNull(handle);
 
-		var newest = SelectNewestForTick(DequeueBatch(queue));
+		var batch = DequeueBatch(queue);
+		var newest = SelectNewestForTick(batch);
 		if (newest is null)
 			return;
 
 		try
 		{
 			handle(newest);
+			onDebug?.Invoke(Describe(
+				batch.Count == 1 ? "drained mapped flag" : "drained newest mapped flag; discarded older flags",
+				batch.Count));
 		}
-		catch
+		catch (Exception ex)
 		{
 			// Soft-fail: must not throw out of Framework.Update.
+			onDebug?.Invoke($"drain handler soft-fail: {ex.GetType().Name}");
 		}
 	}
 }

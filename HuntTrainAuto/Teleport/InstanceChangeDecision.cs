@@ -119,4 +119,11 @@ public static class InstanceChangeDecision
 
 		return ChangeTickResult.Continue;
 	}
+
+	public static string Describe(ApproachAction action)
+		=> $"approach={action}";
+
+	public static string Describe(ChangeTickResult result)
+		=> $"change={result}";
+
 }

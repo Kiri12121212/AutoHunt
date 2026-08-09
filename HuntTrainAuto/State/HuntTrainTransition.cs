@@ -119,6 +119,10 @@ public readonly struct HuntTrainTickSnapshot
 /// </summary>
 public static class HuntTrainTransition
 {
+	/// <summary>Compact, side-effect-free transition diagnostic for call-site logging.</summary>
+	public static string Describe(HuntTrainPhase from, HuntTrainEvent ev, HuntTrainPhase to)
+		=> $"phase={from} --{ev}--> {to}";
+
 	/// <summary>
 	/// True when <paramref name="ev"/> moves <paramref name="from"/> to a different phase.
 	/// <see cref="HuntTrainEvent.None"/> and illegal pairs return false and leave <paramref name="to"/> = <paramref name="from"/>.

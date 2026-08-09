@@ -4,6 +4,17 @@ namespace HuntTrainAuto.Tests.State;
 
 public sealed class HuntTrainTransitionTests
 {
+	[Fact]
+	public void Describe_formats_phase_edge()
+	{
+		Assert.Equal(
+			"phase=Mount --StartTeleport--> Teleport",
+			HuntTrainTransition.Describe(
+				HuntTrainPhase.Mount,
+				HuntTrainEvent.StartTeleport,
+				HuntTrainPhase.Teleport));
+	}
+
 	[Theory]
 	[InlineData(HuntTrainPhase.Idle, HuntTrainEvent.StartTeleport, HuntTrainPhase.Teleport)]
 	[InlineData(HuntTrainPhase.Idle, HuntTrainEvent.StartMount, HuntTrainPhase.Mount)]

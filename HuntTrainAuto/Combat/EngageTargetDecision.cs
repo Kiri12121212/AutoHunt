@@ -281,4 +281,8 @@ public static class EngageTargetDecision
 		bool inCombatPhase,
 		bool hasDeferredFlag)
 		=> !inCombatPhase && hasDeferredFlag;
+
+	public static string Describe(in EngageTargetPick pick)
+		=> $"target={pick.Kind}, index={pick.Index}";
+
 }

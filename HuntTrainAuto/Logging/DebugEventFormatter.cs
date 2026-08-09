@@ -17,6 +17,17 @@ public static class DebugEventFormatter
 			DebugEventKind.PhaseChange => "State",
 			DebugEventKind.Mount => "Mount",
 			DebugEventKind.Unmount => "Unmount",
+			DebugEventKind.FakeHunt => "FakeHunt",
+			DebugEventKind.Divert => "Divert",
+			DebugEventKind.Engage => "Engage",
+			DebugEventKind.Teleport => "Teleport",
+			DebugEventKind.Instance => "Instance",
+			DebugEventKind.Navigate => "Navigate",
+			DebugEventKind.Combat => "Combat",
+			DebugEventKind.HuntAlerts => "HuntAlerts",
+			DebugEventKind.PartyFinder => "PF",
+			DebugEventKind.Chat => "Chat",
+			DebugEventKind.Map => "Map",
 			_ => kind.ToString(),
 		};
 

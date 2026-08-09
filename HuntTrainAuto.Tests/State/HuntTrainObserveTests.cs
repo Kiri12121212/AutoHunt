@@ -5,6 +5,12 @@ namespace HuntTrainAuto.Tests.State;
 public sealed class HuntTrainObserveTests
 {
 	[Fact]
+	public void DescribeFlagStart_formats_observed_event()
+	{
+		Assert.Equal("flag-start=StartMount", HuntTrainObserve.DescribeFlagStart(HuntTrainEvent.StartMount));
+	}
+
+	[Fact]
 	public void DecideFlagStart_master_off_is_None()
 	{
 		Assert.Equal(

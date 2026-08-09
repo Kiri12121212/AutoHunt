@@ -117,6 +117,14 @@ public sealed class RsrSettingsDecisionTests
 	}
 
 	[Fact]
+	public void Describe_formats_resolved_settings()
+		=> Assert.Equal(
+			"targeting=Nearest, hostile=TargetsHaveTarget",
+			RsrSettingsDecision.Describe(
+				RsrTargetingType.Nearest,
+				RsrTargetHostileType.TargetsHaveTarget));
+
+	[Fact]
 	public void HostileTypeSetting_uses_clamped_config_value()
 	{
 		var hostile = RsrSettingsDecision.ClampHostileType(RsrTargetHostileType.TargetsHaveTarget);

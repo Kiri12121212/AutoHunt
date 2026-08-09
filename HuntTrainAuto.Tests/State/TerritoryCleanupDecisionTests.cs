@@ -5,6 +5,16 @@ namespace HuntTrainAuto.Tests.State;
 public sealed class TerritoryCleanupDecisionTests
 {
 	[Fact]
+	public void Plan_Describe_includes_kind_and_handoff()
+	{
+		var description = TerritoryCleanupDecision.TpArrivalHandoff().Describe();
+
+		Assert.Contains("kind=TpArrivalHandoff", description);
+		Assert.Contains("instanceHandoff=True", description);
+		Assert.Contains("mountHandoff=True", description);
+	}
+
+	[Fact]
 	public void Decide_stay_hunting_noop_when_no_plan_and_no_flag()
 	{
 		var plan = TerritoryCleanupDecision.Decide(

@@ -23,6 +23,12 @@ public sealed class RsrStopDecisionTests
 	}
 
 	[Fact]
+	public void Describe_formats_trigger_and_path()
+		=> Assert.Equal(
+			"trigger=FlagChange, path=ImmediateClear",
+			RsrStopDecision.Describe(RsrStopTrigger.FlagChange, RsrStopPath.ImmediateClear));
+
+	[Fact]
 	public void DecideClear_stop_only_when_started()
 	{
 		Assert.Equal(RsrEnableKind.None, RsrStopDecision.DecideClear(false));

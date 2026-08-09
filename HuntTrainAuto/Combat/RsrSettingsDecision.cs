@@ -76,4 +76,8 @@ public static class RsrSettingsDecision
 		=> (
 			ResolveTargeting(isTank, tankTargeting, nonTankTargeting),
 			ClampHostileType(hostileType));
+
+	/// <summary>Compact, side-effect-free AutoDuty settings diagnostic for helper logging.</summary>
+	public static string Describe(RsrTargetingType targeting, RsrTargetHostileType hostile)
+		=> $"targeting={targeting}, hostile={hostile}";
 }

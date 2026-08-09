@@ -78,6 +78,12 @@ public readonly struct TerritoryCleanupPlan
 	public bool ClearConductors { get; init; }
 	public bool ResetTrainController { get; init; }
 	public bool SaveConfig { get; init; }
+
+	/// <summary>Compact, side-effect-free territory cleanup diagnostic for call-site logging.</summary>
+	public string Describe()
+		=> $"kind={Kind}, clearPlan={ClearTeleportPlan}, instanceHandoff={EnqueueInstanceChangeIfNeeded}, "
+			+ $"mountHandoff={EnqueueMount}, stopNav={StopNavPath}, invalidateFlag={InvalidateFlagWorldPos}, "
+			+ $"resetTrain={ResetTrainController}, clearConductors={ClearConductors}";
 }
 
 /// <summary>

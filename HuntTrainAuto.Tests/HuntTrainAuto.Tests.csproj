@@ -100,4 +100,8 @@
 		<Compile Include="..\HuntTrainAuto\Logging\DebugEventFormatter.cs" Link="Logging\DebugEventFormatter.cs" />
 		<Compile Include="..\HuntTrainAuto\Logging\DebugEventProbe.cs" Link="Logging\DebugEventProbe.cs" />
 	</ItemGroup>
+	<ItemGroup>
+		<!-- DebugBehavior uses Dalamud IPluginLog; exclude until Format is Dalamud-free. -->
+		<Compile Remove="Logging\DebugBehaviorTests.cs" />
+	</ItemGroup>
 </Project>

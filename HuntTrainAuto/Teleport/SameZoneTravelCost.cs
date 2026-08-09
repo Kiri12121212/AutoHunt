@@ -30,6 +30,10 @@ public readonly struct SameZoneTravelEstimate
 
 	/// <summary>Mesh path length aetheryte → flag (yalms); set when <see cref="Status"/> is Ready.</summary>
 	public float? AetherytePathLengthYalms { get; init; }
+
+	public string Describe()
+		=> $"status={Status}, direct={DirectPathLengthYalms?.ToString() ?? "none"}, "
+			+ $"aetheryte={AetherytePathLengthYalms?.ToString() ?? "none"}";
 }
 
 /// <summary>Config constants for same-zone time-aware TP (pure; mirrored on <see cref="Configuration"/>).</summary>
@@ -234,4 +238,13 @@ public static class SameZoneTravelCost
 			return 0f;
 		return value;
 	}
+
+	public static string DescribeDecision(bool? skipTeleport)
+		=> skipTeleport switch
+		{
+			true => "time decision=skip teleport",
+			false => "time decision=teleport",
+			_ => "time decision=fallback",
+		};
+
 }
