@@ -19,6 +19,7 @@ public readonly struct EngageProbeResult
 		Found = false,
 		Kind = EngageTargetKind.None,
 		Distance = float.PositiveInfinity,
+		EligibilityDistance = float.PositiveInfinity,
 		MobPosition = Vector3.Zero,
 		IsARank = false,
 	};
@@ -27,7 +28,13 @@ public readonly struct EngageProbeResult
 
 	public required EngageTargetKind Kind { get; init; }
 
+	/// <summary>Player → mob distance (yalms). Use for land / engage proximity.</summary>
 	public required float Distance { get; init; }
+
+	/// <summary>
+	/// Flag-centered eligibility distance (yalms). Use for divert / scan-range checks.
+	/// </summary>
+	public required float EligibilityDistance { get; init; }
 
 	public required Vector3 MobPosition { get; init; }
 
@@ -89,7 +96,10 @@ public sealed class EngageTargetHelper
 	/// Soft probe for a nearby engage mob without pathing or EnterCombat.
 	/// Used to divert flag Navigate → land / unmount when the pull is already close.
 	/// </summary>
-	public EngageProbeResult Probe(IList<string> conductors)
+	/// <param name="flagWorldPos">
+	/// Active conductor flag WorldPos when known; enables flag-centered A-rank eligibility.
+	/// </param>
+	public EngageProbeResult Probe(IList<string> conductors, Vector3? flagWorldPos = null)
 	{
 		try
 		{
@@ -98,20 +108,22 @@ public sealed class EngageTargetHelper
 				return EngageProbeResult.None;
 
 			EnsureARankIndex();
-			BuildCandidates(player, conductors);
+			BuildCandidates(player, conductors, flagWorldPos);
 
 			var pick = EngageTargetDecision.Resolve(candidates, getARankScanRange());
 			if (!pick.Found || pick.Index < 0 || pick.Index >= candidateObjects.Count)
 				return EngageProbeResult.None;
 
 			var mob = candidateObjects[pick.Index];
+			var candidate = candidates[pick.Index];
 			return new EngageProbeResult
 			{
 				Found = true,
 				Kind = pick.Kind,
-				Distance = Vector3.Distance(player.Position, mob.Position),
+				Distance = candidate.Distance,
+				EligibilityDistance = candidate.EligibilityDistance,
 				MobPosition = mob.Position,
-				IsARank = candidates[pick.Index].IsARank,
+				IsARank = candidate.IsARank,
 			};
 		}
 		catch (Exception ex)
@@ -141,16 +153,20 @@ public sealed class EngageTargetHelper
 	/// Resolve engage target, hard-target it, path ground to it.
 	/// When within engage range → <see cref="CombatSession.EnterCombat"/> via return / caller.
 	/// </summary>
+	/// <param name="flagWorldPos">
+	/// Active conductor flag WorldPos when known; enables flag-centered A-rank eligibility.
+	/// </param>
 	/// <returns>True when within engage range of the chosen mob (enter combat phase).</returns>
 	public bool Tick(
 		CombatSession combat,
 		IList<string> conductors,
 		bool pluginEnabled,
-		bool playerDead)
+		bool playerDead,
+		Vector3? flagWorldPos = null)
 	{
 		try
 		{
-			return TickCore(combat, conductors, pluginEnabled, playerDead);
+			return TickCore(combat, conductors, pluginEnabled, playerDead, flagWorldPos);
 		}
 		catch (Exception ex)
 		{
@@ -172,7 +188,8 @@ public sealed class EngageTargetHelper
 		CombatSession combat,
 		IList<string> conductors,
 		bool pluginEnabled,
-		bool playerDead)
+		bool playerDead,
+		Vector3? flagWorldPos)
 	{
 		if (!pluginEnabled || playerDead)
 		{
@@ -202,7 +219,7 @@ public sealed class EngageTargetHelper
 			return false;
 
 		EnsureARankIndex();
-		BuildCandidates(player, conductors);
+		BuildCandidates(player, conductors, flagWorldPos);
 
 		var pick = EngageTargetDecision.Resolve(candidates, getARankScanRange());
 		if (!pick.Found || pick.Index < 0 || pick.Index >= candidateObjects.Count)
@@ -222,7 +239,7 @@ public sealed class EngageTargetHelper
 
 		TrySetTarget(mob);
 
-		var dist = Vector3.Distance(player.Position, mob.Position);
+		var dist = candidates[pick.Index].Distance;
 		var engageRange = CombatDecision.ClampEngageRange(getEngageRange());
 
 		if (EngageTargetDecision.ShouldEnterCombatOnMob(dist, engageRange))
@@ -275,12 +292,16 @@ public sealed class EngageTargetHelper
 		pluginLog.Debug($"A-rank index size={aRankIds.Count}");
 	}
 
-	private void BuildCandidates(IPlayerCharacter player, IList<string> conductors)
+	private void BuildCandidates(
+		IPlayerCharacter player,
+		IList<string> conductors,
+		Vector3? flagWorldPos)
 	{
 		candidates.Clear();
 		candidateObjects.Clear();
 
 		var playerPos = player.Position;
+		var flagPos = flagWorldPos is { } fp && fp != Vector3.Zero ? fp : (Vector3?)null;
 		var aIds = aRankIds ?? [];
 		IGameObject? conductorFightTarget = null;
 		var partyFightTargets = new HashSet<uint>();
@@ -332,6 +353,11 @@ public sealed class EngageTargetHelper
 			if (!isConductorPull && !isPartyPull && !isA)
 				continue;
 
+			var playerDist = Vector3.Distance(playerPos, obj.Position);
+			float? flagDist = flagPos is { } flag
+				? Vector3.Distance(flag, obj.Position)
+				: null;
+
 			var index = candidateObjects.Count;
 			candidateObjects.Add(obj);
 			candidates.Add(new EngageMobCandidate
@@ -340,7 +366,8 @@ public sealed class EngageTargetHelper
 				IsConductorFightTarget = isConductorPull,
 				IsPartyFightTarget = isPartyPull,
 				IsARank = isA,
-				Distance = Vector3.Distance(playerPos, obj.Position),
+				Distance = playerDist,
+				EligibilityDistance = EngageTargetDecision.EligibilityDistance(playerDist, flagDist),
 				IsAlive = true,
 			});
 		}

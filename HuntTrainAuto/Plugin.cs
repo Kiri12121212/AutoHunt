@@ -1433,7 +1433,8 @@ public sealed class Plugin : IDalamudPlugin
 				combat.Session,
 				Config.Conductors,
 				pluginEnabled: true,
-				playerDead: false);
+				playerDead: false,
+				flagWorldPos: TryActiveFlagWorldPos());
 		}
 
 		// Death / mob-dead / combat-end → CombatDecision Idle (RsrStopPath.CombatPhaseTick).
@@ -1611,6 +1612,7 @@ public sealed class Plugin : IDalamudPlugin
 
 	/// <summary>
 	/// When an A-rank / conductor fight is already close: PathStop flag nav, land, unmount (hgb1/55fa).
+	/// Divert eligibility is flag-centered when active flag WorldPos is known.
 	/// </summary>
 	private void TryDivertToNearbyEngage()
 	{
@@ -1626,9 +1628,12 @@ public sealed class Plugin : IDalamudPlugin
 				    or HuntTrainPhase.FollowParty))
 				return;
 
-			var probe = engage.Probe(Config.Conductors);
+			var flagWorldPos = TryActiveFlagWorldPos();
+			var probe = engage.Probe(Config.Conductors, flagWorldPos);
 			if (!probe.Found
-			    || !EngageTargetDecision.ShouldDivertFromFlagNav(probe.Distance, Config.ARankScanRange))
+			    || !EngageTargetDecision.ShouldDivertFromFlagNav(
+				    probe.EligibilityDistance,
+				    Config.ARankScanRange))
 			{
 				// Mob gone / out of divert range — unblock Navigate (hgb1).
 				divertingToEngage = false;
@@ -1648,7 +1653,7 @@ public sealed class Plugin : IDalamudPlugin
 				}
 
 				pluginLog.Information(
-					$"Divert to engage ({probe.Kind}) dist={probe.Distance:0.0}; stop flag nav");
+					$"Divert to engage ({probe.Kind}) eligibility={probe.EligibilityDistance:0.0} playerDist={probe.Distance:0.0}; stop flag nav");
 			}
 
 			var mounted = condition[ConditionFlag.Mounted];
@@ -1659,10 +1664,11 @@ public sealed class Plugin : IDalamudPlugin
 				? Math.Abs(player.Position.Y - probe.MobPosition.Y)
 				: float.PositiveInfinity;
 
+			// Divert stay-in-range uses eligibility; land/unmount below uses player→mob.
 			if (!EngageTargetDecision.ShouldApproachMobFloorForEngage(
 				    mounted,
 				    inFlight,
-				    probe.Distance,
+				    probe.EligibilityDistance,
 				    Config.ARankScanRange))
 				return;
 
@@ -1703,6 +1709,16 @@ public sealed class Plugin : IDalamudPlugin
 		{
 			pluginLog.Debug($"TryDivertToNearbyEngage soft-fail: {ex.Message}");
 		}
+	}
+
+	/// <summary>
+	/// Active conductor flag WorldPos when PointOnFloor has resolved a non-zero position.
+	/// </summary>
+	private Vector3? TryActiveFlagWorldPos()
+	{
+		if (activeHuntFlag?.WorldPos is { } wp && wp != Vector3.Zero)
+			return wp;
+		return null;
 	}
 
 	/// <summary>Adopt combat-deferred conductor flag once A-rank combat ends (3wr1).</summary>

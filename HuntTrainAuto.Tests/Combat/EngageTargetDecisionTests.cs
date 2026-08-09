@@ -6,14 +6,41 @@ namespace HuntTrainAuto.Tests.Combat;
 public sealed class EngageTargetDecisionTests
 {
 	[Theory]
-	[InlineData(50f, 50f)]
+	[InlineData(175f, 175f)]
+	[InlineData(15f, EngageTargetDecision.MinARankScanRange)]
+	[InlineData(350f, EngageTargetDecision.MaxARankScanRange)]
 	[InlineData(10f, EngageTargetDecision.MinARankScanRange)]
-	[InlineData(100f, EngageTargetDecision.MaxARankScanRange)]
 	[InlineData(5f, EngageTargetDecision.MinARankScanRange)]
-	[InlineData(200f, EngageTargetDecision.MaxARankScanRange)]
+	[InlineData(200f, 200f)]
+	[InlineData(400f, EngageTargetDecision.MaxARankScanRange)]
 	[InlineData(float.NaN, EngageTargetDecision.DefaultARankScanRange)]
 	public void ClampARankScanRange(float input, float expected)
 		=> Assert.Equal(expected, EngageTargetDecision.ClampARankScanRange(input));
+
+	[Fact]
+	public void ARankScanRange_constants_cover_flag_area()
+	{
+		Assert.Equal(15f, EngageTargetDecision.MinARankScanRange);
+		Assert.Equal(175f, EngageTargetDecision.DefaultARankScanRange);
+		Assert.Equal(350f, EngageTargetDecision.MaxARankScanRange);
+		Assert.True(EngageTargetDecision.DefaultARankScanRange > 100f);
+		Assert.True(EngageTargetDecision.MaxARankScanRange >= 300f);
+	}
+
+	[Theory]
+	[InlineData(40f, null, 40f)]
+	[InlineData(40f, 12f, 12f)]
+	[InlineData(8f, 30f, 8f)]
+	[InlineData(20f, -1f, 20f)]
+	[InlineData(20f, float.NaN, 20f)]
+	[InlineData(20f, float.PositiveInfinity, 20f)]
+	public void EligibilityDistance_uses_min_of_player_and_flag(
+		float playerToMob,
+		float? flagToMob,
+		float expected)
+		=> Assert.Equal(
+			expected,
+			EngageTargetDecision.EligibilityDistance(playerToMob, flagToMob));
 
 	[Fact]
 	public void Resolve_none_when_empty()
@@ -82,7 +109,33 @@ public sealed class EngageTargetDecisionTests
 		{
 			Mob(0, isA: true, dist: 30f),
 			Mob(1, isA: true, dist: 12f),
-			Mob(2, isA: true, dist: 80f), // out of default 50
+			Mob(2, isA: true, dist: 80f), // out of scan 50
+		};
+		var pick = EngageTargetDecision.Resolve(candidates, 50f);
+		Assert.Equal(EngageTargetKind.NearbyARank, pick.Kind);
+		Assert.Equal(1, pick.Index);
+	}
+
+	[Fact]
+	public void Resolve_uses_eligibility_distance_for_a_rank_range()
+	{
+		// Player far from mob, but mob is near flag → eligibility brings it in range.
+		var candidates = new List<EngageMobCandidate>
+		{
+			Mob(0, isA: true, dist: 90f, eligibility: 20f),
+		};
+		var pick = EngageTargetDecision.Resolve(candidates, 50f);
+		Assert.Equal(EngageTargetKind.NearbyARank, pick.Kind);
+		Assert.Equal(0, pick.Index);
+	}
+
+	[Fact]
+	public void Resolve_picks_nearest_by_eligibility_not_player_distance()
+	{
+		var candidates = new List<EngageMobCandidate>
+		{
+			Mob(0, isA: true, dist: 10f, eligibility: 40f),
+			Mob(1, isA: true, dist: 80f, eligibility: 15f),
 		};
 		var pick = EngageTargetDecision.Resolve(candidates, 50f);
 		Assert.Equal(EngageTargetKind.NearbyARank, pick.Kind);
@@ -226,6 +279,7 @@ public sealed class EngageTargetDecisionTests
 		bool party = false,
 		bool isA = false,
 		float dist = 0f,
+		float? eligibility = null,
 		bool alive = true)
 		=> new()
 		{
@@ -234,6 +288,7 @@ public sealed class EngageTargetDecisionTests
 			IsPartyFightTarget = party,
 			IsARank = isA,
 			Distance = dist,
+			EligibilityDistance = eligibility ?? dist,
 			IsAlive = alive,
 		};
 }

@@ -123,8 +123,11 @@ public sealed class Configuration : IPluginConfiguration
 	public int HuntPartyIdleLeaveMs { get; set; } = HuntPfLeaveDecision.DefaultIdleLeaveMs;
 
 	/// <summary>
-	/// Scan radius (yalms) for nearby A-rank NotoriousMonsters after unmount.
-	/// Conductor-fight join ignores this and uses the conductor's target.
+	/// Scan radius (yalms) for nearby A-rank NotoriousMonsters after unmount /
+	/// divert. When the active flag <see cref="HuntFlag.WorldPos"/> is known,
+	/// eligibility uses flag-centered distance (see
+	/// <see cref="EngageTargetDecision.EligibilityDistance"/>). Conductor-fight
+	/// join ignores this and uses the conductor's target.
 	/// </summary>
 	public float ARankScanRange { get; set; } = EngageTargetDecision.DefaultARankScanRange;
 
