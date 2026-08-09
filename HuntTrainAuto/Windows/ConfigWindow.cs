@@ -515,6 +515,10 @@ public sealed class ConfigWindow : Window, IDisposable
 			"Vnav PathStops at this distance. BossMod (Combat tab) handles melee close-in and dodge; " +
 			"RSR keeps the GCD.");
 
+		ImGui.TextWrapped(
+			"Scan / divert radius around the active conductor flag (min of player→mob and flag→mob). " +
+			"Large enough to find A-ranks near the flag after unmount.");
+
 		var aRankScan = config.ARankScanRange;
 		ImGui.SetNextItemWidth(200f);
 		if (ImGui.SliderFloat(

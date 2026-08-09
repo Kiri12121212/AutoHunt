@@ -44,6 +44,14 @@ public readonly struct EngageMobCandidate
 	/// <summary>Player → mob distance (yalms).</summary>
 	public float Distance { get; init; }
 
+	/// <summary>
+	/// Distance used for NearbyARank / divert eligibility (yalms).
+	/// When a conductor flag WorldPos is known, callers set this to
+	/// <see cref="EngageTargetDecision.EligibilityDistance"/>; otherwise same as
+	/// <see cref="Distance"/>.
+	/// </summary>
+	public float EligibilityDistance { get; init; }
+
 	public bool IsAlive { get; init; }
 }
 
@@ -56,11 +64,14 @@ public readonly struct EngageMobCandidate
 /// </summary>
 public static class EngageTargetDecision
 {
-	/// <summary>Default scan radius for nearby A-ranks (yalms).</summary>
-	public const float DefaultARankScanRange = 50f;
+	/// <summary>
+	/// Default scan radius for nearby A-ranks (yalms) — large enough to cover a
+	/// typical conductor-flag area after unmount, not a melee bubble.
+	/// </summary>
+	public const float DefaultARankScanRange = 175f;
 
-	public const float MinARankScanRange = 10f;
-	public const float MaxARankScanRange = 100f;
+	public const float MinARankScanRange = 15f;
+	public const float MaxARankScanRange = 350f;
 
 	public static float ClampARankScanRange(float range)
 	{
@@ -74,7 +85,25 @@ public static class EngageTargetDecision
 	}
 
 	/// <summary>
+	/// Scan / divert eligibility distance when an active conductor flag WorldPos is known.
+	/// Uses <c>min(player→mob, flag→mob)</c> so (1) mobs near the flag are found even if
+	/// the player is slightly offset after unmount/TP, and (2) mid-path divert still works
+	/// when the player is already near a mob but farther from the flag. When flag distance
+	/// is unknown / invalid, falls back to player→mob only.
+	/// </summary>
+	public static float EligibilityDistance(float playerToMob, float? flagToMob)
+	{
+		if (flagToMob is not { } flagDist
+		    || float.IsNaN(flagDist)
+		    || float.IsInfinity(flagDist)
+		    || flagDist < 0f)
+			return playerToMob;
+		return Math.Min(playerToMob, flagDist);
+	}
+
+	/// <summary>
 	/// Pick engage mob. Conductor &gt; party fight &gt; nearby A-rank.
+	/// NearbyARank uses <see cref="EngageMobCandidate.EligibilityDistance"/> vs scan range.
 	/// </summary>
 	public static EngageTargetPick Resolve(
 		IReadOnlyList<EngageMobCandidate> candidates,
@@ -108,11 +137,11 @@ public static class EngageTargetDecision
 			}
 
 			if (c.IsARank
-				&& c.Distance <= range
-				&& c.Distance < bestADist)
+				&& c.EligibilityDistance <= range
+				&& c.EligibilityDistance < bestADist)
 			{
 				bestA = c.Index;
-				bestADist = c.Distance;
+				bestADist = c.EligibilityDistance;
 			}
 		}
 
@@ -162,6 +191,7 @@ public static class EngageTargetDecision
 
 	/// <summary>
 	/// Abort flag Navigate and divert toward this mob (scan range).
+	/// Pass <see cref="EligibilityDistance"/> when a flag WorldPos is known.
 	/// </summary>
 	public static bool ShouldDivertFromFlagNav(float distanceToMob, float divertRange)
 		=> distanceToMob >= 0f
