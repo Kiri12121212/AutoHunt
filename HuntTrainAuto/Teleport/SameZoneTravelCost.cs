@@ -248,12 +248,4 @@ public static class SameZoneTravelCost
 		return value;
 	}
 
-	public static string DescribeDecision(bool? skipTeleport)
-		=> skipTeleport switch
-		{
-			true => "time decision=skip teleport",
-			false => "time decision=teleport",
-			_ => "time decision=fallback",
-		};
-
 }

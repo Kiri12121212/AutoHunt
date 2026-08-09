@@ -127,14 +127,4 @@ public static class MeshPathfindRetryDecision
 		bool inFlight = false)
 		=> playerOnMesh
 			|| (fly && (hadNavProgressThisEpoch || inFlight));
-
-	public static string Describe(MeshPathfindRetryKind result)
-		=> result switch
-		{
-			MeshPathfindRetryKind.WaitNotReady => "wait (not ready)",
-			MeshPathfindRetryKind.WaitCooldown => "wait (cooldown)",
-			MeshPathfindRetryKind.Start => "start",
-			MeshPathfindRetryKind.Exhausted => "exhausted",
-			_ => $"unknown ({result})",
-		};
 }

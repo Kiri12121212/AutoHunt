@@ -401,14 +401,4 @@ public static class MountDecision
 	public static bool IsSessionTimedOut(long deadlineMs, long nowMs)
 		=> deadlineMs > 0 && nowMs >= deadlineMs;
 
-	public static string Describe(MountTickResult result)
-		=> result.Kind switch
-		{
-			MountTickKind.Done => "done",
-			MountTickKind.Wait => "wait",
-			MountTickKind.SummonRandom => "summon random",
-			MountTickKind.SummonSpecific => $"summon mount {result.SummonMountId}",
-			_ => $"unknown ({result.Kind})",
-		};
-
 }

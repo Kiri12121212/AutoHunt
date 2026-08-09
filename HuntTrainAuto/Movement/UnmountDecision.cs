@@ -257,13 +257,4 @@ public static class UnmountDecision
 	public static bool IsSessionTimedOut(long deadlineMs, long nowMs)
 		=> deadlineMs > 0 && nowMs >= deadlineMs;
 
-	public static string Describe(UnmountTickResult result)
-		=> result.Kind switch
-		{
-			UnmountTickKind.Done => result.ReadyForGroundFollow ? "done (ground follow)" : "done",
-			UnmountTickKind.Wait => "wait",
-			UnmountTickKind.Dismount => "dismount",
-			_ => $"unknown ({result.Kind})",
-		};
-
 }

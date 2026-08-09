@@ -42,7 +42,7 @@ public readonly struct TeleportDecisionResult
 	/// <summary>Intended arrival when action is a teleport; null on skip.</summary>
 	public ArrivalData? Arrival { get; init; }
 
-
+	/// <summary>Compact, side-effect-free decision diagnostic for call-site logging.</summary>
 	public string Describe()
 	{
 		var arrival = Arrival == null
@@ -57,17 +57,6 @@ public readonly struct TeleportDecisionResult
 		Action is TeleportAction.TeleportToZone
 			or TeleportAction.SwitchInstance
 			or TeleportAction.TeleportBecauseFar;
-
-	/// <summary>Compact, side-effect-free decision diagnostic for call-site logging.</summary>
-	public string Describe()
-	{
-		var arrival = Arrival == null
-			? "arrival=none"
-			: $"arrival=aetheryte:{Arrival.AetheryteId}, territory:{Arrival.Territory}, instance:{Arrival.Instance}";
-		return Action == TeleportAction.Skip
-			? $"action={Action}, skip={SkipReason}, {arrival}"
-			: $"action={Action}, {arrival}";
-	}
 }
 
 /// <summary>
