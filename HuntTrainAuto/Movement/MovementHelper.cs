@@ -51,11 +51,32 @@ public sealed class MovementHelper
 		this.pluginLog = pluginLog;
 	}
 
-	/// <summary>Stop active vnavmesh path following.</summary>
-	public void Stop()
+	/// <summary>
+	/// Stop active vnavmesh path following. No-op when nothing is running so divert
+	/// land does not PathStop every Framework tick.
+	/// </summary>
+	/// <returns>True when a running path was stopped.</returns>
+	public bool Stop()
 	{
+		if (!vnav.PathIsRunning())
+			return false;
+
 		vnav.PathStop();
 		DebugBehavior.Debug(pluginLog, enabled: true, "Move", "PathStop requested");
+		return true;
+	}
+
+	/// <summary>Whether vnavmesh is currently following a path.</summary>
+	public bool IsPathRunning()
+	{
+		try
+		{
+			return vnav.PathIsRunning();
+		}
+		catch
+		{
+			return false;
+		}
 	}
 
 	/// <summary>

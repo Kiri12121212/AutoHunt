@@ -1934,25 +1934,33 @@ public sealed class Plugin : IDalamudPlugin
 			// Stop flag remount; fly/walk to the mob floor, then unmount (hgb1/55fa).
 			mount.Clear();
 
-			if (EngageTargetDecision.ShouldLandAndUnmountForEngage(
-				    mounted,
-				    inFlight,
-				    probe.Distance,
-				    engageRange,
-				    verticalDelta))
-			{
-				try
-				{
-					movement.Stop();
-				}
-				catch
-				{
-					// soft-fail PathStop
-				}
+			// Sticky land: once unmount is active, never restart fly Move (vert flicker
+			// above EngageUnmountMaxVerticalDelta was PathStop↔climb thrash).
+			var holdLand = EngageTargetDecision.ShouldHoldDivertLandUnmount(unmount.IsActive);
+			var landNow = holdLand
+				|| EngageTargetDecision.ShouldLandAndUnmountForEngage(
+					mounted,
+					inFlight,
+					probe.Distance,
+					engageRange,
+					verticalDelta);
 
-				// One-shot: re-enqueue every tick reset WaitReady and spammed "Unmount job enqueued".
+			if (landNow)
+			{
+				// One-shot PathStop + enqueue: re-Stop every tick was Path.Stop spam;
+				// vert flicker restarting Move was the up/down loop.
 				if (!unmount.IsActive)
 				{
+					try
+					{
+						if (EngageTargetDecision.ShouldStopPathForDivertLand(movement.IsPathRunning()))
+							movement.Stop();
+					}
+					catch
+					{
+						// soft-fail PathStop
+					}
+
 					unmount.ClearArrivalLatch();
 					// Engage unmount is independent of flag-arrival auto-unmount config.
 					unmount.EnqueueIfEnabled(true);
@@ -2066,7 +2074,12 @@ public sealed class Plugin : IDalamudPlugin
 			if (MountDecision.ShouldClearMountOnArrival(arrival.IsArrived, unmount.ReadyForGroundFollow))
 				mount.Clear();
 			unmount.EnqueueOnArrivalIfEnabled(Config.AutoUnmountAtFlag, arrival.IsArrived);
-			unmount.Tick(flagArrival.PathStoppedForArrival, arrival.IsArrived);
+			// Divert land PathStop is not flag-arrival; tell Unmount path is ready so WaitReady
+			// is not blocked while PathIsRunning briefly lags after Stop.
+			unmount.Tick(
+				flagArrival.PathStoppedForArrival
+				|| (divertingToEngage && unmount.IsActive),
+				arrival.IsArrived);
 			return arrival.IsArrived;
 		}
 		catch (Exception ex)

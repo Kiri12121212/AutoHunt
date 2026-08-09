@@ -295,6 +295,18 @@ public sealed class EngageTargetDecisionTests
 		=> Assert.Equal(expected, EngageTargetDecision.ShouldDivertFromFlagNav(dist, range));
 
 	[Theory]
+	[InlineData(true, true)]
+	[InlineData(false, false)]
+	public void ShouldHoldDivertLandUnmount(bool unmountActive, bool expected)
+		=> Assert.Equal(expected, EngageTargetDecision.ShouldHoldDivertLandUnmount(unmountActive));
+
+	[Theory]
+	[InlineData(true, true)]
+	[InlineData(false, false)]
+	public void ShouldStopPathForDivertLand(bool pathRunning, bool expected)
+		=> Assert.Equal(expected, EngageTargetDecision.ShouldStopPathForDivertLand(pathRunning));
+
+	[Theory]
 	[InlineData(true, false, 3f, 5f, 0f, true)]
 	[InlineData(false, true, 3f, 5f, 0.5f, true)]
 	[InlineData(false, true, 3f, 5f, 10f, false)] // still high above mob floor

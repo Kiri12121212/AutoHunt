@@ -243,6 +243,18 @@ public static class EngageTargetDecision
 	public const float EngageUnmountMaxVerticalDelta = 3f;
 
 	/// <summary>
+	/// Once divert has enqueued unmount, keep holding land — do not restart fly Move.
+	/// Vertical flicker above <see cref="EngageUnmountMaxVerticalDelta"/> must not resume approach
+	/// (that climb/PathStop thrash is the Fake Hunt up/down loop).
+	/// </summary>
+	public static bool ShouldHoldDivertLandUnmount(bool unmountJobActive)
+		=> unmountJobActive;
+
+	/// <summary>PathStop only while vnav is still following (avoid per-tick IPC/log spam).</summary>
+	public static bool ShouldStopPathForDivertLand(bool pathIsRunning)
+		=> pathIsRunning;
+
+	/// <summary>
 	/// Mob is close enough to PathStop + Unmount (within engage range, mounted/flying,
 	/// and near the mob's floor altitude when still in flight).
 	/// </summary>
