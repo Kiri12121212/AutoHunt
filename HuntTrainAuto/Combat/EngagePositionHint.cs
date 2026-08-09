@@ -40,6 +40,12 @@ public sealed class EngagePositionHint
 			&& pos != Vector3.Zero
 			&& Source != EngagePositionHintSource.None;
 
+	/// <summary>Compact state diagnostic for helper logging.</summary>
+	public string Describe()
+		=> !HasHint || WorldPos is not { } pos
+			? "hint=none"
+			: $"hint={Source}, territory={TerritoryTypeId}, position=({pos.X:0.0},{pos.Y:0.0},{pos.Z:0.0})";
+
 	/// <summary>XZ distance (yalms). Ignores Y so approximate map-link floors still rank.</summary>
 	public static float DistanceXZ(Vector3 a, Vector3 b)
 	{

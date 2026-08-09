@@ -189,4 +189,8 @@ public sealed class HuntPfDecisionTests
 		Assert.Equal(4_000, HuntPfDecision.NextActionAt(1_000, 3_000));
 		Assert.Equal(1_000 + HuntPfDecision.MinRetryIntervalMs, HuntPfDecision.NextActionAt(1_000, 1));
 	}
+
+	[Fact]
+	public void Describe_reports_action()
+		=> Assert.Equal("action=ClickJoin", HuntPfDecision.Describe(HuntPfKind.ClickJoin));
 }

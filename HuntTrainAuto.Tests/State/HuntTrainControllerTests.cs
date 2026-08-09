@@ -17,8 +17,10 @@ public sealed class HuntTrainControllerTests
 	{
 		var c = new HuntTrainController();
 		Assert.Equal(HuntTrainPhase.Teleport, c.Apply(HuntTrainEvent.StartTeleport));
+		Assert.Equal("phase=Idle --StartTeleport--> Teleport", c.LastTransitionDescription);
 		Assert.True(c.IsActive);
 		Assert.Equal(HuntTrainPhase.Teleport, c.Apply(HuntTrainEvent.MountReady)); // illegal
+		Assert.Null(c.LastTransitionDescription);
 		Assert.Equal(HuntTrainPhase.Navigate, c.Apply(HuntTrainEvent.TeleportArrived));
 	}
 

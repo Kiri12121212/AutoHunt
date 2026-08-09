@@ -32,15 +32,29 @@ public sealed class HuntAlertsPendingDefer
 /// </summary>
 public static class HuntAlertsPendingDeferSlot
 {
+	/// <summary>Compact, log-safe pending-defer action summary.</summary>
+	public static string Describe(string action, string? world = null)
+		=> string.IsNullOrWhiteSpace(world) ? action : $"{action} world={world}";
+
 	/// <summary>Replace the entire slot (newest wins).</summary>
-	public static void Store(ref HuntAlertsPendingDefer? slot, HuntFlag flag, string world)
-		=> Volatile.Write(ref slot, new HuntAlertsPendingDefer(flag, world));
+	public static void Store(
+		ref HuntAlertsPendingDefer? slot,
+		HuntFlag flag,
+		string world,
+		Action<string>? onDebug = null)
+	{
+		Volatile.Write(ref slot, new HuntAlertsPendingDefer(flag, world));
+		onDebug?.Invoke(Describe("stored deferred flag", world));
+	}
 
 	/// <summary>
 	/// BusyMidVisit / UnknownCurrentWorld same-world: refresh flag only; keep the
 	/// in-flight destination world. No-op when empty (lost race with flush take).
 	/// </summary>
-	public static void RefreshFlagKeepWorld(ref HuntAlertsPendingDefer? slot, HuntFlag flag)
+	public static void RefreshFlagKeepWorld(
+		ref HuntAlertsPendingDefer? slot,
+		HuntFlag flag,
+		Action<string>? onDebug = null)
 	{
 		while (true)
 		{
@@ -50,12 +64,19 @@ public static class HuntAlertsPendingDeferSlot
 
 			var next = new HuntAlertsPendingDefer(flag, cur.World);
 			if (Interlocked.CompareExchange(ref slot, next, cur) == cur)
+			{
+				onDebug?.Invoke(Describe("refreshed deferred flag", cur.World));
 				return;
+			}
 		}
 	}
 
-	public static void Clear(ref HuntAlertsPendingDefer? slot)
-		=> Interlocked.Exchange(ref slot, null);
+	public static void Clear(ref HuntAlertsPendingDefer? slot, Action<string>? onDebug = null)
+	{
+		var prior = Interlocked.Exchange(ref slot, null);
+		if (prior != null)
+			onDebug?.Invoke(Describe("cleared deferred flag", prior.World));
+	}
 
 	/// <summary>
 	/// Atomically take pending when <paramref name="currentWorldName"/> matches the
@@ -64,7 +85,8 @@ public static class HuntAlertsPendingDeferSlot
 	/// </summary>
 	public static HuntAlertsPendingDefer? TryTakeForFlush(
 		ref HuntAlertsPendingDefer? slot,
-		string? currentWorldName)
+		string? currentWorldName,
+		Action<string>? onDebug = null)
 	{
 		var cur = Volatile.Read(ref slot);
 		if (cur == null)
@@ -74,8 +96,12 @@ public static class HuntAlertsPendingDeferSlot
 			return null;
 
 		if (Interlocked.CompareExchange(ref slot, null, cur) != cur)
+		{
+			onDebug?.Invoke(Describe("flush lost to newer deferred flag", cur.World));
 			return null;
+		}
 
+		onDebug?.Invoke(Describe("flushed deferred flag", cur.World));
 		return cur;
 	}
 
@@ -86,9 +112,12 @@ public static class HuntAlertsPendingDeferSlot
 	/// </summary>
 	public static bool TryRestoreIfEmpty(
 		ref HuntAlertsPendingDefer? slot,
-		HuntAlertsPendingDefer taken)
+		HuntAlertsPendingDefer taken,
+		Action<string>? onDebug = null)
 	{
 		ArgumentNullException.ThrowIfNull(taken);
-		return Interlocked.CompareExchange(ref slot, taken, null) == null;
+		var restored = Interlocked.CompareExchange(ref slot, taken, null) == null;
+		onDebug?.Invoke(Describe(restored ? "restored deferred flag" : "restore skipped; newer defer present", taken.World));
+		return restored;
 	}
 }

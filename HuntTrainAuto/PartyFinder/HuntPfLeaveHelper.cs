@@ -3,6 +3,7 @@ using System;
 using Dalamud.Game.ClientState.Conditions;
 using Dalamud.Plugin.Services;
 using HuntTrainAuto.Contracts;
+using HuntTrainAuto.Logging;
 
 namespace HuntTrainAuto.PartyFinder;
 
@@ -20,6 +21,7 @@ public sealed class HuntPfLeaveHelper
 	private readonly Func<int> getIdleLeaveMs;
 	private readonly Func<bool> isSessionActive;
 	private readonly Action onLeft;
+	private readonly Func<bool> isDebugEnabled;
 
 	private bool armedLastStop;
 	private long lastCombatEndMs;
@@ -34,7 +36,8 @@ public sealed class HuntPfLeaveHelper
 		Func<bool> isEnabled,
 		Func<int> getIdleLeaveMs,
 		Func<bool> isSessionActive,
-		Action onLeft)
+		Action onLeft,
+		Func<bool>? isDebugEnabled = null)
 	{
 		this.chat = chat ?? throw new ArgumentNullException(nameof(chat));
 		this.partyList = partyList ?? throw new ArgumentNullException(nameof(partyList));
@@ -44,6 +47,7 @@ public sealed class HuntPfLeaveHelper
 		this.getIdleLeaveMs = getIdleLeaveMs ?? throw new ArgumentNullException(nameof(getIdleLeaveMs));
 		this.isSessionActive = isSessionActive ?? throw new ArgumentNullException(nameof(isSessionActive));
 		this.onLeft = onLeft ?? throw new ArgumentNullException(nameof(onLeft));
+		this.isDebugEnabled = isDebugEnabled ?? (() => false);
 	}
 
 	/// <summary>True after conductor LAST STOP until leave/clear.</summary>
@@ -53,7 +57,7 @@ public sealed class HuntPfLeaveHelper
 	public void ArmLastStop()
 	{
 		armedLastStop = true;
-		pluginLog.Information("Hunt party leave: LAST STOP armed (leave after this combat)");
+		DebugBehavior.Info(pluginLog, "PF", "LAST STOP armed (leave after this combat)");
 	}
 
 	/// <summary>Reset leave state (new flag / territory / master off / dispose).</summary>
@@ -83,7 +87,7 @@ public sealed class HuntPfLeaveHelper
 		}
 		catch (Exception ex)
 		{
-			pluginLog.Debug($"HuntPfLeaveHelper soft-fail: {ex.Message}");
+			LogDebug($"leave tick soft-fail: {ex.Message}");
 		}
 	}
 
@@ -100,10 +104,16 @@ public sealed class HuntPfLeaveHelper
 		}
 
 		if (!enabled)
+		{
+			LogDebugThrottled(nowMs, "leave suppressed: disabled");
 			return;
+		}
 
 		if (HuntPfLeaveDecision.ShouldNoteCombatEnd(wasInCombat, inCombat))
+		{
 			lastCombatEndMs = nowMs;
+			LogDebug("combat end noted");
+		}
 
 		var sessionActive = false;
 		try
@@ -139,11 +149,15 @@ public sealed class HuntPfLeaveHelper
 			lastFlagMs,
 			idleMs,
 			actionReady);
+		if (kind == HuntPfLeaveKind.None)
+			LogDebugThrottled(
+				nowMs,
+				$"leave suppressed: session={sessionActive}, party={inParty}, combat={inCombat}, ready={actionReady}");
 
 		switch (kind)
 		{
 			case HuntPfLeaveKind.ClearLatchOnly:
-				pluginLog.Information("Hunt party leave: party gone; clearing latches");
+				DebugBehavior.Info(pluginLog, "PF", $"party gone; clearing latches ({HuntPfLeaveDecision.Describe(kind)})");
 				FinishLeft();
 				break;
 
@@ -151,10 +165,12 @@ public sealed class HuntPfLeaveHelper
 			case HuntPfLeaveKind.LeaveIdleTimeout:
 				nextActionMs = HuntPfLeaveDecision.NextActionAt(nowMs);
 				var ok = chat.TryExecuteCommand("/leave");
-				pluginLog.Information(
+				DebugBehavior.Info(
+					pluginLog,
+					"PF",
 					ok
-						? $"Hunt party leave: /leave ({kind})"
-						: $"Hunt party leave: /leave soft-fail ({kind}); will retry");
+						? $"/leave ({HuntPfLeaveDecision.Describe(kind)})"
+						: $"/leave soft-fail ({HuntPfLeaveDecision.Describe(kind)}); will retry");
 				if (ok || !IsInParty())
 					FinishLeft();
 				break;
@@ -170,7 +186,7 @@ public sealed class HuntPfLeaveHelper
 		}
 		catch (Exception ex)
 		{
-			pluginLog.Debug($"HuntPfLeaveHelper onLeft soft-fail: {ex.Message}");
+			LogDebug($"onLeft soft-fail: {ex.Message}");
 		}
 	}
 
@@ -190,4 +206,29 @@ public sealed class HuntPfLeaveHelper
 
 		return false;
 	}
+
+	private bool IsDebugEnabled()
+	{
+		try
+		{
+			return isDebugEnabled();
+		}
+		catch
+		{
+			return false;
+		}
+	}
+
+	private void LogDebug(string message)
+		=> DebugBehavior.Debug(pluginLog, IsDebugEnabled(), "PF", message);
+
+	private void LogDebugThrottled(long nowMs, string message)
+		=> DebugBehavior.DebugThrottled(
+			pluginLog,
+			IsDebugEnabled(),
+			"pf.leave-suppressed",
+			HuntPfLeaveDecision.DefaultRetryIntervalMs,
+			nowMs,
+			"PF",
+			message);
 }

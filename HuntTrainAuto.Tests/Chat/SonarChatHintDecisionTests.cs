@@ -13,4 +13,10 @@ public sealed class SonarChatHintDecisionTests
 	[InlineData(null, "Rank A", true, false)]
 	public void ShouldRememberHint(string? sender, string text, bool hasLink, bool expected)
 		=> Assert.Equal(expected, SonarChatHintDecision.ShouldRememberHint(sender, text, hasLink));
+
+	[Theory]
+	[InlineData(true, "remember=true")]
+	[InlineData(false, "remember=false")]
+	public void Describe_reports_remember_outcome(bool shouldRemember, string expected)
+		=> Assert.Equal(expected, SonarChatHintDecision.Describe(shouldRemember));
 }

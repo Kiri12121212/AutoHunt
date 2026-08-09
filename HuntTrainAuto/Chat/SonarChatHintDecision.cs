@@ -35,4 +35,8 @@ public static class SonarChatHintDecision
 
 		return true;
 	}
+
+	/// <summary>Compact, side-effect-free Sonar hint diagnostic for call-site logging.</summary>
+	public static string Describe(bool shouldRememberHint)
+		=> shouldRememberHint ? "remember=true" : "remember=false";
 }

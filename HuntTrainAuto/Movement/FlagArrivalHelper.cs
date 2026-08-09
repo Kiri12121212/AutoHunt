@@ -1,6 +1,8 @@
 #nullable enable
 using System;
 using System.Numerics;
+using Dalamud.Plugin.Services;
+using HuntTrainAuto.Logging;
 
 namespace HuntTrainAuto.Movement;
 
@@ -11,12 +13,14 @@ namespace HuntTrainAuto.Movement;
 public sealed class FlagArrivalHelper
 {
 	private readonly IVnavmeshService vnav;
+	private readonly IPluginLog? pluginLog;
 	private bool pathStoppedForArrival;
 	private Vector3? latchedWorldPos;
 
-	public FlagArrivalHelper(IVnavmeshService vnav)
+	public FlagArrivalHelper(IVnavmeshService vnav, IPluginLog? pluginLog = null)
 	{
 		this.vnav = vnav ?? throw new ArgumentNullException(nameof(vnav));
+		this.pluginLog = pluginLog;
 	}
 
 	/// <summary>True after PathStop was issued for the current latched flag world pos.</summary>
@@ -47,6 +51,7 @@ public sealed class FlagArrivalHelper
 			{
 				pathStoppedForArrival = false;
 				latchedWorldPos = flagWorldPos;
+				DebugBehavior.Debug(pluginLog!, enabled: true, "Arrival", "flag position changed; reset PathStop latch");
 			}
 
 			var result = FlagArrival.Evaluate(
@@ -59,18 +64,32 @@ public sealed class FlagArrivalHelper
 			{
 				vnav.PathStop();
 				pathStoppedForArrival = true;
+				DebugBehavior.Info(pluginLog!, "Arrival", $"PathStop at distance={result.Distance:0.0}");
 			}
 			else if (!result.IsArrived && pathStoppedForArrival)
 			{
 				// Left the arrive band (e.g. still descending / bounced) — allow PathStop again
 				// and let Navigate re-fly (8sy1).
 				pathStoppedForArrival = false;
+				DebugBehavior.Debug(pluginLog!, enabled: true, "Arrival", $"left arrival band; reset PathStop latch distance={result.Distance:0.0}");
+			}
+			else if (!result.IsArrived && flagWorldPos is not null)
+			{
+				DebugBehavior.DebugThrottled(
+					pluginLog!,
+					enabled: true,
+					throttleKey: "arrival.wait",
+					intervalMs: 2000,
+					nowMs: Environment.TickCount64,
+					area: "Arrival",
+					message: $"waiting for flag arrival distance={result.Distance:0.0} tolerance={tolerance:0.0} inFlight={inFlight}");
 			}
 
 			return result;
 		}
-		catch
+		catch (Exception ex)
 		{
+			DebugBehavior.Debug(pluginLog!, enabled: true, "Arrival", $"soft-fail: {ex.Message}");
 			return new FlagArrivalResult
 			{
 				IsArrived = false,

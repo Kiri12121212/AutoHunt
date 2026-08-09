@@ -51,6 +51,18 @@ public sealed class EngageTargetDecisionTests
 	}
 
 	[Fact]
+	public void Describe_formats_target_pick()
+	{
+		var pick = new EngageTargetPick
+		{
+			Kind = EngageTargetKind.NearbyARank,
+			Index = 3,
+		};
+
+		Assert.Equal("target=NearbyARank, index=3", EngageTargetDecision.Describe(pick));
+	}
+
+	[Fact]
 	public void Resolve_prefers_conductor_fight_over_nearby_a_rank()
 	{
 		var candidates = new List<EngageMobCandidate>

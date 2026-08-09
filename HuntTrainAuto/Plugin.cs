@@ -12,6 +12,8 @@ using Dalamud.Interface.Windowing;
 using Dalamud.Plugin;
 using Dalamud.Plugin.Services;
 using FFXIVClientStructs.FFXIV.Client.UI;
+using HuntTrainAuto.Combat;
+using HuntTrainAuto.Logging;
 using Lumina.Excel.Sheets;
 
 namespace HuntTrainAuto;
@@ -57,6 +59,7 @@ public sealed class Plugin : IDalamudPlugin
 	private readonly DebugEventProbe debugProbe;
 	private readonly HuntNotificator notificator;
 	private readonly SonarChatHintIntake sonarChatHintIntake;
+	private readonly FakeHuntSession fakeHunt = new();
 
 	private HuntFlag? activeHuntFlag;
 
@@ -144,6 +147,11 @@ public sealed class Plugin : IDalamudPlugin
 	private bool skipHaPendingChangeWorldRetryThisTick;
 
 	private long teleportNextAllowedMs;
+	/// <summary>
+	/// Tick when invoke went idle (not casting) after <see cref="TeleportPlan.TeleportInvoked"/>;
+	/// 0 while casting / not invoked. Used to release invoke for retry.
+	/// </summary>
+	private long teleportInvokeIdleSinceMs;
 	private bool isMoving;
 	private Vector3 lastPosition;
 
@@ -233,6 +241,11 @@ public sealed class Plugin : IDalamudPlugin
 			NavPathRunning = pathRunning,
 			NavWaypoints = waypoints,
 			NavPathfindInProgress = pathfindInProgress,
+			FakeHuntActive = fakeHunt.IsActive,
+			FakeARankSet = fakeHunt.FakeARankWorldPos != null,
+			FakeHuntSummary = fakeHunt.IsActive
+				? FakeHuntDecision.PlaceNameForPreset(fakeHunt.Preset)
+				: null,
 			BossModAvailable = bossModAvailable,
 			BossModProviderName = bossModProvider,
 			BossModAiActive = bossModAiActive,
@@ -299,15 +312,17 @@ public sealed class Plugin : IDalamudPlugin
 
 		windowSystem = new WindowSystem(typeof(Plugin).Assembly.GetName()?.Name ?? "HuntTrainAuto");
 
-		TeleporterIpc = new TeleporterIpc(pluginInterface);
-		LifestreamIpc = new LifestreamIpc(pluginInterface);
-		VNavmeshIpc = new VNavmeshIpc(pluginInterface);
-		RsrIpc = new RsrIpc(pluginInterface);
+		TeleporterIpc = new TeleporterIpc(pluginInterface, pluginLog, () => Config.EnableDebugLogging);
+		LifestreamIpc = new LifestreamIpc(pluginInterface, pluginLog, () => Config.EnableDebugLogging);
+		VNavmeshIpc = new VNavmeshIpc(pluginInterface, pluginLog, () => Config.EnableDebugLogging);
+		RsrIpc = new RsrIpc(pluginInterface, pluginLog, () => Config.EnableDebugLogging);
 		chat = new GameChat();
 		BossModIpc = new BossModIpc(
 			pluginInterface,
 			chat,
-			() => Config.BossModPreference);
+			() => Config.BossModPreference,
+			pluginLog,
+			() => Config.EnableDebugLogging);
 
 		debugProbe = new DebugEventProbe(debugLog);
 		notificator = new HuntNotificator(
@@ -319,7 +334,10 @@ public sealed class Plugin : IDalamudPlugin
 			PlayNotificationSound);
 
 		// MapManager before HuntAlerts IPC so train messages resolve SizeFactor/offsets.
-		mapManager = new MapManager(dataManager, msg => pluginLog.Warning(msg));
+		mapManager = new MapManager(
+			dataManager,
+			msg => pluginLog.Warning(msg),
+			msg => DebugBehavior.Debug(pluginLog, Config.EnableDebugLogging, "Map", msg));
 		// HuntAlerts → HuntFlag → world-visit / TP-nav intake (TASKS 10.3–10.5).
 		huntAlertsIpc = new HuntAlertsIpc(
 			pluginInterface,
@@ -363,7 +381,13 @@ public sealed class Plugin : IDalamudPlugin
 			debugLog,
 			() => huntAlertsIpc.LastIntakeStatus,
 			() => huntAlertsIpc.LastTrainMessage,
-			() => alertInfoWindow.ShowLatest());
+			() => alertInfoWindow.ShowLatest(),
+			StartFakeHuntNear,
+			StartFakeHuntFar,
+			StartFakeHuntMapFlag,
+			StartFakeHuntInstanceSwap,
+			EndFakeHuntCombat,
+			ClearFakeHunt);
 		openSettings = () => configWindow.IsOpen = true;
 		windowSystem.AddWindow(configWindow);
 		windowSystem.AddWindow(alertInfoWindow);
@@ -372,7 +396,8 @@ public sealed class Plugin : IDalamudPlugin
 			pluginInterface,
 			Config,
 			() => pluginInterface.SavePluginConfig(Config),
-			() => configWindow.IsOpen = true);
+			() => configWindow.IsOpen = true,
+			pluginLog);
 		contextMenu = new ContextMenuService(
 			contextMenuService,
 			dataManager,
@@ -387,7 +412,8 @@ public sealed class Plugin : IDalamudPlugin
 			objectTable,
 			targetManager,
 			condition,
-			pluginLog);
+			pluginLog,
+			() => Config.EnableDebugLogging);
 		mount = new MountRunner(
 			LifestreamIpc,
 			chat,
@@ -396,11 +422,10 @@ public sealed class Plugin : IDalamudPlugin
 			dataManager,
 			pluginLog,
 			() => instanceChange.IsActive);
-		flagWorld = new FlagWorldHelper(VNavmeshIpc);
-		flagArrival = new FlagArrivalHelper(VNavmeshIpc);
+		flagWorld = new FlagWorldHelper(VNavmeshIpc, pluginLog);
+		flagArrival = new FlagArrivalHelper(VNavmeshIpc, pluginLog);
 		unmount = new UnmountRunner(
 			VNavmeshIpc,
-			chat,
 			objectTable,
 			condition,
 			pluginLog,
@@ -441,20 +466,23 @@ public sealed class Plugin : IDalamudPlugin
 			ResolveEngageRange,
 			() => Config.ARankScanRange,
 			() => Config.PreferARankNearHuntHint,
-			ResolveEngagePositionHint);
+			ResolveEngagePositionHint,
+			() => fakeHunt.FakeARankWorldPos,
+			OnFakeARankEnteredCombat);
 		combat = new CombatTransitionHelper(
 			objectTable,
 			partyList,
 			condition,
 			pluginLog,
-			ResolveEngageRange);
+			ResolveEngageRange,
+			() => fakeHunt.IsActive && fakeHunt.EnteredCombatAtMs > 0);
 		rsrEnable = new RsrEnableHelper(RsrIpc, pluginLog, ResolveRsrRotationSettings);
 		bossModEnable = new BossModEnableHelper(
 			BossModIpc,
 			pluginLog,
 			() => Config.BossModIntegration);
 
-		chatMessageHandler = new ChatMessageHandler(chatGui, gameGui, Config);
+		chatMessageHandler = new ChatMessageHandler(chatGui, gameGui, Config, pluginLog);
 		chatMessageHandler.TryGetPlayerSnapshot = TryGetPlayerSnapshot;
 		chatMessageHandler.HuntFlagReceived += OnHuntFlagReceived;
 		chatMessageHandler.ConductorTextReceived += OnConductorTextReceived;
@@ -489,7 +517,7 @@ public sealed class Plugin : IDalamudPlugin
 	/// </summary>
 	private void OnHuntAlertsFlag(HuntFlag flag)
 	{
-		HuntAlertsFlagQueue.Enqueue(huntAlertsFlagQueue, flag);
+		HuntAlertsFlagQueue.Enqueue(huntAlertsFlagQueue, flag, DebugHuntAlerts);
 		if (Config.ShowHuntAlertsInfoWindow)
 			pendingShowAlertInfo = true;
 		if (Config.ShowHuntAlertsChatNotice)
@@ -556,7 +584,8 @@ public sealed class Plugin : IDalamudPlugin
 				LifestreamIpc,
 				TryGetCurrentWorldName(),
 				hasPendingDefer: pending != null,
-				pendingDeferWorld: pending?.World);
+				pendingDeferWorld: pending?.World,
+				onDebug: DebugHuntAlerts);
 
 			// Any ChangeWorld attempt this Process (success or fail) — block same-tick
 			// pending soft-retry (BusyMidVisit refresh after same-pending fail included).
@@ -575,11 +604,23 @@ public sealed class Plugin : IDalamudPlugin
 					$"HuntAlerts defer replace: ChangeWorld failed after Abort → retain pending for {decision.World}");
 			}
 
-			switch (HuntAlertsPipelineIntake.Decide(
-				        decision.Action,
-				        hasPendingDefer: pending != null,
-				        pendingWorld: pending?.World,
-				        newHuntWorld: decision.World))
+			var intake = HuntAlertsPipelineIntake.Decide(
+				decision.Action,
+				hasPendingDefer: pending != null,
+				pendingWorld: pending?.World,
+				newHuntWorld: decision.World);
+			DebugBehavior.Debug(
+				pluginLog,
+				Config.EnableDebugLogging,
+				"HuntAlerts",
+				$"{HuntAlertsPipelineIntake.Describe(intake)}: visit={HuntAlertsWorldVisitDecision.Describe(decision)}");
+			if (intake != HuntAlertsPipelineIntakeKind.Skip || decision.AttemptedChangeWorld)
+				debugProbe.Record(
+					Config.EnableDebugLogging,
+					DebugEventKind.HuntAlerts,
+					$"{HuntAlertsPipelineIntake.Describe(intake)}: {HuntAlertsWorldVisitDecision.Describe(decision)}");
+
+			switch (intake)
 			{
 				case HuntAlertsPipelineIntakeKind.EnterPipeline:
 					ApplyEnterPipeline(flag, decision.World);
@@ -599,7 +640,7 @@ public sealed class Plugin : IDalamudPlugin
 						if (HuntAlertsPipelineIntake.DeferredStashReplacesPrior(pending != null))
 							pluginLog.Information(
 								$"HuntAlerts {decision.Action} → refresh pending flag (keep world {pending?.World})");
-						HuntAlertsPendingDeferSlot.RefreshFlagKeepWorld(ref pendingHuntAlerts, flag);
+						HuntAlertsPendingDeferSlot.RefreshFlagKeepWorld(ref pendingHuntAlerts, flag, DebugHuntAlerts);
 						break;
 					}
 
@@ -609,7 +650,7 @@ public sealed class Plugin : IDalamudPlugin
 					if (HuntAlertsPipelineIntake.DeferredStashReplacesPrior(pending != null))
 						pluginLog.Information(
 							$"HuntAlerts defer replace (newest wins): discarding prior pending for {pending?.World}");
-					HuntAlertsPendingDeferSlot.Store(ref pendingHuntAlerts, flag, decision.World);
+					HuntAlertsPendingDeferSlot.Store(ref pendingHuntAlerts, flag, decision.World, DebugHuntAlerts);
 					break;
 				default:
 					break;
@@ -636,6 +677,17 @@ public sealed class Plugin : IDalamudPlugin
 			pending?.World,
 			newHuntWorld);
 
+		DebugBehavior.Debug(
+			pluginLog,
+			Config.EnableDebugLogging,
+			"HuntAlerts",
+			$"{HuntAlertsPipelineIntake.Describe(disposition)}: pending={pending?.World ?? "none"}, incoming={newHuntWorld ?? "none"}");
+		if (disposition != HuntAlertsEnterWithPendingKind.Enter)
+			debugProbe.Record(
+				Config.EnableDebugLogging,
+				DebugEventKind.HuntAlerts,
+				HuntAlertsPipelineIntake.Describe(disposition));
+
 		switch (disposition)
 		{
 			case HuntAlertsEnterWithPendingKind.ReplacePendingKeepDefer:
@@ -652,7 +704,7 @@ public sealed class Plugin : IDalamudPlugin
 				if (HuntAlertsPipelineIntake.DeferredStashReplacesPrior(pending != null))
 					pluginLog.Information(
 						$"HuntAlerts EnterPipeline → keep defer (same pending world): replacing pending for {pending?.World}");
-				HuntAlertsPendingDeferSlot.Store(ref pendingHuntAlerts, flag, keepWorld);
+				HuntAlertsPendingDeferSlot.Store(ref pendingHuntAlerts, flag, keepWorld, DebugHuntAlerts);
 				return;
 			case HuntAlertsEnterWithPendingKind.AbortVisitThenEnter:
 				// Near-dup / cross-source suppress check *before* Abort/clear: if Accept
@@ -721,6 +773,7 @@ public sealed class Plugin : IDalamudPlugin
 			    engage.TargetIsARank))
 		{
 			deferredCombatFlag = flag;
+			TryPrefetchDeferredTravelCost(flag);
 			pluginLog.Information(
 				"HuntAlerts flag deferred (in combat vs A-rank); will adopt after combat");
 			return;
@@ -794,21 +847,22 @@ public sealed class Plugin : IDalamudPlugin
 				Config.Enabled,
 				Config.AutoTeleport,
 				Config.AutoTeleportAetheryteDistanceDiff,
-				Config.AutoSwitchInstanceToOne,
 				flag,
 				snapshot,
 				ChatMessageHandler.CreateTimeAwareSettings(Config));
 			chatMessageHandler.TeleportIntent.Set(decision);
+			LogTeleportDecision(decision, "flag intake");
 
 			var currentInst = snapshot?.CurrentInstance ?? -1;
+			var rawPublic = PublicInstanceReader.TryReadInstanceId();
 			var targetInst = decision.Arrival?.Instance
 				?? (targetInstanceHint > 0 ? targetInstanceHint : flag.ReportedInstance);
-			pluginLog.Information(
-				$"Teleport decision: {decision.Action} reported={flag.ReportedInstance} "
-				+ $"hint={targetInstanceHint} target={targetInst} current={currentInst}"
-				+ (decision.Action == TeleportAction.Skip
-					? $" skip={decision.SkipReason}"
-					: string.Empty));
+			DebugBehavior.Debug(
+				pluginLog,
+				Config.EnableDebugLogging,
+				"Teleport",
+				$"{decision.Describe()} reported={flag.ReportedInstance} hint={targetInstanceHint} "
+				+ $"target={targetInst} current={currentInst} rawPublic={rawPublic}");
 
 			if (decision.SkipReason != TeleportSkipReason.AwaitingTravelCost)
 				pendingSameZoneTravelCost = null;
@@ -871,7 +925,8 @@ public sealed class Plugin : IDalamudPlugin
 			// Atomic take: newer Store between read and clear is left in the slot.
 			taken = HuntAlertsPendingDeferSlot.TryTakeForFlush(
 				ref pendingHuntAlerts,
-				TryGetCurrentWorldName());
+				TryGetCurrentWorldName(),
+				DebugHuntAlerts);
 			if (taken == null)
 				return;
 
@@ -889,12 +944,41 @@ public sealed class Plugin : IDalamudPlugin
 		{
 			// Take cleared the slot before Accept; restore on failure so the flag is not lost.
 			if (taken != null && !accepted)
-				HuntAlertsPendingDeferSlot.TryRestoreIfEmpty(ref pendingHuntAlerts, taken);
+				HuntAlertsPendingDeferSlot.TryRestoreIfEmpty(ref pendingHuntAlerts, taken, DebugHuntAlerts);
 		}
 	}
 
 	private void ClearPendingHuntAlerts()
-		=> HuntAlertsPendingDeferSlot.Clear(ref pendingHuntAlerts);
+		=> HuntAlertsPendingDeferSlot.Clear(ref pendingHuntAlerts, DebugHuntAlerts);
+
+	private void DebugHuntAlerts(string message)
+		=> DebugBehavior.Debug(pluginLog, Config.EnableDebugLogging, "HuntAlerts", message);
+
+	private void LogTeleportDecision(TeleportDecisionResult decision, string source)
+	{
+		DebugBehavior.Debug(
+			pluginLog,
+			Config.EnableDebugLogging,
+			"Teleport",
+			$"{source}: {decision.Describe()}");
+		if (decision.ShouldTeleport || decision.SkipReason != TeleportSkipReason.AwaitingTravelCost)
+			debugProbe.Record(
+				Config.EnableDebugLogging,
+				DebugEventKind.Teleport,
+				$"{source}: {decision.Describe()}");
+	}
+
+	private void LogTrainTransition()
+	{
+		var transition = train.LastTransitionDescription;
+		if (transition == null)
+			return;
+
+		DebugBehavior.Info(pluginLog, "State", transition);
+		debugProbe.Record(Config.EnableDebugLogging, DebugEventKind.PhaseChange, transition);
+		if (transition.Contains("Navigate", StringComparison.Ordinal))
+			debugProbe.Record(Config.EnableDebugLogging, DebugEventKind.Navigate, transition);
+	}
 
 	private string? TryGetCurrentWorldName()
 	{
@@ -920,6 +1004,7 @@ public sealed class Plugin : IDalamudPlugin
 			    engage.TargetIsARank))
 		{
 			deferredCombatFlag = flag;
+			TryPrefetchDeferredTravelCost(flag);
 			pluginLog.Information(
 				"Conductor flag deferred (in combat vs A-rank); will adopt after combat");
 			return;
@@ -1003,7 +1088,7 @@ public sealed class Plugin : IDalamudPlugin
 		if (clearPendingDefer)
 		{
 			ClearPendingHuntAlerts();
-			HuntAlertsFlagQueue.Clear(huntAlertsFlagQueue);
+			HuntAlertsFlagQueue.Clear(huntAlertsFlagQueue, DebugHuntAlerts);
 			// Conductor-wins: Drain later this tick must not process post-Clear IPC.
 			suppressHaDrainThisTick = HuntAlertsFlagQueue.SuppressDrainAfterChatClear;
 		}
@@ -1061,8 +1146,13 @@ public sealed class Plugin : IDalamudPlugin
 			pipelineActive,
 			teleportPlan.HasActive,
 			alreadyClose,
-			Config.UseMount,
+			true,
 			alreadyMountedOrSkipMount: alreadyMounted);
+		DebugBehavior.Debug(
+			pluginLog,
+			Config.EnableDebugLogging,
+			"State",
+			$"flag restart: {plan.Describe()}");
 
 		ApplyFlagRestart(plan);
 		// Probe post-abort Idle/clears before Start* so mid-pipeline restarts do not
@@ -1072,15 +1162,19 @@ public sealed class Plugin : IDalamudPlugin
 		if (directInstanceChange && decision!.Value.Arrival is { Instance: > 0 } arr)
 		{
 			// Mount before instance approach when needed; ChangeInstance works mounted.
-			mount.EnqueueIfEnabled(Config.UseMount);
+			mount.EnqueueIfEnabled(true);
 			EnqueueChangeInstanceAfterTeleport(arr.Instance, arr.Territory);
 			pluginLog.Information($"Engaging instance switch → {arr.Instance}");
+			debugProbe.Record(
+				Config.EnableDebugLogging,
+				DebugEventKind.Instance,
+				$"engage instance switch target={arr.Instance}");
 		}
 		else if (adopted)
 		{
 			// Mount-before-TP: enqueue mount when StartMount; cast only in Teleport phase.
 			if (plan.StartEvent == HuntTrainEvent.StartMount)
-				mount.EnqueueIfEnabled(Config.UseMount);
+				mount.EnqueueIfEnabled(true);
 			ApplyDelayTeleport();
 			pluginLog.Information(
 				switchInstance
@@ -1090,11 +1184,14 @@ public sealed class Plugin : IDalamudPlugin
 		else if (alreadyClose)
 		{
 			// Same-zone close enough: no TP — mount before nav.
-			mount.EnqueueIfEnabled(Config.UseMount);
+			mount.EnqueueIfEnabled(true);
 		}
 
 		if (plan.StartEvent != HuntTrainEvent.None)
+		{
 			train.Apply(plan.StartEvent);
+			LogTrainTransition();
+		}
 
 		huntPfLeave.NoteFlag(Environment.TickCount64);
 		ObserveDebugSignals();
@@ -1152,6 +1249,7 @@ public sealed class Plugin : IDalamudPlugin
 			}
 
 			movement.ResetMeshPathfindRetry();
+			debugProbe.Record(Config.EnableDebugLogging, DebugEventKind.Navigate, "stopped navigation for flag restart");
 		}
 
 		if (plan.ClearInstanceChange)
@@ -1180,7 +1278,10 @@ public sealed class Plugin : IDalamudPlugin
 		}
 
 		if (plan.ResetTrainController)
+		{
 			train.Reset();
+			LogTrainTransition();
+		}
 	}
 
 	private void ApplyDelayTeleport()
@@ -1205,6 +1306,11 @@ public sealed class Plugin : IDalamudPlugin
 				teleportPlan.HasActive,
 				hunting,
 				hasActiveHuntFlag: activeHuntFlag != null);
+			DebugBehavior.Debug(
+				pluginLog,
+				Config.EnableDebugLogging,
+				"State",
+				$"territory={territoryId}: {plan.Describe()}");
 			ApplyTerritoryCleanup(territoryId, plan);
 		}
 		catch (Exception ex)
@@ -1236,6 +1342,7 @@ public sealed class Plugin : IDalamudPlugin
 			{
 				// soft-fail: vnav / player may be unavailable mid-load
 			}
+			debugProbe.Record(Config.EnableDebugLogging, DebugEventKind.Navigate, $"stopped navigation: {plan.Kind}");
 		}
 
 		if (plan.InvalidateFlagWorldPos && activeHuntFlag != null)
@@ -1277,7 +1384,7 @@ public sealed class Plugin : IDalamudPlugin
 		}
 
 		if (plan.EnqueueMount)
-			mount.EnqueueIfEnabled(Config.UseMount);
+			mount.EnqueueIfEnabled(true);
 
 		if (plan.ClearTeleportPlan)
 		{
@@ -1286,6 +1393,7 @@ public sealed class Plugin : IDalamudPlugin
 					? "TeleportPlan cleared (TP arrival handoff / BetweenAreas)"
 					: "TeleportPlan cleared (territory leave)");
 			teleportPlan.Clear();
+			teleportInvokeIdleSinceMs = 0;
 		}
 
 		if (plan.ClearInstanceChange)
@@ -1298,11 +1406,15 @@ public sealed class Plugin : IDalamudPlugin
 			deferredCombatFlag = null;
 			divertingToEngage = false;
 			engageHint.Clear();
+			fakeHunt.Clear();
 		}
 		if (plan.ClearConductors)
 			ConductorList.Clear(Config.Conductors);
 		if (plan.ResetTrainController)
+		{
 			train.Reset();
+			LogTrainTransition();
+		}
 		if (plan.SaveConfig)
 			pluginInterface.SavePluginConfig(Config);
 	}
@@ -1337,35 +1449,69 @@ public sealed class Plugin : IDalamudPlugin
 			&& active != null
 			&& TeleportGate.IsAutoTeleportEnabled(Config.Enabled, Config.AutoTeleport))
 		{
+			var betweenAreas = condition[ConditionFlag.BetweenAreas];
+			var betweenAreas51 = condition[ConditionFlag.BetweenAreas51];
+			var casting = condition[ConditionFlag.Casting];
+			var isCasting = player!.IsCasting;
+
+			// After IPC accept: hold re-fire until BetweenAreas, or release after idle grace
+			// (cancelled cast / stuck invoke) so we do not double-cast a successful TP.
+			if (teleportPlan.TeleportInvoked)
+			{
+				if (casting || isCasting)
+					teleportInvokeIdleSinceMs = 0;
+				else if (teleportInvokeIdleSinceMs == 0)
+					teleportInvokeIdleSinceMs = now;
+
+				if (TeleportGate.ShouldReleaseTeleportInvoked(
+					    teleportPlan.TeleportInvoked,
+					    casting,
+					    isCasting,
+					    betweenAreas,
+					    betweenAreas51,
+					    teleportInvokeIdleSinceMs,
+					    now))
+				{
+					teleportPlan.ClearTeleportInvoked();
+					teleportInvokeIdleSinceMs = 0;
+					pluginLog.Debug("TeleportInvoked released for retry (idle grace, no BetweenAreas)");
+				}
+			}
+			else
+			{
+				teleportInvokeIdleSinceMs = 0;
+			}
+
 			if (TeleportGate.IsScreenReady(
-				condition[ConditionFlag.BetweenAreas],
-				condition[ConditionFlag.BetweenAreas51],
+				betweenAreas,
+				betweenAreas51,
 				condition[ConditionFlag.OccupiedInCutSceneEvent],
 				condition[ConditionFlag.WatchingCutscene]))
 			{
 				var soft = TeleportThrottle.SoftWaitNextAllowed(
 					teleportNextAllowedMs,
 					now,
-					player!.IsCasting,
+					isCasting,
 					player.CastActionId,
-					condition[ConditionFlag.Casting],
+					casting,
 					condition[ConditionFlag.MountOrOrnamentTransition]);
 				if (soft != null)
 					teleportNextAllowedMs = soft.Value;
 
 				if (TeleportGate.CanAttemptTeleport(
 					condition[ConditionFlag.InCombat],
-					condition[ConditionFlag.BetweenAreas],
-					condition[ConditionFlag.BetweenAreas51],
-					condition[ConditionFlag.Casting],
-					isMoving))
+					betweenAreas,
+					betweenAreas51,
+					casting,
+					isMoving,
+					teleportInvoked: teleportPlan.TeleportInvoked))
 				{
 					if (TeleportThrottle.TryFire(ref teleportNextAllowedMs, now))
 						TryExecuteTeleport(active.AetheryteId);
 				}
 			}
 
-			isMoving = player!.Position != lastPosition;
+			isMoving = player.Position != lastPosition;
 			lastPosition = player.Position;
 		}
 
@@ -1392,8 +1538,9 @@ public sealed class Plugin : IDalamudPlugin
 			ClearPendingHuntAlerts();
 			deferredCombatFlag = null;
 			divertingToEngage = false;
+			fakeHunt.Clear();
 			lastFlagIntakeMemory = HuntAlertsFlagDedupe.Clear(lastFlagIntakeMemory);
-			HuntAlertsFlagQueue.Clear(huntAlertsFlagQueue);
+			HuntAlertsFlagQueue.Clear(huntAlertsFlagQueue, DebugHuntAlerts);
 			mount.Clear();
 			unmount.ClearAll();
 			engage.Clear();
@@ -1403,6 +1550,7 @@ public sealed class Plugin : IDalamudPlugin
 			huntPf.Clear();
 			huntPfLeave.Clear();
 			train.Reset();
+			LogTrainTransition();
 			ObserveDebugSignals();
 			return;
 		}
@@ -1416,7 +1564,7 @@ public sealed class Plugin : IDalamudPlugin
 		if (HuntAlertsFlagQueue.BeginFrameworkTick(
 			    ref suppressHaDrainThisTick,
 			    ref skipHaPendingChangeWorldRetryThisTick))
-			HuntAlertsFlagQueue.Drain(huntAlertsFlagQueue, ProcessHuntAlertsFlag);
+			HuntAlertsFlagQueue.Drain(huntAlertsFlagQueue, ProcessHuntAlertsFlag, DebugHuntAlerts);
 		TryRetryPendingHuntAlertsChangeWorld();
 		TryFlushPendingHuntAlerts();
 
@@ -1432,18 +1580,19 @@ public sealed class Plugin : IDalamudPlugin
 
 		// Arrival/unmount before mount.Tick so AlreadyClose mount jobs are cleared before they remount.
 		var withinArrival = TickFlagArrivalAndUnmount();
+		TryFakeHuntAutoEndCombat(Environment.TickCount64);
 		// Remount while Mount/Navigate if dismounted (post-TP timeout / GA soft-fail recovery).
 		if (train.Phase is HuntTrainPhase.Mount or HuntTrainPhase.Navigate
 		    && MountDecision.ShouldEnqueueForFlagTravel(
-			    Config.UseMount,
+			    true,
 			    condition[ConditionFlag.Mounted],
 			    mount.IsActive,
 			    divertingToEngage,
 			    withinArrival,
 			    unmount.IsActive,
 			    unmount.ReadyForGroundFollow))
-			mount.EnqueueIfEnabled(Config.UseMount);
-		mount.Tick(Config.Mount);
+			mount.EnqueueIfEnabled(true);
+		mount.Tick(MountDecision.RandomMount);
 		// After unmount: join conductor fight or path to nearby A-rank (never follow players).
 		var playerDead = IsLocalPlayerDead();
 		var mountedOrFlying = condition[ConditionFlag.Mounted] || condition[ConditionFlag.InFlight];
@@ -1464,6 +1613,12 @@ public sealed class Plugin : IDalamudPlugin
 		// Enter combat is owned by EngageTargetHelper.
 		var wasInCombatPhase = combat.InCombatPhase;
 		combat.Tick(pluginEnabled: true);
+		if (wasInCombatPhase != combat.InCombatPhase)
+		{
+			var combatMessage = combat.InCombatPhase ? "combat phase entered" : "combat phase exited";
+			DebugBehavior.Info(pluginLog, "Combat", combatMessage);
+			debugProbe.Record(Config.EnableDebugLogging, DebugEventKind.Combat, combatMessage);
+		}
 		if (combat.InCombatPhase)
 			divertingToEngage = false;
 		TryFlushDeferredCombatFlag(wasInCombatPhase, combat.InCombatPhase);
@@ -1478,16 +1633,31 @@ public sealed class Plugin : IDalamudPlugin
 		}
 		// Train-end leave (LAST STOP / idle) — never on bare CombatEnded.
 		huntPfLeave.Tick(wasInCombatPhase, combat.InCombatPhase, nowMs);
-		// Remount on combat-end falling edge (UseMount) — same EnqueueIfEnabled as TP / AlreadyClose.
+		// Remount on combat-end falling edge — same Enqueue as TP / AlreadyClose.
 		if (MountDecision.ShouldEnqueueOnCombatEnd(
 			    wasInCombatPhase,
 			    combat.InCombatPhase,
-			    Config.UseMount))
-			mount.EnqueueIfEnabled(Config.UseMount);
-		// RSR start only in combat phase; Stop on phase exit (death / combat end) via DecideTick.
-		rsrEnable.Tick(combat.InCombatPhase);
-		// BossMod AI (dodge) same lifecycle; RSR keeps GCD, BM owns movement.
-		bossModEnable.Tick(combat.InCombatPhase);
+			    true))
+			mount.EnqueueIfEnabled(true);
+		// Fake Hunt: never arm combat AI; force-stop sticky RSR/BM (AutoOffAfterCombat=false
+		// leaves AutoDuty on across reload — HTA latch alone will not Stop).
+		if (fakeHunt.IsActive)
+		{
+			rsrEnable.Tick(false);
+			bossModEnable.Tick(false);
+			if (!fakeHunt.CombatAiSuppressed)
+			{
+				var rsrOk = rsrEnable.ForceStop("FakeHunt suppress");
+				var bmOk = bossModEnable.ForceStop("FakeHunt suppress");
+				if (rsrOk && bmOk)
+					fakeHunt.NoteCombatAiSuppressed();
+			}
+		}
+		else
+		{
+			rsrEnable.Tick(combat.InCombatPhase);
+			bossModEnable.Tick(combat.InCombatPhase);
+		}
 
 		// Advance HuntTrainController from live runner signals (one event per tick).
 		train.Tick(HuntTrainObserve.BuildProgressSnapshot(
@@ -1497,11 +1667,12 @@ public sealed class Plugin : IDalamudPlugin
 			mountJobActive: mount.IsActive,
 			mounted: condition[ConditionFlag.Mounted],
 			inFlight: condition[ConditionFlag.InFlight],
-			mountConfig: Config.Mount,
+			mountConfig: MountDecision.RandomMount,
 			withinFlagArrival: withinArrival,
 			autoUnmountAtFlag: Config.AutoUnmountAtFlag,
 			readyForGroundFollow: unmount.ReadyForGroundFollow,
 			inCombatPhase: combat.InCombatPhase));
+		LogTrainTransition();
 
 		ObserveDebugSignals();
 	}
@@ -1726,8 +1897,12 @@ public sealed class Plugin : IDalamudPlugin
 					// soft-fail
 				}
 
-				pluginLog.Information(
-					$"Divert to engage ({probe.Kind}) eligibility={probe.EligibilityDistance:0.0} playerDist={probe.Distance:0.0}; stop flag nav");
+				var msg =
+					$"Divert to engage ({probe.Kind}) eligibility={probe.EligibilityDistance:0.0} "
+					+ $"playerDist={probe.Distance:0.0}; stop flag nav"
+					+ (fakeHunt.FakeARankWorldPos != null ? " [FakeHunt]" : string.Empty);
+				pluginLog.Information(msg);
+				debugProbe.Record(Config.EnableDebugLogging, DebugEventKind.Divert, msg);
 			}
 
 			var mounted = condition[ConditionFlag.Mounted];
@@ -1744,7 +1919,17 @@ public sealed class Plugin : IDalamudPlugin
 				    inFlight,
 				    probe.EligibilityDistance,
 				    Config.ARankScanRange))
+			{
+				if (Config.EnableDebugLogging
+				    && DebugThrottle.Try("divert.skipApproach", 2000, Environment.TickCount64))
+				{
+					pluginLog.Debug(
+						$"Divert: skip approach (need mounted/flight) mounted={mounted} "
+						+ $"inFlight={inFlight} elig={probe.EligibilityDistance:0.0}");
+				}
+
 				return;
+			}
 
 			// Stop flag remount; fly/walk to the mob floor, then unmount (hgb1/55fa).
 			mount.Clear();
@@ -1765,18 +1950,44 @@ public sealed class Plugin : IDalamudPlugin
 					// soft-fail PathStop
 				}
 
-				unmount.ClearArrivalLatch();
-				// Engage unmount is independent of flag-arrival auto-unmount config.
-				unmount.EnqueueIfEnabled(true);
+				// One-shot: re-enqueue every tick reset WaitReady and spammed "Unmount job enqueued".
+				if (!unmount.IsActive)
+				{
+					unmount.ClearArrivalLatch();
+					// Engage unmount is independent of flag-arrival auto-unmount config.
+					unmount.EnqueueIfEnabled(true);
+					pluginLog.Information(
+						$"Divert: land/unmount dist={probe.Distance:0.0} range={engageRange:0.0} "
+						+ $"vert={verticalDelta:0.0} mounted={mounted} inFlight={inFlight}");
+				}
+				else if (Config.EnableDebugLogging
+				         && DebugThrottle.Try("divert.waitUnmount", 2000, Environment.TickCount64))
+				{
+					pluginLog.Debug(
+						$"Divert: waiting unmount job phase={unmount.Session.Phase} "
+						+ $"ready={unmount.ReadyForGroundFollow} dist={probe.Distance:0.0}");
+				}
+
 				return;
 			}
 
-			// Still approaching / high above: path to mob floor first.
+			if (Config.EnableDebugLogging
+			    && DebugThrottle.Try("divert.move", 2000, Environment.TickCount64))
+			{
+				pluginLog.Debug(
+					$"Divert: approach mob dist={probe.Distance:0.0} elig={probe.EligibilityDistance:0.0} "
+					+ $"range={engageRange:0.0} vert={verticalDelta:0.0} fly={inFlight} "
+					+ $"pos=({probe.MobPosition.X:0.0},{probe.MobPosition.Y:0.0},{probe.MobPosition.Z:0.0})");
+			}
+
+			// Still approaching / high above: path to mob floor.
+			// Fly only when already airborne — mounted-on-ground + fly forced Takeoff/Jump
+			// and never StartMeshPath (Fake Hunt Near looked like a no-op).
 			movement.Move(
 				probe.MobPosition,
 				tolerance: 1f,
 				lastPointTolerance: Math.Max(2f, engageRange),
-				fly: inFlight || (mounted && movement.IsFlyingSupported()),
+				fly: inFlight,
 				useMesh: true);
 		}
 		catch (Exception ex)
@@ -1908,7 +2119,10 @@ public sealed class Plugin : IDalamudPlugin
 	{
 		try
 		{
-			var current = LifestreamIpc.GetCurrentInstance();
+			var current = InstanceChangeDecision.ResolveCurrentInstance(
+				PublicInstanceReader.TryReadInstanceId(),
+				LifestreamIpc.GetCurrentInstance(),
+				(int)clientState.Instance);
 			if (!InstanceChangeDecision.ShouldEnqueueIfNeeded(instance, current))
 			{
 				pluginLog.Information(
@@ -1953,8 +2167,7 @@ public sealed class Plugin : IDalamudPlugin
 					flag.MapId,
 					flagMapX.Value,
 					flagMapY.Value,
-					Config.AetheryteBlacklist,
-					Config.DistanceCompensationHack);
+					Config.AetheryteBlacklist);
 			}
 
 			float? distance = null;
@@ -2003,7 +2216,10 @@ public sealed class Plugin : IDalamudPlugin
 			var snapshot = new TeleportPlayerSnapshot
 			{
 				CurrentTerritory = clientState.TerritoryType,
-				CurrentInstance = lifestreamInstance > 0 ? lifestreamInstance : (int)clientState.Instance,
+				CurrentInstance = InstanceChangeDecision.ResolveCurrentInstance(
+					PublicInstanceReader.TryReadInstanceId(),
+					lifestreamInstance,
+					(int)clientState.Instance),
 				TargetInstance = 0,
 				PlayerDistance = distance,
 				AetheryteDistance = aetheryteDistance,
@@ -2025,8 +2241,26 @@ public sealed class Plugin : IDalamudPlugin
 	}
 
 	/// <summary>
+	/// Kick same-zone pathfind while a flag is combat-deferred so flush can decide
+	/// walk vs TP immediately (no post-combat AwaitingTravelCost stall).
+	/// Does not set TeleportIntent — finalize will not engage until flush adopts.
+	/// </summary>
+	private void TryPrefetchDeferredTravelCost(HuntFlag flag)
+	{
+		try
+		{
+			_ = TryGetPlayerSnapshot(flag);
+		}
+		catch (Exception ex)
+		{
+			pluginLog.Debug($"TryPrefetchDeferredTravelCost soft-fail: {ex.Message}");
+		}
+	}
+
+	/// <summary>
 	/// Same-zone only: start/resolve vnav path lengths for time-aware TP.
 	/// Soft-fails to null / Unavailable (distance threshold) when vnav or endpoints missing.
+	/// Reuses an in-flight sample for the same flag (combat-defer prefetch).
 	/// </summary>
 	private SameZoneTravelEstimate? TrySampleSameZoneTravelEstimate(
 		HuntFlag flag,
@@ -2036,20 +2270,47 @@ public sealed class Plugin : IDalamudPlugin
 		NearestAetheryteResult? nearest,
 		MapCoordParams? mapParams)
 	{
-		pendingSameZoneTravelCost = null;
-		if (!Config.AutoTeleportTimeAware || !sameZone)
+		if (!sameZone)
+		{
+			if (pendingSameZoneTravelCost is { } stale && ReferenceEquals(stale.Flag, flag))
+				pendingSameZoneTravelCost = null;
 			return null;
+		}
 
 		if (Config.AutoTeleportRetainDistanceFloor
 			&& distanceYalms is { } d
 			&& d <= Config.AutoTeleportAetheryteDistanceDiff)
+		{
+			if (pendingSameZoneTravelCost is { } close && ReferenceEquals(close.Flag, flag))
+				pendingSameZoneTravelCost = null;
 			return null;
+		}
 
 		if (nearest == null || mapParams == null)
 			return SameZonePathCostSampler.Unavailable();
 
 		try
 		{
+			// Reuse combat-defer prefetch / prior Pending for this flag.
+			if (pendingSameZoneTravelCost is { } pending && ReferenceEquals(pending.Flag, flag))
+			{
+				if (SameZonePathCostSampler.TryResolve(
+					    pending.Direct,
+					    pending.FromAetheryte,
+					    out var reused))
+				{
+					pendingSameZoneTravelCost = null;
+					return reused;
+				}
+
+				if (Environment.TickCount64 - pending.StartedAtMs
+				    < SameZonePathCostSampler.DefaultTimeoutMs)
+					return SameZonePathCostSampler.Pending();
+
+				pendingSameZoneTravelCost = null;
+				return SameZonePathCostSampler.Unavailable();
+			}
+
 			// Zero is "unset" elsewhere (nav / arrival); do not pathfind to origin.
 			Vector3? flagFloor = flag.WorldPos is { } wp && wp != Vector3.Zero
 				? wp
@@ -2109,12 +2370,15 @@ public sealed class Plugin : IDalamudPlugin
 
 		try
 		{
+			// Prefetch-only pending (no AwaitingTravelCost intent yet) — leave tasks running
+			// for flush reuse; do not engage travel mid-combat.
 			if (chatMessageHandler.TeleportIntent.LatestDecision is not
 			    { Action: TeleportAction.Skip, SkipReason: TeleportSkipReason.AwaitingTravelCost })
-			{
-				pendingSameZoneTravelCost = null;
 				return;
-			}
+
+			// Never start mount/TP from a deferred finalize while still fighting.
+			if (combat.InCombatPhase)
+				return;
 
 			SameZoneTravelEstimate estimate;
 			if (nowMs - pending.StartedAtMs >= SameZonePathCostSampler.DefaultTimeoutMs)
@@ -2136,11 +2400,11 @@ public sealed class Plugin : IDalamudPlugin
 				Config.Enabled,
 				Config.AutoTeleport,
 				Config.AutoTeleportAetheryteDistanceDiff,
-				Config.AutoSwitchInstanceToOne,
 				pending.Flag,
 				snapshot,
 				ChatMessageHandler.CreateTimeAwareSettings(Config));
 			chatMessageHandler.TeleportIntent.Set(decision);
+			LogTeleportDecision(decision, "time-aware resolve");
 			TryEngageAfterTravelCost(decision);
 		}
 		catch (Exception ex)
@@ -2155,7 +2419,7 @@ public sealed class Plugin : IDalamudPlugin
 	/// </summary>
 	private void TryEngageAfterTravelCost(TeleportDecisionResult decision)
 	{
-		if (teleportPlan.HasActive)
+		if (teleportPlan.HasActive || combat.InCombatPhase)
 			return;
 
 		if (decision is
@@ -2182,22 +2446,32 @@ public sealed class Plugin : IDalamudPlugin
 						Config.Enabled,
 						teleportPlanActive: true,
 						alreadyCloseSkip: false,
-						Config.UseMount,
+						true,
 						alreadyMountedTp);
 					if (startTp == HuntTrainEvent.StartMount)
-						mount.EnqueueIfEnabled(Config.UseMount);
+						mount.EnqueueIfEnabled(true);
 					if (startTp != HuntTrainEvent.None)
+					{
 						train.Apply(startTp);
+						LogTrainTransition();
+					}
 				}
 
 				return;
 			}
 
-			mount.EnqueueIfEnabled(Config.UseMount);
+			mount.EnqueueIfEnabled(true);
 			EnqueueChangeInstanceAfterTeleport(switchArr.Instance, switchArr.Territory);
 			pluginLog.Information($"Engaging instance switch → {switchArr.Instance} (time-aware)");
+			debugProbe.Record(
+				Config.EnableDebugLogging,
+				DebugEventKind.Instance,
+				$"engage instance switch target={switchArr.Instance} (time-aware)");
 			if (train.Phase == HuntTrainPhase.Idle)
-				train.Apply(Config.UseMount ? HuntTrainEvent.StartMount : HuntTrainEvent.StartNavigate);
+			{
+				train.Apply(HuntTrainEvent.StartMount);
+				LogTrainTransition();
+			}
 			return;
 		}
 
@@ -2218,12 +2492,15 @@ public sealed class Plugin : IDalamudPlugin
 					Config.Enabled,
 					teleportPlanActive: true,
 					alreadyCloseSkip: false,
-					Config.UseMount,
+					true,
 					alreadyMounted);
 				if (start == HuntTrainEvent.StartMount)
-					mount.EnqueueIfEnabled(Config.UseMount);
+					mount.EnqueueIfEnabled(true);
 				if (start != HuntTrainEvent.None)
+				{
 					train.Apply(start);
+					LogTrainTransition();
+				}
 			}
 
 			return;
@@ -2232,7 +2509,7 @@ public sealed class Plugin : IDalamudPlugin
 		if (!alreadyClose)
 			return;
 
-		mount.EnqueueIfEnabled(Config.UseMount);
+		mount.EnqueueIfEnabled(true);
 		if (train.Phase != HuntTrainPhase.Idle)
 			return;
 
@@ -2240,9 +2517,242 @@ public sealed class Plugin : IDalamudPlugin
 			Config.Enabled,
 			teleportPlanActive: false,
 			alreadyCloseSkip: true,
-			Config.UseMount);
+			true);
 		if (closeStart != HuntTrainEvent.None)
+		{
 			train.Apply(closeStart);
+			LogTrainTransition();
+		}
+	}
+
+	private void OnFakeARankEnteredCombat()
+	{
+		var now = Environment.TickCount64;
+		fakeHunt.NoteEnteredCombat(now);
+		debugProbe.Record(
+			Config.EnableDebugLogging,
+			DebugEventKind.Combat,
+			"[FakeHunt] EnterCombat on synthetic NearbyARank");
+	}
+
+	/// <summary>Debug: inject Near flag (~250y) + fake A near flag.</summary>
+	public string? StartFakeHuntNear() => StartFakeHuntPreset(FakeHuntPreset.Near);
+
+	/// <summary>Debug: inject Far flag (~1000y) + fake A near flag.</summary>
+	public string? StartFakeHuntFar() => StartFakeHuntPreset(FakeHuntPreset.Far);
+
+	/// <summary>Debug: inject from current map flag marker + fake A near flag.</summary>
+	public string? StartFakeHuntMapFlag() => StartFakeHuntPreset(FakeHuntPreset.MapFlag);
+
+	/// <summary>Debug: far flag + mismatched ReportedInstance (hunt-style SwitchInstance).</summary>
+	public string? StartFakeHuntInstanceSwap()
+		=> StartFakeHuntPreset(FakeHuntPreset.InstanceSwap);
+
+	/// <summary>Debug: clear combat + fake A (combat-end remount path).</summary>
+	public string? EndFakeHuntCombat()
+	{
+		try
+		{
+			if (!fakeHunt.IsActive)
+				return "No Fake Hunt active";
+
+			combat.Clear();
+			fakeHunt.ClearFakeARank();
+			divertingToEngage = false;
+			var msg = "[FakeHunt] Manual combat end (cleared phase + synthetic A)";
+			pluginLog.Information(msg);
+			debugProbe.Record(Config.EnableDebugLogging, DebugEventKind.FakeHunt, msg);
+			return null;
+		}
+		catch (Exception ex)
+		{
+			pluginLog.Debug($"EndFakeHuntCombat soft-fail: {ex.Message}");
+			return ex.Message;
+		}
+	}
+
+	/// <summary>Debug: tear down Fake Hunt session, adopted flag, pipeline, and stop nav.</summary>
+	public string? ClearFakeHunt()
+	{
+		try
+		{
+			// Reverse StartFakeHuntPreset's AdoptHuntFlag — session-only Clear left
+			// activeHuntFlag + train running, so Clear looked like a no-op.
+			try
+			{
+				movement.Stop();
+			}
+			catch
+			{
+				// soft-fail: vnav / player may be unavailable
+			}
+
+			movement.ResetMeshPathfindRetry();
+			instanceChange.Clear();
+			mount.Clear();
+			flagArrival.Clear();
+			huntPf.Clear();
+			unmount.ClearAll();
+			engage.Clear();
+			// Drop combat phase before IsActive so we cannot arm RSR on a ghost engage.
+			combat.Clear();
+			divertingToEngage = false;
+			activeHuntFlag = null;
+			deferredCombatFlag = null;
+			engageHint.Clear();
+			fakeHunt.Clear();
+			teleportPlan.Clear();
+			train.Reset();
+			LogTrainTransition();
+
+			var msg = "[FakeHunt] Cleared";
+			pluginLog.Information(msg);
+			debugProbe.Record(Config.EnableDebugLogging, DebugEventKind.FakeHunt, msg);
+			return null;
+		}
+		catch (Exception ex)
+		{
+			pluginLog.Debug($"ClearFakeHunt soft-fail: {ex.Message}");
+			return ex.Message;
+		}
+	}
+
+	private void TryFakeHuntAutoEndCombat(long nowMs)
+	{
+		try
+		{
+			if (!fakeHunt.IsActive || fakeHunt.EnteredCombatAtMs <= 0)
+				return;
+			if (!combat.InCombatPhase)
+				return;
+			if (!FakeHuntDecision.ShouldAutoEndCombat(
+				    fakeHunt.EnteredCombatAtMs,
+				    nowMs,
+				    fakeHunt.AutoEndCombatMs))
+				return;
+
+			combat.Clear();
+			fakeHunt.ClearFakeARank();
+			divertingToEngage = false;
+			var msg =
+				$"[FakeHunt] Auto combat end after {fakeHunt.AutoEndCombatMs}ms "
+				+ "(cleared phase + synthetic A)";
+			pluginLog.Information(msg);
+			debugProbe.Record(Config.EnableDebugLogging, DebugEventKind.FakeHunt, msg);
+		}
+		catch (Exception ex)
+		{
+			pluginLog.Debug($"TryFakeHuntAutoEndCombat soft-fail: {ex.Message}");
+		}
+	}
+
+	private string? StartFakeHuntPreset(FakeHuntPreset preset)
+	{
+		try
+		{
+			if (!Config.Enabled)
+				return "Enable the plugin first";
+
+			var player = objectTable.LocalPlayer;
+			if (player == null)
+				return "No local player";
+
+			var territory = clientState.TerritoryType;
+			if (territory == 0)
+				return "Territory unknown";
+
+			var mapParams = mapManager.GetMapParams(0, territory);
+			var mapId = mapParams?.MapId ?? 0u;
+
+			Vector3 flagPos;
+			string placeName;
+			if (preset == FakeHuntPreset.MapFlag)
+			{
+				if (!AgentMapFlag.TryGet(out var flagTerritory, out var fx, out var fy))
+					return "No map flag set (open map and place a flag)";
+
+				if (flagTerritory != 0 && flagTerritory != territory)
+					return $"Map flag territory {flagTerritory} ≠ current {territory}";
+
+				flagPos = new Vector3(fx, player.Position.Y, fy);
+				placeName = FakeHuntDecision.PlaceNameForPreset(FakeHuntPreset.MapFlag);
+			}
+			else
+			{
+				var dist = FakeHuntDecision.FlagDistanceForPreset(preset);
+				var angle = FakeHuntDecision.AngleFromSeed(Environment.TickCount);
+				flagPos = FakeHuntDecision.OffsetWorldXZ(player.Position, dist, angle);
+				placeName = FakeHuntDecision.PlaceNameForPreset(preset);
+			}
+
+			var (rawX, rawY) = FakeHuntDecision.RawFromWorldXZ(flagPos.X, flagPos.Z);
+			var flag = HuntFlag.FromMapLink(territory, mapId, rawX, rawY, placeName);
+			var resolvedY = flagWorld.TryResolveFromWorldXZ(flag, flagPos.X, flagPos.Z);
+			if (resolvedY is { } resolved && resolved != Vector3.Zero)
+				flagPos = resolved;
+			else
+				flag.WorldPos = flagPos;
+
+			var currentInstance = 0;
+			if (preset == FakeHuntPreset.InstanceSwap)
+			{
+				currentInstance = InstanceChangeDecision.ResolveCurrentInstance(
+					PublicInstanceReader.TryReadInstanceId(),
+					LifestreamIpc.GetCurrentInstance(),
+					(int)clientState.Instance);
+				flag.ReportedInstance = FakeHuntDecision.AlternateReportedInstance(currentInstance);
+			}
+
+			var aUnit = (Environment.TickCount & 0xFF) / 255f;
+			var aDist = FakeHuntDecision.FakeARankDistanceYalms(aUnit);
+			var aAngle = FakeHuntDecision.AngleFromSeed(Environment.TickCount ^ 0x5F3759DF);
+			var fakeA = FakeHuntDecision.OffsetWorldXZ(flagPos, aDist, aAngle);
+			// Snap fake A onto the navmesh floor (raw offset Y can sit off-mesh).
+			var fakeResolved = flagWorld.TryResolveFromWorldXZ(
+				flag,
+				fakeA.X,
+				fakeA.Z);
+			if (fakeResolved is { } floorA && floorA != Vector3.Zero)
+				fakeA = floorA;
+
+			if (!Config.EnableDebugLogging)
+			{
+				Config.EnableDebugLogging = true;
+				pluginInterface.SavePluginConfig(Config);
+			}
+
+			// Conductor-style map pin so minimap/map show the fake flag.
+			if (mapId != 0
+			    && !AgentMapFlag.TrySet(territory, mapId, flagPos.X, flagPos.Z))
+			{
+				pluginLog.Debug(
+					$"[FakeHunt] AgentMap SetFlagMapMarker soft-fail territory={territory} map={mapId}");
+			}
+
+			fakeHunt.Arm(flag, preset, fakeA);
+			// Kill sticky RSR/BM immediately — do not wait for first Framework tick.
+			var rsrOk = rsrEnable.ForceStop("FakeHunt arm");
+			var bmOk = bossModEnable.ForceStop("FakeHunt arm");
+			if (rsrOk && bmOk)
+				fakeHunt.NoteCombatAiSuppressed();
+			PrepareTeleportIntent(flag, flag.ReportedInstance);
+			AdoptHuntFlag(flag, clearPendingDefer: true, EngagePositionHintSource.ConductorFlag);
+
+			var msg =
+				$"[FakeHunt] Injected {placeName} flag=({flagPos.X:0.0},{flagPos.Z:0.0}) "
+				+ $"fakeA=({fakeA.X:0.0},{fakeA.Z:0.0}) distA={aDist:0.0}"
+				+ (preset == FakeHuntPreset.InstanceSwap
+					? $" instance {currentInstance}→{flag.ReportedInstance}"
+					: string.Empty);
+			pluginLog.Information(msg);
+			debugProbe.Record(Config.EnableDebugLogging, DebugEventKind.FakeHunt, msg);
+			return null;
+		}
+		catch (Exception ex)
+		{
+			pluginLog.Debug($"StartFakeHuntPreset soft-fail: {ex.Message}");
+			return ex.Message;
+		}
 	}
 
 	private uint? GetIntendedUseRowId(uint territoryId) =>
@@ -2269,13 +2779,14 @@ public sealed class Plugin : IDalamudPlugin
 		// RSR stop: RsrStopTrigger.Dispose → ImmediateClear.
 		ClearPendingHuntAlerts();
 		lastFlagIntakeMemory = HuntAlertsFlagDedupe.Clear(lastFlagIntakeMemory);
-		HuntAlertsFlagQueue.Clear(huntAlertsFlagQueue);
+		HuntAlertsFlagQueue.Clear(huntAlertsFlagQueue, DebugHuntAlerts);
 		instanceChange.Clear();
 		mount.Clear();
 		activeHuntFlag = null;
 		flagArrival.Clear();
 		unmount.ClearAll();
 		engageHint.Clear();
+		fakeHunt.Clear();
 		engage.Clear();
 		combat.Clear();
 		rsrEnable.Clear();
@@ -2283,6 +2794,7 @@ public sealed class Plugin : IDalamudPlugin
 		huntPfLeave.Clear();
 		huntPf.Dispose();
 		train.Reset();
+		LogTrainTransition();
 		sonarChatHintIntake.Dispose();
 		chatMessageHandler.Dispose();
 		alertChatLinker.Dispose();

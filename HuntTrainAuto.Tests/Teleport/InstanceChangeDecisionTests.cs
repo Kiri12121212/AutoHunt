@@ -4,6 +4,17 @@ namespace HuntTrainAuto.Tests.Teleport;
 
 public sealed class InstanceChangeDecisionTests
 {
+	[Fact]
+	public void Describe_labels_approach_and_change_outcomes()
+	{
+		Assert.Equal(
+			"approach=LockonAndAutomove",
+			InstanceChangeDecision.Describe(InstanceChangeDecision.ApproachAction.LockonAndAutomove));
+		Assert.Equal(
+			"change=IssueChange",
+			InstanceChangeDecision.Describe(InstanceChangeDecision.ChangeTickResult.IssueChange));
+	}
+
 	[Theory]
 	[InlineData(0, false)]
 	[InlineData(1, true)]
@@ -15,7 +26,7 @@ public sealed class InstanceChangeDecisionTests
 	[InlineData(2, 1, true)]
 	[InlineData(2, 2, false)]
 	[InlineData(0, 1, false)]
-	[InlineData(1, 0, true)]
+	[InlineData(1, 0, false)]
 	public void ShouldEnqueueIfNeeded(int requested, int current, bool expected)
 		=> Assert.Equal(expected, InstanceChangeDecision.ShouldEnqueueIfNeeded(requested, current));
 
@@ -34,8 +45,33 @@ public sealed class InstanceChangeDecisionTests
 	[InlineData(2, 1, 0, true)]
 	[InlineData(3, 1, 2, false)]
 	[InlineData(0, 0, 0, false)]
+	[InlineData(2, 0, 3, false)]
 	public void NeedsInstanceChange(int requested, int current, int count, bool expected)
 		=> Assert.Equal(expected, InstanceChangeDecision.NeedsInstanceChange(requested, current, count));
+
+	[Theory]
+	[InlineData(2, 0, 0, 2)]
+	[InlineData(0, 3, 0, 3)]
+	[InlineData(0, 0, 2, 2)]
+	[InlineData(0, 0, 0, 1)]
+	[InlineData(1, 2, 3, 1)]
+	public void ResolveCurrentInstance_prefers_public_then_life_then_client_coerce_unsplit(
+		int pub,
+		int life,
+		int client,
+		int expected)
+		=> Assert.Equal(
+			expected,
+			InstanceChangeDecision.ResolveCurrentInstance(pub, life, client));
+
+	[Theory]
+	[InlineData(0, 0, 0, 0)]
+	[InlineData(0, 0, 2, 2)]
+	[InlineData(4, 0, 0, 4)]
+	public void ResolveCurrentInstanceRaw_no_coerce(int pub, int life, int client, int expected)
+		=> Assert.Equal(
+			expected,
+			InstanceChangeDecision.ResolveCurrentInstanceRaw(pub, life, client));
 
 	[Theory]
 	[InlineData(false, 10u, true)]

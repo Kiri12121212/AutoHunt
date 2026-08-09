@@ -9,6 +9,10 @@ namespace HuntTrainAuto.State;
 /// </summary>
 public static class HuntTrainObserve
 {
+	/// <summary>Compact, side-effect-free observed-start diagnostic for call-site logging.</summary>
+	public static string DescribeFlagStart(HuntTrainEvent ev)
+		=> $"flag-start={ev}";
+
 	/// <summary>
 	/// Idle start event when a hunt flag is adopted.
 	/// Teleport plan + mount needed → <see cref="HuntTrainEvent.StartMount"/> (mount before TP);

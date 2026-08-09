@@ -33,6 +33,16 @@ public sealed class UnmountDecisionTests
 		=> Assert.Equal(expected, UnmountDecision.ShouldEnqueueIfEnabled(autoUnmount));
 
 	[Theory]
+	[InlineData(true, false, true)]
+	[InlineData(true, true, false)]
+	[InlineData(false, false, false)]
+	[InlineData(false, true, false)]
+	public void ShouldStartUnmountJob(bool autoUnmount, bool alreadyActive, bool expected)
+		=> Assert.Equal(
+			expected,
+			UnmountDecision.ShouldStartUnmountJob(autoUnmount, alreadyActive));
+
+	[Theory]
 	[InlineData(true, true, false, true)]
 	[InlineData(true, true, true, false)]
 	[InlineData(true, false, false, false)]
@@ -166,7 +176,7 @@ public sealed class UnmountDecisionTests
 	}
 
 	[Fact]
-	public void DecideUnmountTick_dismount_when_action_unusable()
+	public void DecideUnmountTick_wait_when_action_unusable()
 	{
 		var r = UnmountDecision.DecideUnmountTick(
 			mounted: true,
@@ -176,13 +186,14 @@ public sealed class UnmountDecisionTests
 			dismountActionUsable: false,
 			animationLocked: false,
 			dismountThrottleReady: true);
-		Assert.Equal(UnmountTickKind.Dismount, r.Kind);
+		Assert.Equal(UnmountTickKind.Wait, r.Kind);
 		Assert.True(r.ForceCheckThrottle);
+		Assert.Equal(UnmountDecision.ActionRetryCooldownMs, r.ForceCheckCooldownMs);
 		Assert.False(r.ReadyForGroundFollow);
 	}
 
 	[Fact]
-	public void DecideUnmountTick_wait_when_action_unusable_but_throttled()
+	public void DecideUnmountTick_wait_when_action_unusable_even_if_dismount_throttle_ready()
 	{
 		var r = UnmountDecision.DecideUnmountTick(
 			mounted: true,
@@ -193,6 +204,7 @@ public sealed class UnmountDecisionTests
 			animationLocked: false,
 			dismountThrottleReady: false);
 		Assert.Equal(UnmountTickKind.Wait, r.Kind);
+		Assert.True(r.ForceCheckThrottle);
 		Assert.False(r.ReadyForGroundFollow);
 	}
 
@@ -238,6 +250,24 @@ public sealed class UnmountDecisionTests
 		Assert.Equal(UnmountTickKind.Dismount, r.Kind);
 		Assert.False(r.ReadyForGroundFollow);
 	}
+
+	[Theory]
+	[InlineData(UnmountTickKind.Done, UnmountWaitReason.None, true, "done (ground follow ready)")]
+	[InlineData(UnmountTickKind.Wait, UnmountWaitReason.ActionUnavailable, false, "wait (ActionUnavailable)")]
+	[InlineData(UnmountTickKind.Dismount, UnmountWaitReason.None, false, "dismount")]
+	public void Describe_reports_outcome_and_reason(
+		UnmountTickKind kind,
+		UnmountWaitReason waitReason,
+		bool readyForGroundFollow,
+		string expected)
+		=> Assert.Equal(
+			expected,
+			UnmountDecision.Describe(new UnmountTickResult
+			{
+				Kind = kind,
+				WaitReason = waitReason,
+				ReadyForGroundFollow = readyForGroundFollow,
+			}));
 
 	[Fact]
 	public void Check_and_dismount_throttle_helpers()
@@ -302,6 +332,6 @@ public sealed class UnmountDecisionTests
 	}
 
 	[Fact]
-	public void Dismount_general_action_id_is_one()
-		=> Assert.Equal(1u, UnmountDecision.DismountGeneralActionId);
+	public void Dismount_general_action_id_is_dismount()
+		=> Assert.Equal(23u, UnmountDecision.DismountGeneralActionId);
 }

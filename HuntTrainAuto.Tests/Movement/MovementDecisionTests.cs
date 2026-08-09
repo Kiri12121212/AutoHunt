@@ -329,6 +329,26 @@ public sealed class MovementDecisionTests
 		Assert.Equal(MoveTickKind.StartDirectPath, r.Kind);
 	}
 
+	[Theory]
+	[InlineData(MoveTickKind.WaitPlayerInvalid, MoveWaitReason.PlayerInvalid, false, "wait (player invalid)")]
+	[InlineData(MoveTickKind.Arrived, MoveWaitReason.None, true, "arrived (stop path)")]
+	[InlineData(MoveTickKind.Wait, MoveWaitReason.MeshNotReady, false, "wait (MeshNotReady)")]
+	[InlineData(MoveTickKind.StartMeshPath, MoveWaitReason.None, true, "start mesh path (fly)")]
+	public void Describe_reports_outcome_and_reason(
+		MoveTickKind kind,
+		MoveWaitReason waitReason,
+		bool flyOrStopPath,
+		string expected)
+		=> Assert.Equal(
+			expected,
+			MovementDecision.Describe(new MoveTickResult
+			{
+				Kind = kind,
+				WaitReason = waitReason,
+				Fly = flyOrStopPath,
+				StopPath = flyOrStopPath,
+			}));
+
 	[Fact]
 	public void DecideMoveTick_waits_direct_path_when_running()
 	{

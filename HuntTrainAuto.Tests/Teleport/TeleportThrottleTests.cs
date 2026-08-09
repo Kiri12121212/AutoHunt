@@ -153,6 +153,38 @@ public sealed class TeleportGateTests
 		Assert.False(TeleportGate.CanAttemptTeleport(false, false, false, casting: true, false));
 		Assert.False(TeleportGate.CanAttemptTeleport(false, false, false, false, isMoving: true));
 		Assert.False(TeleportGate.CanAttemptTeleport(false, false, false, false, false, animationLocked: true));
+		Assert.False(TeleportGate.CanAttemptTeleport(false, false, false, false, false, teleportInvoked: true));
+	}
+
+	[Fact]
+	public void ShouldReleaseTeleportInvoked_after_idle_grace()
+	{
+		Assert.False(TeleportGate.ShouldReleaseTeleportInvoked(
+			teleportInvoked: false, false, false, false, false, idleSinceMs: 100, nowMs: 10_000));
+		Assert.False(TeleportGate.ShouldReleaseTeleportInvoked(
+			true, casting: true, false, false, false, idleSinceMs: 100, nowMs: 10_000));
+		Assert.False(TeleportGate.ShouldReleaseTeleportInvoked(
+			true, false, isCasting: true, false, false, idleSinceMs: 100, nowMs: 10_000));
+		Assert.False(TeleportGate.ShouldReleaseTeleportInvoked(
+			true, false, false, betweenAreas: true, false, idleSinceMs: 100, nowMs: 10_000));
+		Assert.False(TeleportGate.ShouldReleaseTeleportInvoked(
+			true, false, false, false, false, idleSinceMs: 0, nowMs: 10_000));
+		Assert.False(TeleportGate.ShouldReleaseTeleportInvoked(
+			true, false, false, false, false, idleSinceMs: 100, nowMs: 100 + TeleportGate.PostInvokeIdleRetryMs - 1));
+		Assert.True(TeleportGate.ShouldReleaseTeleportInvoked(
+			true, false, false, false, false, idleSinceMs: 100, nowMs: 100 + TeleportGate.PostInvokeIdleRetryMs));
+	}
+
+	[Fact]
+	public void ClearTeleportInvoked_keeps_plan()
+	{
+		var plan = new TeleportPlan();
+		plan.Set(ArrivalData.CreateOrNull(1u, 2u, 0)!);
+		plan.MarkTeleportInvoked();
+		Assert.True(plan.TeleportInvoked);
+		plan.ClearTeleportInvoked();
+		Assert.False(plan.TeleportInvoked);
+		Assert.True(plan.HasActive);
 	}
 
 	[Fact]

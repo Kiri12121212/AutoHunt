@@ -155,4 +155,25 @@ public sealed class FlagArrivalTests
 		Assert.Equal(expected, result.IsArrived);
 		Assert.Equal(distance, result.Distance);
 	}
+
+	[Fact]
+	public void Describe_covers_missing_moving_and_arrived_states()
+	{
+		Assert.Equal(
+			"waiting: flag world position unavailable",
+			FlagArrival.Evaluate(Vector3.Zero, null, 5f).Describe());
+		Assert.Equal(
+			"moving: distance 20.00",
+			FlagArrival.Evaluate(Vector3.Zero, new Vector3(20, 0, 0), 5f).Describe());
+		Assert.Equal(
+			"arrived: stop path (distance 3.00)",
+			FlagArrival.Evaluate(Vector3.Zero, new Vector3(3, 0, 0), 5f).Describe());
+		Assert.Equal(
+			"arrived: path already stopped (distance 3.00)",
+			FlagArrival.Evaluate(
+				Vector3.Zero,
+				new Vector3(3, 0, 0),
+				5f,
+				pathAlreadyStoppedForArrival: true).Describe());
+	}
 }

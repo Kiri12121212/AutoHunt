@@ -23,13 +23,11 @@
 		<Compile Include="..\HuntTrainAuto\Chat\ConductorLastStopParse.cs" Link="Chat\ConductorLastStopParse.cs" />
 		<Compile Include="..\HuntTrainAuto\Chat\ChatCommands.cs" Link="Chat\ChatCommands.cs" />
 		<Compile Include="..\HuntTrainAuto\Chat\ChatSender.cs" Link="Chat\ChatSender.cs" />
-		<Compile Include="..\HuntTrainAuto\Chat\ChatSuppress.cs" Link="Chat\ChatSuppress.cs" />
 		<Compile Include="..\HuntTrainAuto\Chat\ContextMenuDecision.cs" Link="Chat\ContextMenuDecision.cs" />
 		<Compile Include="..\HuntTrainAuto\Map\HuntingTerritory.cs" Link="Map\HuntingTerritory.cs" />
 		<Compile Include="..\HuntTrainAuto\Map\MapOpenDedupe.cs" Link="Map\MapOpenDedupe.cs" />
 		<Compile Include="..\HuntTrainAuto\Map\MapCoordinates.cs" Link="Map\MapCoordinates.cs" />
 		<Compile Include="..\HuntTrainAuto\Map\MapSizeFactor.cs" Link="Map\MapSizeFactor.cs" />
-		<Compile Include="..\HuntTrainAuto\Map\DistanceCompensation.cs" Link="Map\DistanceCompensation.cs" />
 		<Compile Include="..\HuntTrainAuto\Map\NearestAetheryte.cs" Link="Map\NearestAetheryte.cs" />
 		<Compile Include="..\HuntTrainAuto\Map\FlagWorldPosition.cs" Link="Map\FlagWorldPosition.cs" />
 		<Compile Include="..\HuntTrainAuto\Map\FlagArrival.cs" Link="Map\FlagArrival.cs" />
@@ -53,6 +51,7 @@
 		<Compile Include="..\HuntTrainAuto\Movement\MovementDecision.cs" Link="Movement\MovementDecision.cs" />
 		<Compile Include="..\HuntTrainAuto\Movement\MeshPathfindRetryDecision.cs" Link="Movement\MeshPathfindRetryDecision.cs" />
 		<Compile Include="..\HuntTrainAuto\Combat\CombatDecision.cs" Link="Combat\CombatDecision.cs" />
+		<Compile Include="..\HuntTrainAuto\Combat\FakeHuntDecision.cs" Link="Combat\FakeHuntDecision.cs" />
 		<Compile Include="..\HuntTrainAuto\Chat\SonarChatHintDecision.cs" Link="Chat\SonarChatHintDecision.cs" />
 		<Compile Include="..\HuntTrainAuto\Combat\EngagePositionHint.cs" Link="Combat\EngagePositionHint.cs" />
 		<Compile Include="..\HuntTrainAuto\Combat\EngageTargetDecision.cs" Link="Combat\EngageTargetDecision.cs" />
@@ -99,5 +98,7 @@
 		<Compile Include="..\HuntTrainAuto\Logging\DebugEventLog.cs" Link="Logging\DebugEventLog.cs" />
 		<Compile Include="..\HuntTrainAuto\Logging\DebugEventFormatter.cs" Link="Logging\DebugEventFormatter.cs" />
 		<Compile Include="..\HuntTrainAuto\Logging\DebugEventProbe.cs" Link="Logging\DebugEventProbe.cs" />
+		<!-- DebugBehavior uses Dalamud IPluginLog; Format tests need a pure split first. -->
+		<Compile Remove="Logging\DebugBehaviorTests.cs" />
 	</ItemGroup>
 </Project>

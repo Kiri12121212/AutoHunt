@@ -5,6 +5,7 @@ using Dalamud.Game.Text.SeStringHandling.Payloads;
 using Dalamud.Plugin.Services;
 using HuntTrainAuto.Combat;
 using HuntTrainAuto.Domain;
+using HuntTrainAuto.Logging;
 
 namespace HuntTrainAuto.Chat;
 
@@ -56,8 +57,12 @@ public sealed class SonarChatHintIntake : IDisposable
 				}
 			}
 
-			if (!SonarChatHintDecision.ShouldRememberHint(senderText, messageText, mapLink != null))
+			var shouldRememberHint = SonarChatHintDecision.ShouldRememberHint(senderText, messageText, mapLink != null);
+			if (!shouldRememberHint)
+			{
+				LogDebug(SonarChatHintDecision.Describe(shouldRememberHint));
 				return;
+			}
 
 			var flag = HuntFlag.FromMapLink(
 				mapLink!.TerritoryType.RowId,
@@ -66,17 +71,23 @@ public sealed class SonarChatHintIntake : IDisposable
 				mapLink.RawY,
 				mapLink.PlaceName);
 			hintSlot.RememberFromFlag(flag, EngagePositionHintSource.SonarChat);
-			log?.Debug(
-				$"Sonar soft hint: territory={flag.TerritoryTypeId} raw=({flag.RawX},{flag.RawY})");
+			LogDebug(
+				$"{SonarChatHintDecision.Describe(shouldRememberHint)}: territory={flag.TerritoryTypeId} raw=({flag.RawX},{flag.RawY})");
 		}
 		catch (Exception ex)
 		{
-			log?.Debug($"Sonar chat hint soft-fail: {ex.Message}");
+			LogDebug($"soft-fail: {ex.Message}");
 		}
 	}
 
 	public void Dispose()
 	{
 		chatGui.ChatMessage -= OnChatMessage;
+	}
+
+	private void LogDebug(string message)
+	{
+		if (log != null)
+			DebugBehavior.Debug(log, config.EnableDebugLogging, "Chat", message);
 	}
 }

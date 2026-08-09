@@ -5,6 +5,7 @@ using Dalamud.Game.Text.SeStringHandling;
 using Dalamud.Game.Text.SeStringHandling.Payloads;
 using Dalamud.Plugin.Services;
 using HuntTrainAuto.HuntAlerts;
+using HuntTrainAuto.Logging;
 using HuntTrainAuto.Windows;
 
 namespace HuntTrainAuto.Chat;
@@ -20,6 +21,7 @@ public sealed class AlertChatLinker : IDisposable
 	private readonly IChatGui chatGui;
 	private readonly IPluginLog? log;
 	private readonly Action<HuntTrainMessage> openAlert;
+	private readonly Func<bool> isDebugEnabled;
 	private readonly DalamudLinkPayload[] payloads = new DalamudLinkPayload[Capacity];
 	private readonly HuntTrainMessage?[] messages = new HuntTrainMessage?[Capacity];
 	private int commandCount;
@@ -28,11 +30,13 @@ public sealed class AlertChatLinker : IDisposable
 	public AlertChatLinker(
 		IChatGui chatGui,
 		Action<HuntTrainMessage> openAlert,
-		IPluginLog? log = null)
+		IPluginLog? log = null,
+		Func<bool>? isDebugEnabled = null)
 	{
 		this.chatGui = chatGui ?? throw new ArgumentNullException(nameof(chatGui));
 		this.openAlert = openAlert ?? throw new ArgumentNullException(nameof(openAlert));
 		this.log = log;
+		this.isDebugEnabled = isDebugEnabled ?? (() => false);
 
 		for (var i = 0u; i < Capacity; i++)
 			payloads[i] = chatGui.AddChatLinkHandler(i, OnLink);
@@ -58,7 +62,7 @@ public sealed class AlertChatLinker : IDisposable
 		}
 		catch (Exception ex)
 		{
-			log?.Debug($"AlertChatLinker.Post soft-fail: {ex.Message}");
+			LogDebug($"post soft-fail: {ex.Message}");
 		}
 	}
 
@@ -75,7 +79,7 @@ public sealed class AlertChatLinker : IDisposable
 		}
 		catch (Exception ex)
 		{
-			log?.Debug($"AlertChatLinker.OnLink soft-fail: {ex.Message}");
+			LogDebug($"link soft-fail: {ex.Message}");
 		}
 	}
 
@@ -102,6 +106,20 @@ public sealed class AlertChatLinker : IDisposable
 		catch
 		{
 			// soft-fail dispose
+		}
+	}
+
+	private void LogDebug(string message)
+	{
+		if (log == null)
+			return;
+		try
+		{
+			DebugBehavior.Debug(log, isDebugEnabled(), "Chat", message);
+		}
+		catch
+		{
+			// soft-fail logging
 		}
 	}
 }

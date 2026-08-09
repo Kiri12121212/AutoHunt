@@ -4,6 +4,7 @@ using Dalamud.Game.ClientState.Conditions;
 using Dalamud.Game.ClientState.Objects;
 using Dalamud.Plugin.Services;
 using FFXIVClientStructs.FFXIV.Client.Game;
+using HuntTrainAuto.Logging;
 
 namespace HuntTrainAuto.Movement;
 
@@ -15,7 +16,6 @@ public sealed class UnmountRunner
 {
 	private readonly UnmountSession session = new();
 	private readonly IVnavmeshService vnav;
-	private readonly IChatOutput chat;
 	private readonly IObjectTable objectTable;
 	private readonly ICondition condition;
 	private readonly IPluginLog pluginLog;
@@ -25,7 +25,6 @@ public sealed class UnmountRunner
 
 	public UnmountRunner(
 		IVnavmeshService vnav,
-		IChatOutput chat,
 		IObjectTable objectTable,
 		ICondition condition,
 		IPluginLog pluginLog,
@@ -33,7 +32,6 @@ public sealed class UnmountRunner
 		Func<bool> isInstanceChangeActive)
 	{
 		this.vnav = vnav;
-		this.chat = chat;
 		this.objectTable = objectTable;
 		this.condition = condition;
 		this.pluginLog = pluginLog;
@@ -60,12 +58,12 @@ public sealed class UnmountRunner
 	/// <summary>HTA-style enqueue gated by <paramref name="autoUnmountAtFlag"/>.</summary>
 	public void EnqueueIfEnabled(bool autoUnmountAtFlag)
 	{
-		if (!UnmountDecision.ShouldEnqueueIfEnabled(autoUnmountAtFlag))
+		if (!UnmountDecision.ShouldStartUnmountJob(autoUnmountAtFlag, session.IsActive))
 			return;
 
 		enqueuedForCurrentArrival = true;
 		session.Enqueue(Environment.TickCount64);
-		pluginLog.Information("Unmount job enqueued");
+		DebugBehavior.Info(pluginLog, "Unmount", "job enqueued");
 	}
 
 	/// <summary>
@@ -107,7 +105,7 @@ public sealed class UnmountRunner
 		}
 		catch (Exception ex)
 		{
-			pluginLog.Debug($"UnmountRunner soft-fail: {ex.Message}");
+			DebugBehavior.Debug(pluginLog, enabled: true, "Unmount", $"soft-fail: {ex.Message}");
 			session.Clear();
 		}
 	}
@@ -117,7 +115,7 @@ public sealed class UnmountRunner
 		var now = Environment.TickCount64;
 		if (UnmountDecision.IsSessionTimedOut(session.DeadlineMs, now))
 		{
-			pluginLog.Debug($"Unmount job timed out after {UnmountDecision.SessionTimeoutMs}ms");
+			DebugBehavior.Debug(pluginLog, enabled: true, "Unmount", $"job timed out after {UnmountDecision.SessionTimeoutMs}ms");
 			// Drop latch so a still-arrived / still-mounted player can re-enqueue.
 			enqueuedForCurrentArrival = false;
 			session.Clear();
@@ -146,10 +144,27 @@ public sealed class UnmountRunner
 			playerReady,
 			isTeleportPlanActive(),
 			isInstanceChangeActive()))
+		{
+			if (DebugThrottle.Try("unmount.waitReady", 2000, now))
+			{
+				DebugBehavior.Debug(
+					pluginLog,
+					enabled: true,
+					"Unmount",
+					$"WaitReady: pathReady={pathReady} pathRunning={vnav.PathIsRunning()} "
+					+ $"arrival={arrivalSignaled} pathStop={pathStoppedForArrival} "
+					+ $"screen={screenReady} player={playerReady} "
+					+ $"tp={isTeleportPlanActive()} inst={isInstanceChangeActive()}");
+			}
+
 			return;
+		}
 
 		if (session.Phase == UnmountPhase.WaitReady)
+		{
 			session.EnterUnmounting(now);
+			DebugBehavior.Debug(pluginLog, enabled: true, "Unmount", "WaitReady → Unmounting");
+		}
 
 		TickUnmounting(now);
 	}
@@ -161,24 +176,46 @@ public sealed class UnmountRunner
 		{
 			session.MarkGroundFollowReady();
 			session.Clear();
-			pluginLog.Information("Unmount complete; ready for ground follow (canFly: false)");
+			DebugBehavior.Info(pluginLog, "Unmount", "complete; ready for ground follow (canFly: false)");
 			return;
 		}
 
 		var checkReady = UnmountDecision.IsCheckReady(session.NextCheckMs, now);
 		var dismountReady = now >= session.NextDismountMs;
+		var actionStatus = GetDismountActionStatus();
+		var actionUsable = UnmountDecision.IsDismountActionUsable(actionStatus);
+		var animLock = IsAnimationLocked();
 
 		var decision = UnmountDecision.DecideUnmountTick(
 			mounted,
 			condition[ConditionFlag.MountOrOrnamentTransition],
 			condition[ConditionFlag.Casting],
 			checkReady,
-			UnmountDecision.IsDismountActionUsable(GetDismountActionStatus()),
-			IsAnimationLocked(),
+			actionUsable,
+			animLock,
 			dismountReady);
 
 		if (decision.ForceCheckThrottle)
-			session.NextCheckMs = UnmountDecision.ForceCheckThrottle(session.NextCheckMs, now);
+		{
+			var cooldown = decision.ForceCheckCooldownMs > 0
+				? decision.ForceCheckCooldownMs
+				: UnmountDecision.CheckUnmountCooldownMs;
+			session.NextCheckMs = UnmountDecision.ForceCheckThrottle(session.NextCheckMs, now, cooldown);
+		}
+
+		if (decision.Kind == UnmountTickKind.Wait
+		    && DebugThrottle.Try("unmount.wait", 2000, now))
+		{
+			DebugBehavior.Debug(
+				pluginLog,
+				enabled: true,
+				"Unmount",
+				$"{UnmountDecision.Describe(decision)}: usable={actionUsable} status={actionStatus}"
+				+ (actionStatus == 579 ? " (Cannot execute / wrong action?)" : string.Empty)
+				+ $" checkReady={checkReady} dismountReady={dismountReady} animLock={animLock} "
+				+ $"transition={condition[ConditionFlag.MountOrOrnamentTransition]} "
+				+ $"casting={condition[ConditionFlag.Casting]} ga={UnmountDecision.DismountGeneralActionId}");
+		}
 
 		switch (decision.Kind)
 		{
@@ -195,6 +232,11 @@ public sealed class UnmountRunner
 				if (!UnmountDecision.TryFireDismount(ref next, now))
 					return;
 				session.NextDismountMs = next;
+				DebugBehavior.Debug(
+					pluginLog,
+					enabled: true,
+					"Unmount",
+					$"{UnmountDecision.Describe(decision)} via UseAction (status was {actionStatus})");
 				TryDismount();
 				return;
 			}
@@ -238,15 +280,18 @@ public sealed class UnmountRunner
 		try
 		{
 			var am = ActionManager.Instance();
-			if (am != null
-				&& am->UseAction(ActionType.GeneralAction, UnmountDecision.DismountGeneralActionId))
+			if (am == null)
 				return;
+
+			// Re-check status — do not UseAction / chat when unusable (game error spam).
+			if (am->GetActionStatus(ActionType.GeneralAction, UnmountDecision.DismountGeneralActionId) != 0)
+				return;
+
+			_ = am->UseAction(ActionType.GeneralAction, UnmountDecision.DismountGeneralActionId);
 		}
 		catch (Exception ex)
 		{
-			pluginLog.Debug($"UseAction dismount soft-fail: {ex.Message}");
+			DebugBehavior.Debug(pluginLog, enabled: true, "Unmount", $"UseAction soft-fail: {ex.Message}");
 		}
-
-		chat.TryExecuteCommand("/dismount");
 	}
 }

@@ -35,6 +35,17 @@ public static class MeshPathfindRetryDecision
 	/// </summary>
 	public const int MaxAttempts = 30;
 
+	/// <summary>Human-readable retry outcome for movement debug logs.</summary>
+	public static string Describe(MeshPathfindRetryKind result)
+		=> result switch
+		{
+			MeshPathfindRetryKind.WaitNotReady => "wait (not ready)",
+			MeshPathfindRetryKind.WaitCooldown => "wait (cooldown)",
+			MeshPathfindRetryKind.Start => "start",
+			MeshPathfindRetryKind.Exhausted => "exhausted",
+			_ => $"unknown ({result})",
+		};
+
 	/// <summary>
 	/// Decide whether to fire another <c>PathfindAndMoveTo</c>.
 	/// <paramref name="canStartMeshPathfind"/> is <see cref="MovementDecision.CanStartMeshPathfind"/>
@@ -105,12 +116,15 @@ public static class MeshPathfindRetryDecision
 
 	/// <summary>
 	/// Gate PathfindAndMoveTo when off-mesh.
-	/// Ground: always wait on-mesh. Fly: wait until on-mesh unless this epoch already had
-	/// nav progress (mid-air repath after takeoff — 8sy1); never spam poly→0 right after zone load.
+	/// Ground: always wait on-mesh. Fly: allow when already <c>InFlight</c> (divert / mid-air)
+	/// or this epoch already had nav progress (repath after takeoff — 8sy1).
+	/// Still block bare post-TP falling (fly requested, not yet InFlight, no prior nav).
 	/// </summary>
 	public static bool CanStartPathfindOffMeshPolicy(
 		bool fly,
 		bool playerOnMesh,
-		bool hadNavProgressThisEpoch)
-		=> playerOnMesh || (fly && hadNavProgressThisEpoch);
+		bool hadNavProgressThisEpoch,
+		bool inFlight = false)
+		=> playerOnMesh
+			|| (fly && (hadNavProgressThisEpoch || inFlight));
 }

@@ -79,6 +79,22 @@ public readonly struct HuntAlertsWorldVisitDecisionResult
 /// </summary>
 public static class HuntAlertsWorldVisitDecision
 {
+	/// <summary>Compact, log-safe world-visit decision summary.</summary>
+	public static string Describe(HuntAlertsWorldVisitDecisionResult result)
+	{
+		var world = string.IsNullOrEmpty(result.World) ? string.Empty : $" world={result.World}";
+		return result.Action switch
+		{
+			HuntAlertsWorldVisitAction.RequestWorldVisit => $"request world visit{world}",
+			HuntAlertsWorldVisitAction.SameWorld => $"same world{world}",
+			HuntAlertsWorldVisitAction.UnknownCurrentWorld => $"current world unknown{world}",
+			HuntAlertsWorldVisitAction.BusyMidVisit => $"world visit busy{world}",
+			HuntAlertsWorldVisitAction.CannotVisit => $"world cannot be visited{world}",
+			HuntAlertsWorldVisitAction.DeferReplaceFailed => $"defer replacement failed{world}",
+			_ => "world visit skipped",
+		};
+	}
+
 	/// <summary>
 	/// Decide whether to request a Lifestream world visit, proceed same-world, or no-op.
 	/// </summary>

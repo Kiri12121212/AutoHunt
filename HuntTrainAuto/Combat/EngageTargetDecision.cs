@@ -208,6 +208,10 @@ public static class EngageTargetDecision
 		return new EngageTargetPick { Kind = EngageTargetKind.None, Index = -1 };
 	}
 
+	/// <summary>Compact, side-effect-free target diagnostic for helper logging.</summary>
+	public static string Describe(in EngageTargetPick pick)
+		=> $"target={pick.Kind}, index={pick.Index}";
+
 	/// <summary>Within engage range of the chosen mob → ready for combat phase.</summary>
 	public static bool ShouldEnterCombatOnMob(float? distanceToMob, float engageRange)
 		=> CombatDecision.IsWithinEngageRange(distanceToMob, engageRange);

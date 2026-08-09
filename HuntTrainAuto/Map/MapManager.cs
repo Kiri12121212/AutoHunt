@@ -15,11 +15,16 @@ public sealed class MapManager
 {
 	private readonly IDataManager dataManager;
 	private readonly Action<string>? logError;
+	private readonly Action<string>? logDebug;
 
-	public MapManager(IDataManager dataManager, Action<string>? logError = null)
+	public MapManager(
+		IDataManager dataManager,
+		Action<string>? logError = null,
+		Action<string>? logDebug = null)
 	{
 		this.dataManager = dataManager ?? throw new ArgumentNullException(nameof(dataManager));
 		this.logError = logError;
+		this.logDebug = logDebug;
 	}
 
 	/// <summary>
@@ -36,9 +41,15 @@ public sealed class MapManager
 	{
 		var mapSheet = dataManager.GetExcelSheet<LuminaMap>();
 		if (mapSheet == null)
+		{
+			logDebug?.Invoke("[Map] map sheet unavailable");
 			return null;
+		}
 
-		return MapSizeFactor.ResolveParams(mapId, territoryTypeId, EnumerateMapParams(mapSheet));
+		var result = MapSizeFactor.ResolveParams(mapId, territoryTypeId, EnumerateMapParams(mapSheet));
+		if (result == null)
+			logDebug?.Invoke($"[Map] map params unavailable: map={mapId}, territory={territoryTypeId}");
+		return result;
 	}
 
 	/// <summary>
@@ -51,8 +62,7 @@ public sealed class MapManager
 		uint mapId,
 		float xCoord,
 		float yCoord,
-		IReadOnlyList<uint> aetheryteBlacklist,
-		bool distanceCompensationHack)
+		IReadOnlyList<uint> aetheryteBlacklist)
 	{
 		ArgumentNullException.ThrowIfNull(aetheryteBlacklist);
 
@@ -60,11 +70,18 @@ public sealed class MapManager
 		var mapSheet = dataManager.GetExcelSheet<LuminaMap>();
 		var markerSheet = dataManager.GetSubrowExcelSheet<MapMarker>();
 		if (aetheryteSheet == null || mapSheet == null || markerSheet == null)
+		{
+			logDebug?.Invoke(
+				$"[Map] aetheryte data unavailable: aetherytes={aetheryteSheet != null}, maps={mapSheet != null}, markers={markerSheet != null}");
 			return null;
+		}
 
 		var mapParams = MapSizeFactor.ResolveParams(mapId, territoryTypeId, EnumerateMapParams(mapSheet));
 		if (mapParams == null)
+		{
+			logDebug?.Invoke($"[Map] aetheryte search skipped: map params unavailable for map={mapId}, territory={territoryTypeId}");
 			return null;
+		}
 
 		var sizeFactor = mapParams.Value.SizeFactor;
 		var candidates = new List<NearestAetheryte.Candidate>();
@@ -96,20 +113,22 @@ public sealed class MapManager
 
 			if (marker == null)
 			{
-				logError?.Invoke($"Cannot find aetheryte position for #{aetheryte.RowId} ({placeName})");
+				logError?.Invoke($"[Map] cannot find aetheryte position for #{aetheryte.RowId} ({placeName})");
+				logDebug?.Invoke($"[Map] skipped #{aetheryte.RowId} ({placeName}): marker unavailable");
 				continue;
 			}
 
-			var delta = DistanceCompensation.GetDelta(placeName, distanceCompensationHack);
-			var mapX = MapCoordinates.ConvertMapMarkerToMapCoordinate(marker.Value.X, sizeFactor) + delta.X;
-			var mapY = MapCoordinates.ConvertMapMarkerToMapCoordinate(marker.Value.Y, sizeFactor) + delta.Y;
+			var mapX = MapCoordinates.ConvertMapMarkerToMapCoordinate(marker.Value.X, sizeFactor);
+			var mapY = MapCoordinates.ConvertMapMarkerToMapCoordinate(marker.Value.Y, sizeFactor);
 			candidates.Add(new NearestAetheryte.Candidate(aetheryte.RowId, placeName, mapX, mapY));
 		}
 
 		IReadOnlyCollection<uint> blacklist = aetheryteBlacklist is IReadOnlyCollection<uint> collection
 			? collection
 			: new HashSet<uint>(aetheryteBlacklist);
-		return NearestAetheryte.Select(xCoord, yCoord, candidates, blacklist);
+		var result = NearestAetheryte.Select(xCoord, yCoord, candidates, blacklist);
+		logDebug?.Invoke($"[Map] aetheryte {NearestAetheryte.Describe(result)}; candidates={candidates.Count}, blacklist={blacklist.Count}");
+		return result;
 	}
 
 	private static IEnumerable<(uint RowId, uint TerritoryTypeId, float SizeFactor, int OffsetX, int OffsetY)> EnumerateMapParams(

@@ -18,6 +18,14 @@ public static class NotificationDecision
 	public static bool ShouldPlaySound(bool pluginEnabled, bool enableSound)
 		=> pluginEnabled && enableSound;
 
+	/// <summary>Compact, side-effect-free toast diagnostic for call-site logging.</summary>
+	public static string DescribeToast(bool shouldShowToast)
+		=> shouldShowToast ? "toast=show" : "toast=suppressed";
+
+	/// <summary>Compact, side-effect-free sound diagnostic for call-site logging.</summary>
+	public static string DescribeSound(bool shouldPlaySound)
+		=> shouldPlaySound ? "sound=play" : "sound=suppressed";
+
 	public static string FormatTitle() => DefaultTitle;
 
 	/// <summary>Prefer place name; fall back to generic content.</summary>

@@ -56,35 +56,18 @@ public sealed class NearestAetheryteTests
 	}
 
 	[Fact]
-	public void Select_applies_compensation_via_precomputed_coords()
-	{
-		// Macarenses is slightly closer without hack; +999 Y pushes it away so Plain wins.
-		var plain = new NearestAetheryte.Candidate(10, "Plain", 12f, 10f);
-		var macarensesNear = new NearestAetheryte.Candidate(11, "The Macarenses Angle", 10.5f, 10f);
-		var macarensesHacked = new NearestAetheryte.Candidate(11, "The Macarenses Angle", 10.5f, 10f + 999f);
-
-		var withoutHack = NearestAetheryte.Select(10f, 10f, [plain, macarensesNear]);
-		Assert.Equal(11u, withoutHack!.Value.RowId);
-
-		var withHack = NearestAetheryte.Select(10f, 10f, [plain, macarensesHacked]);
-		Assert.Equal(10u, withHack!.Value.RowId);
-	}
-
-	[Fact]
 	public void SquaredDistance_matches_pow_sum()
 	{
 		Assert.Equal(25.0, NearestAetheryte.SquaredDistance(0f, 0f, 3f, 4f));
 	}
 
 	[Fact]
-	public void Compensation_plus_select_end_to_end()
+	public void Describe_formats_pick_and_missing_result()
 	{
-		var delta = DistanceCompensation.GetDelta("Tertium", enabled: true);
-		var a = new NearestAetheryte.Candidate(1, "Tertium", 10f + delta.X, 15f + delta.Y); // (10, 10)
-		var b = new NearestAetheryte.Candidate(2, "Other", 12f, 10f);
+		var picked = new NearestAetheryteResult(12, "Limsa", 10.125f, 20.5f);
 
-		// Flag at (10,10): Tertium after hack is exact; Other is farther.
-		var result = NearestAetheryte.Select(10f, 10f, [a, b]);
-		Assert.Equal(1u, result!.Value.RowId);
+		Assert.Equal("picked #12 (Limsa) at (10.13, 20.50)", picked.Describe());
+		Assert.Equal("picked #12 (Limsa) at (10.13, 20.50)", NearestAetheryte.Describe(picked));
+		Assert.Equal("no eligible aetheryte", NearestAetheryte.Describe(null));
 	}
 }

@@ -29,10 +29,23 @@ public enum MoveTickKind
 	StartDirectPath,
 }
 
+/// <summary>Reason a <see cref="MoveTickResult"/> is waiting.</summary>
+public enum MoveWaitReason
+{
+	None,
+	PlayerInvalid,
+	TakeoffCasting,
+	DirectPathRunning,
+	MeshNotReady,
+}
+
 /// <summary>Result of <see cref="MovementDecision.DecideMoveTick"/>.</summary>
 public readonly struct MoveTickResult
 {
 	public required MoveTickKind Kind { get; init; }
+
+	/// <summary>Why <see cref="Kind"/> is a wait outcome.</summary>
+	public MoveWaitReason WaitReason { get; init; }
 
 	/// <summary>Effective fly flag after zone clamp (for Start* / Takeoff).</summary>
 	public bool Fly { get; init; }
@@ -59,6 +72,20 @@ public static class MovementDecision
 
 	/// <summary>GeneralAction id for Jump (flight takeoff).</summary>
 	public const uint JumpGeneralActionId = 2;
+
+	/// <summary>Human-readable decision outcome for movement debug logs.</summary>
+	public static string Describe(MoveTickResult result)
+		=> result.Kind switch
+		{
+			MoveTickKind.WaitPlayerInvalid => "wait (player invalid)",
+			MoveTickKind.Arrived => result.StopPath ? "arrived (stop path)" : "arrived",
+			MoveTickKind.Takeoff => "takeoff",
+			MoveTickKind.SetLastPointToleranceAndWait => "wait (set last-point tolerance)",
+			MoveTickKind.Wait => $"wait ({result.WaitReason})",
+			MoveTickKind.StartMeshPath => result.Fly ? "start mesh path (fly)" : "start mesh path (ground)",
+			MoveTickKind.StartDirectPath => result.Fly ? "start direct path (fly)" : "start direct path (ground)",
+			_ => $"unknown ({result.Kind})",
+		};
 
 	/// <summary>
 	/// AD <c>TerritoryIntendedUse</c> RowIds that can support flying (open world / related).
@@ -216,6 +243,7 @@ public static class MovementDecision
 			{
 				Kind = MoveTickKind.WaitPlayerInvalid,
 				Fly = false,
+				WaitReason = MoveWaitReason.PlayerInvalid,
 			};
 		}
 
@@ -240,6 +268,7 @@ public static class MovementDecision
 			{
 				Kind = MoveTickKind.Wait,
 				Fly = fly,
+				WaitReason = MoveWaitReason.TakeoffCasting,
 			};
 		}
 
@@ -262,6 +291,7 @@ public static class MovementDecision
 				{
 					Kind = MoveTickKind.Wait,
 					Fly = fly,
+					WaitReason = MoveWaitReason.DirectPathRunning,
 				};
 			}
 
@@ -294,6 +324,7 @@ public static class MovementDecision
 			{
 				Kind = MoveTickKind.Wait,
 				Fly = fly,
+				WaitReason = MoveWaitReason.MeshNotReady,
 			};
 		}
 

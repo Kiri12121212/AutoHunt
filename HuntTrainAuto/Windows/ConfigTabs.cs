@@ -69,21 +69,6 @@ public static class ConfigTabs
 		=> Labels[ClampSelected(index)];
 
 	/// <summary>
-	/// Human-readable mount selection: <c>-1</c> never, <c>0</c> random, else RowId.
-	/// </summary>
-	public static string FormatMountSelection(int mount)
-		=> mount switch
-		{
-			MountDecision.NeverMount => "Never",
-			MountDecision.RandomMount => "Random",
-			_ => $"Mount #{mount}",
-		};
-
-	/// <summary>Normalize configured mount id (no upper bound — Excel RowIds vary).</summary>
-	public static int ClampMountId(int mount)
-		=> mount < MountDecision.NeverMount ? MountDecision.NeverMount : mount;
-
-	/// <summary>
 	/// Clamp a single TP delay endpoint; NaN-safe via int (already finite).
 	/// </summary>
 	public static int ClampTeleportDelayMs(int ms)

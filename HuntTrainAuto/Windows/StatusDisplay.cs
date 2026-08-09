@@ -23,6 +23,15 @@ public readonly struct StatusSnapshot
 
 	public bool NavPathfindInProgress { get; init; }
 
+	/// <summary>True when Debug Fake Hunt session is armed.</summary>
+	public bool FakeHuntActive { get; init; }
+
+	/// <summary>Synthetic NearbyARank WorldPos is set.</summary>
+	public bool FakeARankSet { get; init; }
+
+	/// <summary>Short Fake Hunt summary for Status (empty when inactive).</summary>
+	public string? FakeHuntSummary { get; init; }
+
 	/// <summary>BossMod or BossModReborn loaded (preferred provider).</summary>
 	public bool BossModAvailable { get; init; }
 
@@ -106,6 +115,16 @@ public static class StatusDisplay
 
 	public static string FormatBossModAi(bool active)
 		=> active ? "BossMod AI: active" : "BossMod AI: idle";
+
+	public static string FormatFakeHuntLine(bool active, bool fakeARankSet, string? summary)
+	{
+		if (!active)
+			return "FakeHunt: off";
+		var a = fakeARankSet ? "A-rank set" : "no A-rank";
+		if (!string.IsNullOrWhiteSpace(summary))
+			return $"FakeHunt: {summary.Trim()} ({a})";
+		return $"FakeHunt: active ({a})";
+	}
 
 	/// <summary>Invoke <paramref name="get"/>; any throw → default idle snapshot.</summary>
 	public static StatusSnapshot SafeCapture(Func<StatusSnapshot> get)

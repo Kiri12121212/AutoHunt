@@ -15,4 +15,10 @@ public sealed class ConductorLastStopParseTests
 	[InlineData("blast stopped", false)]
 	public void IsLastStop(string? content, bool expected)
 		=> Assert.Equal(expected, ConductorLastStopParse.IsLastStop(content));
+
+	[Theory]
+	[InlineData(true, "last-stop=true")]
+	[InlineData(false, "last-stop=false")]
+	public void Describe_reports_parse_outcome(bool isLastStop, string expected)
+		=> Assert.Equal(expected, ConductorLastStopParse.Describe(isLastStop));
 }

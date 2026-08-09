@@ -5,7 +5,9 @@ using System.Numerics;
 using System.Threading.Tasks;
 using Dalamud.Plugin;
 using Dalamud.Plugin.Ipc;
+using Dalamud.Plugin.Services;
 using HuntTrainAuto.Contracts;
+using HuntTrainAuto.Logging;
 
 namespace HuntTrainAuto.Services;
 
@@ -72,9 +74,16 @@ public sealed class VNavmeshIpc : IVnavmeshService
 	private readonly ICallGateSubscriber<bool> simpleMovePathfindInProgress;
 	private readonly ICallGateSubscriber<Vector3, bool, float, Vector3?> pointOnFloor;
 	private readonly ICallGateSubscriber<Vector3, Vector3, bool, Task<List<Vector3>>> navPathfind;
+	private readonly IPluginLog? log;
+	private readonly Func<bool>? debugEnabled;
 
-	public VNavmeshIpc(IDalamudPluginInterface pluginInterface)
+	public VNavmeshIpc(
+		IDalamudPluginInterface pluginInterface,
+		IPluginLog? log = null,
+		Func<bool>? debugEnabled = null)
 	{
+		this.log = log;
+		this.debugEnabled = debugEnabled;
 		navIsReady = pluginInterface.GetIpcSubscriber<bool>(NavIsReadyChannel);
 		pathStop = pluginInterface.GetIpcSubscriber<object?>(PathStopChannel);
 		pathIsRunning = pluginInterface.GetIpcSubscriber<bool>(PathIsRunningChannel);
@@ -100,8 +109,9 @@ public sealed class VNavmeshIpc : IVnavmeshService
 				_ = navIsReady.InvokeFunc();
 				return true;
 			}
-			catch
+			catch (Exception ex)
 			{
+				DebugSoftFail("availability probe", ex);
 				return false;
 			}
 		}
@@ -117,8 +127,9 @@ public sealed class VNavmeshIpc : IVnavmeshService
 		{
 			return navIsReady.InvokeFunc();
 		}
-		catch
+		catch (Exception ex)
 		{
+			DebugSoftFail("Nav.IsReady", ex);
 			return false;
 		}
 	}
@@ -131,10 +142,11 @@ public sealed class VNavmeshIpc : IVnavmeshService
 		try
 		{
 			pathStop.InvokeAction();
+			Debug("Path.Stop succeeded");
 		}
-		catch
+		catch (Exception ex)
 		{
-			// vnavmesh may be absent.
+			DebugSoftFail("Path.Stop", ex);
 		}
 	}
 
@@ -148,8 +160,9 @@ public sealed class VNavmeshIpc : IVnavmeshService
 		{
 			return pathIsRunning.InvokeFunc();
 		}
-		catch
+		catch (Exception ex)
 		{
+			DebugSoftFail("Path.IsRunning", ex);
 			return false;
 		}
 	}
@@ -164,8 +177,9 @@ public sealed class VNavmeshIpc : IVnavmeshService
 		{
 			return pathNumWaypoints.InvokeFunc();
 		}
-		catch
+		catch (Exception ex)
 		{
+			DebugSoftFail("Path.NumWaypoints", ex);
 			return 0;
 		}
 	}
@@ -181,10 +195,11 @@ public sealed class VNavmeshIpc : IVnavmeshService
 		try
 		{
 			pathMoveTo.InvokeAction(waypoints, fly);
+			Debug($"Path.MoveTo succeeded: waypoints={waypoints.Count}, fly={fly}");
 		}
-		catch
+		catch (Exception ex)
 		{
-			// vnavmesh may be absent.
+			DebugSoftFail("Path.MoveTo", ex);
 		}
 	}
 
@@ -199,10 +214,15 @@ public sealed class VNavmeshIpc : IVnavmeshService
 	{
 		try
 		{
-			return pathfindAndMoveTo.InvokeFunc(destination, fly);
+			var accepted = pathfindAndMoveTo.InvokeFunc(destination, fly);
+			Debug(accepted
+				? $"SimpleMove accepted: destination={destination}, fly={fly}"
+				: $"SimpleMove declined: destination={destination}, fly={fly}");
+			return accepted;
 		}
-		catch
+		catch (Exception ex)
 		{
+			DebugSoftFail("SimpleMove.PathfindAndMoveTo", ex);
 			return false;
 		}
 	}
@@ -218,8 +238,9 @@ public sealed class VNavmeshIpc : IVnavmeshService
 		{
 			return simpleMovePathfindInProgress.InvokeFunc();
 		}
-		catch
+		catch (Exception ex)
 		{
+			DebugSoftFail("SimpleMove.PathfindInProgress", ex);
 			return false;
 		}
 	}
@@ -233,10 +254,11 @@ public sealed class VNavmeshIpc : IVnavmeshService
 		try
 		{
 			pathSetTolerance.InvokeAction(tolerance);
+			Debug($"Path.SetTolerance succeeded: {tolerance:0.00}");
 		}
-		catch
+		catch (Exception ex)
 		{
-			// vnavmesh may be absent.
+			DebugSoftFail("Path.SetTolerance", ex);
 		}
 	}
 
@@ -254,8 +276,9 @@ public sealed class VNavmeshIpc : IVnavmeshService
 		{
 			return pointOnFloor.InvokeFunc(position, allowUnlandable, halfExtentXZ);
 		}
-		catch
+		catch (Exception ex)
 		{
+			DebugSoftFail("Query.Mesh.PointOnFloor", ex);
 			return null;
 		}
 	}
@@ -267,10 +290,13 @@ public sealed class VNavmeshIpc : IVnavmeshService
 	{
 		try
 		{
-			return navPathfind.InvokeFunc(from, to, fly);
+			var task = navPathfind.InvokeFunc(from, to, fly);
+			Debug($"Nav.Pathfind started: from={from}, to={to}, fly={fly}");
+			return task;
 		}
-		catch
+		catch (Exception ex)
 		{
+			DebugSoftFail("Nav.Pathfind", ex);
 			return null;
 		}
 	}
@@ -278,5 +304,22 @@ public sealed class VNavmeshIpc : IVnavmeshService
 	public void Dispose()
 	{
 		// Subscriber only — no event subscriptions to tear down.
+	}
+
+	private bool IsDebugEnabled()
+		=> debugEnabled?.Invoke() ?? false;
+
+	private void Debug(string message)
+	{
+		if (log != null)
+			DebugBehavior.Debug(log, IsDebugEnabled(), "VNav", message);
+	}
+
+	private void DebugSoftFail(string operation, Exception ex)
+	{
+		if (log != null)
+			DebugBehavior.DebugThrottled(
+				log, IsDebugEnabled(), $"vnav.{operation}", 2_000, Environment.TickCount64, "VNav",
+				$"{operation} unavailable/soft-fail: {ex.Message}");
 	}
 }

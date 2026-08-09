@@ -46,6 +46,17 @@ public readonly struct TeleportDecisionResult
 		Action is TeleportAction.TeleportToZone
 			or TeleportAction.SwitchInstance
 			or TeleportAction.TeleportBecauseFar;
+
+	/// <summary>Compact, side-effect-free decision diagnostic for call-site logging.</summary>
+	public string Describe()
+	{
+		var arrival = Arrival == null
+			? "arrival=none"
+			: $"arrival=aetheryte:{Arrival.AetheryteId}, territory:{Arrival.Territory}, instance:{Arrival.Instance}";
+		return Action == TeleportAction.Skip
+			? $"action={Action}, skip={SkipReason}, {arrival}"
+			: $"action={Action}, {arrival}";
+	}
 }
 
 /// <summary>
@@ -126,7 +137,15 @@ public static class TeleportDecision
 			return Teleport(TeleportAction.TeleportToZone, arrival);
 		}
 
-		// Same territory — conductor/flag instance wins over distance skip (ChangeInstance, no aetheryte TP).
+		// Same-zone distance floor before instance: mid-zone ChangeInstance is blocked, so
+		// SwitchInstance would aetheryte-TP even when already next to the flag.
+		if (playerDistance is { } d0)
+		{
+			var withinDistanceFloor = d0 <= distanceThreshold;
+			if (withinDistanceFloor && (!timeAware.Enabled || timeAware.RetainDistanceAsFloor))
+				return Skip(TeleportSkipReason.AlreadyClose);
+		}
+
 		if (needsInstanceSwitch)
 		{
 			if (arrival == null)
@@ -137,13 +156,6 @@ public static class TeleportDecision
 
 		if (!autoTeleport)
 			return Skip(TeleportSkipReason.AutoTeleportDisabled);
-
-		if (playerDistance is { } d0)
-		{
-			var withinDistanceFloor = d0 <= distanceThreshold;
-			if (withinDistanceFloor && (!timeAware.Enabled || timeAware.RetainDistanceAsFloor))
-				return Skip(TeleportSkipReason.AlreadyClose);
-		}
 
 		if (playerDistance == null)
 			return Skip(TeleportSkipReason.PlayerStateUnavailable);
@@ -183,33 +195,18 @@ public static class TeleportDecision
 	}
 
 	/// <summary>
-	/// Instance switch when target is specified (non-zero) and differs from current.
+	/// Instance switch when both sides are known (non-zero) and differ.
+	/// Unknown current (0) must not force a switch — Lifestream often returns 0 while
+	/// the player is already on the reported instance.
 	/// </summary>
 	public static bool NeedsInstanceSwitch(int currentInstance, int targetInstance)
-		=> targetInstance > 0 && currentInstance != targetInstance;
+		=> currentInstance > 0 && targetInstance > 0 && currentInstance != targetInstance;
 
 	/// <summary>
-	/// HTA <c>AutoSwitchInstanceToOne</c>: zone-change arrivals use instance 1 when enabled, else 0.
+	/// Prefer conductor/flag-reported instance; otherwise 0 (no instance preference).
 	/// </summary>
-	public static int ResolveZoneChangeInstance(bool autoSwitchInstanceToOne)
-		=> autoSwitchInstanceToOne ? 1 : 0;
-
-	/// <summary>
-	/// Prefer conductor/flag-reported instance; else zone-change force-to-1 when enabled.
-	/// </summary>
-	public static int ResolveTargetInstance(
-		int reportedInstance,
-		bool zoneChange,
-		bool autoSwitchInstanceToOne)
-	{
-		if (reportedInstance > 0)
-			return reportedInstance;
-
-		if (zoneChange)
-			return ResolveZoneChangeInstance(autoSwitchInstanceToOne);
-
-		return 0;
-	}
+	public static int ResolveTargetInstance(int reportedInstance)
+		=> reportedInstance > 0 ? reportedInstance : 0;
 
 	/// <summary>
 	/// Builds arrival on <paramref name="flag"/> from a snapshot and runs <see cref="Decide"/>.
@@ -220,7 +217,6 @@ public static class TeleportDecision
 		bool enabled,
 		bool autoTeleport,
 		float distanceThreshold,
-		bool autoSwitchInstanceToOne,
 		HuntFlag flag,
 		TeleportPlayerSnapshot? snapshot,
 		SameZoneTimeAwareSettings timeAware = default)
@@ -234,10 +230,7 @@ public static class TeleportDecision
 		var zoneChange = s.CurrentTerritory != flag.TerritoryTypeId;
 		// Snapshot hint first; else flag.ReportedInstance (chat/HA may only set the flag).
 		var reported = s.TargetInstance > 0 ? s.TargetInstance : flag.ReportedInstance;
-		var targetInstance = ResolveTargetInstance(
-			reported,
-			zoneChange,
-			autoSwitchInstanceToOne);
+		var targetInstance = ResolveTargetInstance(reported);
 
 		ArrivalData? arrival;
 		if (!zoneChange && NeedsInstanceSwitch(s.CurrentInstance, targetInstance))

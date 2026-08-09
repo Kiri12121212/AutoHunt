@@ -74,6 +74,17 @@ public sealed class StatusDisplayTests
 	public void FormatBossModAi_labels(bool active, string expected)
 		=> Assert.Equal(expected, StatusDisplay.FormatBossModAi(active));
 
+	[Theory]
+	[InlineData(false, false, null, "FakeHunt: off")]
+	[InlineData(true, true, "FakeHunt Near", "FakeHunt: FakeHunt Near (A-rank set)")]
+	[InlineData(true, false, null, "FakeHunt: active (no A-rank)")]
+	public void FormatFakeHuntLine(
+		bool active,
+		bool aSet,
+		string? summary,
+		string expected)
+		=> Assert.Equal(expected, StatusDisplay.FormatFakeHuntLine(active, aSet, summary));
+
 	[Fact]
 	public void SafeCapture_returns_probe_result()
 	{

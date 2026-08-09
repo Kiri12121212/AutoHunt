@@ -20,4 +20,8 @@ public static class ConductorLastStopParse
 			return false;
 		return LastStop.IsMatch(content);
 	}
+
+	/// <summary>Compact, side-effect-free parse diagnostic for call-site logging.</summary>
+	public static string Describe(bool isLastStop)
+		=> isLastStop ? "last-stop=true" : "last-stop=false";
 }
