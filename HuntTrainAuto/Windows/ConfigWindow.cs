@@ -531,6 +531,17 @@ public sealed class ConfigWindow : Window, IDisposable
 			config.ARankScanRange = EngageTargetDecision.ClampARankScanRange(aRankScan);
 			saveConfig();
 		}
+
+		var preferHint = config.PreferARankNearHuntHint;
+		if (ImGui.Checkbox("Prefer A-rank nearest hunt hint", ref preferHint))
+		{
+			config.PreferARankNearHuntHint = preferHint;
+			saveConfig();
+		}
+
+		ImGui.TextWrapped(
+			"When several A-ranks are in range, bias toward the last conductor / HuntAlerts " +
+			"(or soft Sonar chat) map position. Sonar is optional — no IPC; chat map-links only.");
 	}
 
 	private void DrawCombatTab()

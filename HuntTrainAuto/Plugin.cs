@@ -47,6 +47,7 @@ public sealed class Plugin : IDalamudPlugin
 	private readonly HuntPfHelper huntPf;
 	private readonly HuntPfLeaveHelper huntPfLeave;
 	private readonly MovementHelper movement;
+	private readonly EngagePositionHint engageHint = new();
 	private readonly EngageTargetHelper engage;
 	private readonly CombatTransitionHelper combat;
 	private readonly RsrEnableHelper rsrEnable;
@@ -55,6 +56,7 @@ public sealed class Plugin : IDalamudPlugin
 	private readonly DebugEventLog debugLog = new();
 	private readonly DebugEventProbe debugProbe;
 	private readonly HuntNotificator notificator;
+	private readonly SonarChatHintIntake sonarChatHintIntake;
 
 	private HuntFlag? activeHuntFlag;
 
@@ -437,7 +439,9 @@ public sealed class Plugin : IDalamudPlugin
 			pluginLog,
 			movement,
 			ResolveEngageRange,
-			() => Config.ARankScanRange);
+			() => Config.ARankScanRange,
+			() => Config.PreferARankNearHuntHint,
+			ResolveEngagePositionHint);
 		combat = new CombatTransitionHelper(
 			objectTable,
 			partyList,
@@ -454,6 +458,8 @@ public sealed class Plugin : IDalamudPlugin
 		chatMessageHandler.TryGetPlayerSnapshot = TryGetPlayerSnapshot;
 		chatMessageHandler.HuntFlagReceived += OnHuntFlagReceived;
 		chatMessageHandler.ConductorTextReceived += OnConductorTextReceived;
+		// Soft Sonar chat → engage hint (no Sonar IPC; HuntAlerts already covers train coords).
+		sonarChatHintIntake = new SonarChatHintIntake(chatGui, Config, engageHint, pluginLog);
 
 		pluginInterface.UiBuilder.Draw += Draw;
 		pluginInterface.UiBuilder.OpenMainUi += ToggleUi;
@@ -761,7 +767,7 @@ public sealed class Plugin : IDalamudPlugin
 		deferredCombatFlag = null;
 		divertingToEngage = false;
 		PrepareTeleportIntent(flag, instanceHint);
-		AdoptHuntFlag(flag, clearPendingDefer);
+		AdoptHuntFlag(flag, clearPendingDefer, EngagePositionHintSource.HuntAlerts);
 		lastFlagIntakeMemory = HuntAlertsFlagDedupe.Remember(
 			flag,
 			HuntFlagIntakeSource.HuntAlerts,
@@ -955,7 +961,7 @@ public sealed class Plugin : IDalamudPlugin
 
 		// Re-evaluate + INF reported/hint/target/current (chat path previously skipped this).
 		PrepareTeleportIntent(flag, flag.ReportedInstance);
-		AdoptHuntFlag(flag, clearPendingDefer: true);
+		AdoptHuntFlag(flag, clearPendingDefer: true, EngagePositionHintSource.ConductorFlag);
 		lastFlagIntakeMemory = HuntAlertsFlagDedupe.Remember(
 			flag,
 			HuntFlagIntakeSource.Chat,
@@ -970,7 +976,10 @@ public sealed class Plugin : IDalamudPlugin
 	/// pending + <see cref="huntAlertsFlagQueue"/> and suppresses HA Drain for the rest of
 	/// this Framework tick so IPC enqueued after Clear cannot override (conductor-wins).
 	/// </summary>
-	private void AdoptHuntFlag(HuntFlag flag, bool clearPendingDefer)
+	private void AdoptHuntFlag(
+		HuntFlag flag,
+		bool clearPendingDefer,
+		EngagePositionHintSource hintSource = EngagePositionHintSource.ConductorFlag)
 	{
 		// Conductor chat wins concurrent HuntAlerts (TASKS 10.5): clear pending stash +
 		// IPC queue + soft-fail Abort any in-flight Lifestream visit so a later
@@ -1006,6 +1015,7 @@ public sealed class Plugin : IDalamudPlugin
 			HasInFlightPipelineWork());
 
 		activeHuntFlag = flag;
+		engageHint.RememberFromFlag(flag, hintSource);
 		notificator.NotifyConductorFlag(flag);
 		debugProbe.RecordFlagReceived(Config.EnableDebugLogging, flag.PlaceName);
 
@@ -1280,6 +1290,7 @@ public sealed class Plugin : IDalamudPlugin
 			activeHuntFlag = null;
 			deferredCombatFlag = null;
 			divertingToEngage = false;
+			engageHint.Clear();
 		}
 		if (plan.ClearConductors)
 			ConductorList.Clear(Config.Conductors);
@@ -1528,6 +1539,53 @@ public sealed class Plugin : IDalamudPlugin
 		=> CombatDecision.ClampEngageRange(Config.EngageRange);
 
 	/// <summary>
+	/// Last hunt WorldPos hint for NearbyARank bias (conductor / HA / soft Sonar chat).
+	/// Territory-gated; null when unset or other zone.
+	/// Soft Sonar chat refinements win over the adopted flag floor pos.
+	/// </summary>
+	private Vector3? ResolveEngagePositionHint()
+	{
+		try
+		{
+			var territory = clientState.TerritoryType;
+			if (engageHint.Source == EngagePositionHintSource.SonarChat)
+			{
+				var sonar = engageHint.WorldPosForTerritory(territory);
+				if (sonar != null)
+					return sonar;
+			}
+
+			if (activeHuntFlag is { WorldPos: { } wp } && wp != Vector3.Zero
+			    && (activeHuntFlag.TerritoryTypeId == 0
+			        || activeHuntFlag.TerritoryTypeId == territory))
+				return wp;
+
+			return engageHint.WorldPosForTerritory(territory);
+		}
+		catch
+		{
+			return null;
+		}
+	}
+
+	/// <summary>
+	/// Refresh hint when PointOnFloor fills <see cref="HuntFlag.WorldPos"/>.
+	/// Does not overwrite a newer soft Sonar chat hint.
+	/// </summary>
+	private void RefreshEngageHintFromActiveFlag(HuntFlag flag)
+	{
+		if (flag.WorldPos is not { } wp || wp == Vector3.Zero)
+			return;
+		if (engageHint.Source is EngagePositionHintSource.SonarChat)
+			return;
+
+		var source = engageHint.Source is EngagePositionHintSource.HuntAlerts
+			? EngagePositionHintSource.HuntAlerts
+			: EngagePositionHintSource.ConductorFlag;
+		engageHint.RememberFromFlag(flag, source);
+	}
+
+	/// <summary>
 	/// Resolve RSR targeting / HostileType from config + local ClassJob.Role (tank = 1).
 	/// Soft-fails to non-tank defaults when the player/job is unavailable.
 	/// </summary>
@@ -1574,6 +1632,8 @@ public sealed class Plugin : IDalamudPlugin
 
 			if (flag.WorldPos is null || flag.WorldPos == Vector3.Zero)
 				flagWorld.TryResolve(flag);
+
+			RefreshEngageHintFromActiveFlag(flag);
 
 			if (flag.WorldPos is not { } pos || pos == Vector3.Zero)
 				return;
@@ -1739,7 +1799,7 @@ public sealed class Plugin : IDalamudPlugin
 			pluginLog.Information("Flushing conductor flag deferred during A-rank combat");
 			divertingToEngage = false;
 			PrepareTeleportIntent(flag, flag.ReportedInstance);
-			AdoptHuntFlag(flag, clearPendingDefer: true);
+			AdoptHuntFlag(flag, clearPendingDefer: true, EngagePositionHintSource.ConductorFlag);
 			lastFlagIntakeMemory = HuntAlertsFlagDedupe.Remember(
 				flag,
 				HuntFlagIntakeSource.Chat,
@@ -1766,6 +1826,8 @@ public sealed class Plugin : IDalamudPlugin
 
 			if (flag.WorldPos is null || flag.WorldPos == Vector3.Zero)
 				flagWorld.TryResolve(flag);
+
+			RefreshEngageHintFromActiveFlag(flag);
 
 			var inFlight = condition[ConditionFlag.InFlight];
 			var arrival = flagArrival.Tick(
@@ -2168,6 +2230,7 @@ public sealed class Plugin : IDalamudPlugin
 		activeHuntFlag = null;
 		flagArrival.Clear();
 		unmount.ClearAll();
+		engageHint.Clear();
 		engage.Clear();
 		combat.Clear();
 		rsrEnable.Clear();
@@ -2175,6 +2238,7 @@ public sealed class Plugin : IDalamudPlugin
 		huntPfLeave.Clear();
 		huntPf.Dispose();
 		train.Reset();
+		sonarChatHintIntake.Dispose();
 		chatMessageHandler.Dispose();
 		alertChatLinker.Dispose();
 		huntAlertsIpc.Dispose();

@@ -1,6 +1,7 @@
 #nullable enable
 using System;
 using System.Collections.Generic;
+using System.Numerics;
 
 namespace HuntTrainAuto.Combat;
 
@@ -52,6 +53,13 @@ public readonly struct EngageMobCandidate
 	/// </summary>
 	public float EligibilityDistance { get; init; }
 
+	/// <summary>
+	/// Mob → hunt position hint distance (yalms, typically XZ).
+	/// <see cref="float.PositiveInfinity"/> when no hint / unused.
+	/// Hint sources: conductor flag, HuntAlerts, soft Sonar chat (no Sonar IPC).
+	/// </summary>
+	public float DistanceToHint { get; init; }
+
 	public bool IsAlive { get; init; }
 }
 
@@ -59,7 +67,7 @@ public readonly struct EngageMobCandidate
 /// Pure engage-target priority (A-train):
 /// 1) Conductor fight target,
 /// 2) Party ally fight target (nearest mob),
-/// 3) Nearest A-rank in scan range,
+/// 3) Nearby A-rank in scan range (prefer nearest to Sonar/HA/conductor hint when enabled),
 /// else none. No player follow. S-ranks never selected via the A-rank path.
 /// </summary>
 public static class EngageTargetDecision
@@ -103,11 +111,15 @@ public static class EngageTargetDecision
 
 	/// <summary>
 	/// Pick engage mob. Conductor &gt; party fight &gt; nearby A-rank.
-	/// NearbyARank uses <see cref="EngageMobCandidate.EligibilityDistance"/> vs scan range.
+	/// NearbyARank eligibility uses <see cref="EngageMobCandidate.EligibilityDistance"/> vs scan range.
+	/// When <paramref name="preferNearHint"/> and candidates carry finite
+	/// <see cref="EngageMobCandidate.DistanceToHint"/>, NearbyARank prefers
+	/// the mob closest to the hunt hint (still within eligibility range).
 	/// </summary>
 	public static EngageTargetPick Resolve(
 		IReadOnlyList<EngageMobCandidate> candidates,
-		float scanRange)
+		float scanRange,
+		bool preferNearHint = true)
 	{
 		var range = ClampARankScanRange(scanRange);
 
@@ -116,7 +128,9 @@ public static class EngageTargetDecision
 		var bestParty = -1;
 		var bestPartyDist = float.PositiveInfinity;
 		var bestA = -1;
-		var bestADist = float.PositiveInfinity;
+		var bestAHintDist = float.PositiveInfinity;
+		var bestAEligDist = float.PositiveInfinity;
+		var bestAUsedHint = false;
 
 		for (var i = 0; i < candidates.Count; i++)
 		{
@@ -136,12 +150,31 @@ public static class EngageTargetDecision
 				bestPartyDist = c.Distance;
 			}
 
-			if (c.IsARank
-				&& c.EligibilityDistance <= range
-				&& c.EligibilityDistance < bestADist)
+			if (!c.IsARank || c.EligibilityDistance > range)
+				continue;
+
+			var hasHint = preferNearHint
+				&& !float.IsNaN(c.DistanceToHint)
+				&& !float.IsInfinity(c.DistanceToHint)
+				&& c.DistanceToHint >= 0f;
+
+			if (hasHint)
+			{
+				// Hint mode wins over pure eligibility-distance picks.
+				if (!bestAUsedHint
+				    || c.DistanceToHint < bestAHintDist
+				    || (c.DistanceToHint == bestAHintDist && c.EligibilityDistance < bestAEligDist))
+				{
+					bestA = c.Index;
+					bestAHintDist = c.DistanceToHint;
+					bestAEligDist = c.EligibilityDistance;
+					bestAUsedHint = true;
+				}
+			}
+			else if (!bestAUsedHint && c.EligibilityDistance < bestAEligDist)
 			{
 				bestA = c.Index;
-				bestADist = c.EligibilityDistance;
+				bestAEligDist = c.EligibilityDistance;
 			}
 		}
 

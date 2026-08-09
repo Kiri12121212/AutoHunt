@@ -137,9 +137,89 @@ public sealed class EngageTargetDecisionTests
 			Mob(0, isA: true, dist: 10f, eligibility: 40f),
 			Mob(1, isA: true, dist: 80f, eligibility: 15f),
 		};
-		var pick = EngageTargetDecision.Resolve(candidates, 50f);
+		var pick = EngageTargetDecision.Resolve(candidates, 50f, preferNearHint: false);
 		Assert.Equal(EngageTargetKind.NearbyARank, pick.Kind);
 		Assert.Equal(1, pick.Index);
+	}
+
+	[Fact]
+	public void Resolve_prefers_a_rank_near_position_hint()
+	{
+		// Closer to player is index 0; closer to hint is index 1.
+		var candidates = new List<EngageMobCandidate>
+		{
+			Mob(0, isA: true, dist: 10f, hintDist: 40f),
+			Mob(1, isA: true, dist: 25f, hintDist: 5f),
+			Mob(2, isA: true, dist: 30f, hintDist: 50f),
+		};
+		var pick = EngageTargetDecision.Resolve(candidates, 50f, preferNearHint: true);
+		Assert.Equal(EngageTargetKind.NearbyARank, pick.Kind);
+		Assert.Equal(1, pick.Index);
+	}
+
+	[Fact]
+	public void Resolve_hint_prefer_falls_back_to_player_distance_when_disabled()
+	{
+		var candidates = new List<EngageMobCandidate>
+		{
+			Mob(0, isA: true, dist: 10f, hintDist: 40f),
+			Mob(1, isA: true, dist: 25f, hintDist: 5f),
+		};
+		var pick = EngageTargetDecision.Resolve(candidates, 50f, preferNearHint: false);
+		Assert.Equal(EngageTargetKind.NearbyARank, pick.Kind);
+		Assert.Equal(0, pick.Index);
+	}
+
+	[Fact]
+	public void Resolve_hint_prefer_ignores_infinite_hint_distance()
+	{
+		var candidates = new List<EngageMobCandidate>
+		{
+			Mob(0, isA: true, dist: 30f, hintDist: float.PositiveInfinity),
+			Mob(1, isA: true, dist: 12f, hintDist: float.PositiveInfinity),
+		};
+		var pick = EngageTargetDecision.Resolve(candidates, 50f, preferNearHint: true);
+		Assert.Equal(EngageTargetKind.NearbyARank, pick.Kind);
+		Assert.Equal(1, pick.Index);
+	}
+
+	[Fact]
+	public void Resolve_hint_tie_breaks_by_player_distance()
+	{
+		var candidates = new List<EngageMobCandidate>
+		{
+			Mob(0, isA: true, dist: 30f, hintDist: 8f),
+			Mob(1, isA: true, dist: 15f, hintDist: 8f),
+		};
+		var pick = EngageTargetDecision.Resolve(candidates, 50f, preferNearHint: true);
+		Assert.Equal(EngageTargetKind.NearbyARank, pick.Kind);
+		Assert.Equal(1, pick.Index);
+	}
+
+	[Fact]
+	public void Resolve_conductor_still_beats_hint_near_a_rank()
+	{
+		var candidates = new List<EngageMobCandidate>
+		{
+			Mob(0, isA: true, dist: 5f, hintDist: 1f),
+			Mob(1, conductor: true, dist: 40f, hintDist: 100f),
+		};
+		var pick = EngageTargetDecision.Resolve(candidates, 50f, preferNearHint: true);
+		Assert.Equal(EngageTargetKind.ConductorFight, pick.Kind);
+		Assert.Equal(1, pick.Index);
+	}
+
+	[Fact]
+	public void Resolve_prefer_near_hint_ignores_out_of_scan_range()
+	{
+		var candidates = new List<EngageMobCandidate>
+		{
+			Mob(0, isA: true, dist: 8f, hintDist: 40f),
+			Mob(1, isA: true, dist: 60f, hintDist: 1f), // closest to hint but out of scan
+		};
+		var pick = EngageTargetDecision.Resolve(candidates, 50f, preferNearHint: true);
+		Assert.Equal(EngageTargetKind.NearbyARank, pick.Kind);
+		Assert.Equal(0, pick.Index);
 	}
 
 	[Fact]
@@ -262,9 +342,9 @@ public sealed class EngageTargetDecisionTests
 	{
 		var ids = ARankHuntIndex.BuildARankIds(
 		[
-			(nameId: 10, baseId: 100, rank: (byte)HuntMarkRank.B),
-			(nameId: 20, baseId: 200, rank: (byte)HuntMarkRank.A),
-			(nameId: 30, baseId: 300, rank: (byte)HuntMarkRank.S),
+			(10u, 100u, (byte)HuntMarkRank.B),
+			(20u, 200u, (byte)HuntMarkRank.A),
+			(30u, 300u, (byte)HuntMarkRank.S),
 		]);
 		Assert.Equal(2, ids.Count);
 		Assert.True(ARankHuntIndex.IsARank(ids, 20, 0));
@@ -280,7 +360,8 @@ public sealed class EngageTargetDecisionTests
 		bool isA = false,
 		float dist = 0f,
 		float? eligibility = null,
-		bool alive = true)
+		bool alive = true,
+		float hintDist = float.PositiveInfinity)
 		=> new()
 		{
 			Index = index,
@@ -289,6 +370,7 @@ public sealed class EngageTargetDecisionTests
 			IsARank = isA,
 			Distance = dist,
 			EligibilityDistance = eligibility ?? dist,
+			DistanceToHint = hintDist,
 			IsAlive = alive,
 		};
 }
