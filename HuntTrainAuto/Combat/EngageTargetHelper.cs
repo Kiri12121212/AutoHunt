@@ -43,9 +43,9 @@ public readonly struct EngageProbeResult
 }
 
 /// <summary>
-/// After flag unmount: join conductor's fight, else a party ally's fight, else nearby A-rank
-/// (optionally biased toward last Sonar/HA/conductor position hint).
-/// Does <b>not</b> follow players. Soft-fails; never throws to Framework.
+/// After flag unmount: join conductor's A-rank fight, else a party ally's A-rank fight,
+/// else nearby A-rank (optionally biased toward last Sonar/HA/conductor position hint).
+/// Does <b>not</b> follow players or engage trash/S/B. Soft-fails; never throws to Framework.
 /// Sonar is a soft dependency (chat map-links only — no public Sonar IPC).
 /// </summary>
 public sealed class EngageTargetHelper
@@ -66,7 +66,7 @@ public sealed class EngageTargetHelper
 	private readonly List<EngageMobCandidate> candidates = [];
 	private readonly List<IGameObject> candidateObjects = [];
 
-	private HashSet<uint>? aRankIds;
+	private ARankIdIndex? aRankIndex;
 	private uint? lockedEntityId;
 	private EngageTargetKind lastKind = EngageTargetKind.None;
 	private bool lastTargetIsARank;
@@ -120,10 +120,7 @@ public sealed class EngageTargetHelper
 		{
 			var player = objectTable.LocalPlayer;
 			if (player == null)
-			{
-				LogProbeSkip("player unavailable");
 				return EngageProbeResult.None;
-			}
 
 			// Fake Hunt synthetic A wins so divert/unmount is deterministic without a live mob.
 			if (TryFakeARankProbe(player.Position, flagWorldPos, out var fakeProbe))
@@ -137,10 +134,7 @@ public sealed class EngageTargetHelper
 				getARankScanRange(),
 				getPreferNearHint());
 			if (!pick.Found || pick.Index < 0 || pick.Index >= candidateObjects.Count)
-			{
-				LogProbeSkip(EngageTargetDecision.Describe(pick));
 				return EngageProbeResult.None;
-			}
 
 			var mob = candidateObjects[pick.Index];
 			var candidate = candidates[pick.Index];
@@ -221,17 +215,6 @@ public sealed class EngageTargetHelper
 	{
 		if (!pluginEnabled || playerDead)
 		{
-			if (DebugThrottle.Try("engage.disabled", 2000, Environment.TickCount64))
-			{
-				var reason = !pluginEnabled ? "plugin disabled" : "player dead";
-				pluginLog.Debug(
-					$"[Engage] skipped ({reason}); "
-					+ EngageTargetDecision.Describe(new EngageTargetPick
-					{
-						Kind = EngageTargetKind.None,
-						Index = -1,
-					}));
-			}
 			Clear();
 			if (combat.Phase != CombatPhase.Idle)
 				combat.Clear();
@@ -239,6 +222,7 @@ public sealed class EngageTargetHelper
 		}
 
 		// Already in combat phase — keep vnav stopped; BossMod AI owns positioning.
+		// Re-assert hard-target on the locked A-rank so RSR cannot tab trash.
 		if (combat.InCombatPhase)
 		{
 			try
@@ -250,18 +234,13 @@ public sealed class EngageTargetHelper
 				// soft-fail
 			}
 
-			if (DebugThrottle.Try("engage.combat.skip", 2000, Environment.TickCount64))
-				pluginLog.Debug("[Engage] skipped; combat phase already active");
+			TryRetargetLockedARank();
 			return true;
 		}
 
 		var player = objectTable.LocalPlayer;
 		if (player == null)
-		{
-			if (DebugThrottle.Try("engage.player.skip", 2000, Environment.TickCount64))
-				pluginLog.Debug("[Engage] skipped; player unavailable");
 			return false;
-		}
 
 		if (TryTickFakeARank(combat, player.Position, flagWorldPos))
 			return combat.InCombatPhase;
@@ -275,8 +254,6 @@ public sealed class EngageTargetHelper
 			getPreferNearHint());
 		if (!pick.Found || pick.Index < 0 || pick.Index >= candidateObjects.Count)
 		{
-			if (DebugThrottle.Try("engage.target.skip", 2000, Environment.TickCount64))
-				pluginLog.Debug($"[Engage] skipped; {EngageTargetDecision.Describe(pick)}");
 			lastKind = EngageTargetKind.None;
 			lastTargetIsARank = false;
 			lockedEntityId = null;
@@ -412,7 +389,7 @@ public sealed class EngageTargetHelper
 
 	private void EnsureARankIndex()
 	{
-		if (aRankIds != null)
+		if (aRankIndex != null)
 			return;
 
 		var rows = new List<(uint, uint, byte)>();
@@ -435,8 +412,10 @@ public sealed class EngageTargetHelper
 			pluginLog.Debug($"[Engage] A-rank sheet soft-fail: {ex.Message}");
 		}
 
-		aRankIds = ARankHuntIndex.BuildARankIds(rows);
-		pluginLog.Debug($"[Engage] A-rank index size={aRankIds.Count}");
+		aRankIndex = ARankHuntIndex.BuildARankIds(rows);
+		pluginLog.Debug(
+			$"[Engage] A-rank index names={aRankIndex.Value.NameIds.Count} "
+			+ $"bases={aRankIndex.Value.BaseIds.Count}");
 	}
 
 	private void BuildCandidates(
@@ -449,7 +428,7 @@ public sealed class EngageTargetHelper
 
 		var playerPos = player.Position;
 		var flagPos = flagWorldPos is { } fp && fp != Vector3.Zero ? fp : (Vector3?)null;
-		var aIds = aRankIds ?? [];
+		var aIds = aRankIndex ?? ARankIdIndex.Empty;
 		IGameObject? conductorFightTarget = null;
 		var partyFightTargets = new HashSet<uint>();
 		Vector3? hintPos = null;
@@ -502,14 +481,15 @@ public sealed class EngageTargetHelper
 			var baseId = obj.BaseId;
 			var isA = ARankHuntIndex.IsARank(aIds, nameId, baseId);
 			var entityId = TryEntityId(obj);
+			// A-ranks only — never hard-target trash/S/B even if conductor/party tab them.
+			// NameId vs BaseId are separate namespaces (see ARankHuntIndex).
+			if (!isA)
+				continue;
+
 			var isConductorPull = conductorFightTarget != null
 				&& entityId != null
 				&& TryEntityId(conductorFightTarget) == entityId;
 			var isPartyPull = entityId != null && partyFightTargets.Contains(entityId.Value);
-
-			// Conductor/party fight targets and A-ranks only (ignore S/B/trash unless join fight).
-			if (!isConductorPull && !isPartyPull && !isA)
-				continue;
 
 			var playerDist = Vector3.Distance(playerPos, obj.Position);
 			float? flagDist = flagPos is { } flag
@@ -580,6 +560,56 @@ public sealed class EngageTargetHelper
 		}
 	}
 
+	/// <summary>
+	/// While latched on an A-rank, keep the hard-target on that entity.
+	/// Stops RSR / tab from parking on trash mid-fight.
+	/// </summary>
+	private void TryRetargetLockedARank()
+	{
+		var id = lockedEntityId;
+		if (id == null)
+			return;
+
+		try
+		{
+			if (targetManager.Target is { } cur
+			    && TryEntityId(cur) == id.Value
+			    && cur is ICharacter { CurrentHp: > 0 })
+				return;
+
+			EnsureARankIndex();
+			var aIds = aRankIndex ?? ARankIdIndex.Empty;
+
+			foreach (var obj in objectTable)
+			{
+				if (!TryIsValid(obj) || TryEntityId(obj) != id.Value)
+					continue;
+				if (obj.ObjectKind != ObjectKind.BattleNpc)
+					return;
+				if (obj is ICharacter { CurrentHp: <= 0 })
+				{
+					lockedEntityId = null;
+					return;
+				}
+
+				var nameId = obj is ICharacter ch ? ch.NameId : 0u;
+				if (!ARankHuntIndex.IsARank(aIds, nameId, obj.BaseId))
+				{
+					// Lock pointed at a non-A (stale / false-positive) — drop it.
+					lockedEntityId = null;
+					return;
+				}
+
+				TrySetTarget(obj);
+				return;
+			}
+		}
+		catch (Exception ex)
+		{
+			pluginLog.Debug($"[Engage] retarget locked A soft-fail: {ex.Message}");
+		}
+	}
+
 	private void TrySetTarget(IGameObject mob)
 	{
 		try
@@ -592,12 +622,6 @@ public sealed class EngageTargetHelper
 		{
 			pluginLog.Debug($"[Engage] set target soft-fail: {ex.Message}");
 		}
-	}
-
-	private void LogProbeSkip(string reason)
-	{
-		if (DebugThrottle.Try("engage.probe.skip", 2000, Environment.TickCount64))
-			pluginLog.Debug($"[Engage] probe skipped; {reason}");
 	}
 
 	private static bool TryGetLivingBattleNpc(IGameObject? source, out IGameObject? battleNpc)

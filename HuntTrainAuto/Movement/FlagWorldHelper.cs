@@ -31,6 +31,19 @@ public sealed class FlagWorldHelper
 		ArgumentNullException.ThrowIfNull(flag);
 		try
 		{
+			if (!vnav.IsAvailable || !vnav.NavIsReady())
+			{
+				DebugBehavior.DebugThrottled(
+					pluginLog!,
+					enabled: true,
+					throttleKey: "flagWorld.raw.navWait",
+					intervalMs: 2000,
+					nowMs: Environment.TickCount64,
+					area: "Move",
+					message: "flag floor query deferred (nav not ready)");
+				return null;
+			}
+
 			var query = FlagWorldPosition.PointOnFloorQueryFromRaw(flag.RawX, flag.RawY);
 			var floor = vnav.QueryMeshPointOnFloor(
 				query,
@@ -64,6 +77,19 @@ public sealed class FlagWorldHelper
 		ArgumentNullException.ThrowIfNull(flag);
 		try
 		{
+			if (!vnav.IsAvailable || !vnav.NavIsReady())
+			{
+				DebugBehavior.DebugThrottled(
+					pluginLog!,
+					enabled: true,
+					throttleKey: "flagWorld.world.navWait",
+					intervalMs: 2000,
+					nowMs: Environment.TickCount64,
+					area: "Move",
+					message: "flag floor query deferred (nav not ready)");
+				return null;
+			}
+
 			var query = FlagWorldPosition.PointOnFloorQueryFromWorldXZ(worldX, worldZ);
 			var floor = vnav.QueryMeshPointOnFloor(
 				query,

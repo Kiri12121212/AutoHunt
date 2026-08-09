@@ -138,6 +138,18 @@ public static class MountDecision
 	/// <summary>Soft session timeout once Mounting has begun.</summary>
 	public const int SessionTimeoutMs = 60_000;
 
+	/// <summary>
+	/// Shorter Mounting deadline when a teleport plan is waiting (mount-before-TP).
+	/// Live trains sat 60s in Mount before the first hop when mount GA stayed unusable.
+	/// </summary>
+	public const int MountingBeforeTeleportTimeoutMs = 12_000;
+
+	/// <summary>
+	/// After a mount job times out / abandons, wait before re-enqueue on Navigate
+	/// (stops ~1.5s mount thrash loops).
+	/// </summary>
+	public const int ReenqueueBackoffMs = 3_000;
+
 	/// <summary>Gate for <c>EnqueueIfEnabled</c> (always true in product; kept for tests).</summary>
 	public static bool ShouldEnqueueIfEnabled(bool useMount) => useMount;
 
@@ -216,7 +228,7 @@ public static class MountDecision
 	public static bool ShouldSkipEnqueueAlreadyReady(bool mounted, bool inFlight)
 		=> mounted || inFlight;
 
-	/// <summary>HTA: force CheckMount throttle while in mount transition or casting.</summary>
+	/// <summary>HTA: wait while mount transition or casting (no CheckMount re-extend).</summary>
 	public static bool NeedsTransitionWait(bool mountOrOrnamentTransition, bool casting)
 		=> mountOrOrnamentTransition || casting;
 
@@ -307,14 +319,15 @@ public static class MountDecision
 			return new MountTickResult { Kind = MountTickKind.Done };
 		}
 
-		var forceCheck = NeedsTransitionWait(mountOrOrnamentTransition, casting);
-		if (forceCheck || !checkThrottleReady)
+		// Casting / mount-transition: wait only — do not ForceCheckThrottle.
+		// Re-extending CheckMount 2s every tick while ConditionFlag.Casting (RSR wind-down
+		// after kill) left a full ~2s stall after the cast cleared.
+		if (NeedsTransitionWait(mountOrOrnamentTransition, casting) || !checkThrottleReady)
 		{
 			return new MountTickResult
 			{
 				Kind = MountTickKind.Wait,
-				ForceCheckThrottle = forceCheck,
-				WaitReason = forceCheck
+				WaitReason = NeedsTransitionWait(mountOrOrnamentTransition, casting)
 					? MountWaitReason.TransitionOrCasting
 					: MountWaitReason.CheckThrottle,
 			};

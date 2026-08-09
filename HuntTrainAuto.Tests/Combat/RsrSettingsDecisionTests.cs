@@ -32,11 +32,11 @@ public sealed class RsrSettingsDecisionTests
 		=> Assert.Equal(expected, RsrSettingsDecision.IsMeleeEngageRole(role));
 
 	[Fact]
-	public void Defaults_match_AD()
+	public void Defaults_match_hunt_a_rank()
 	{
-		Assert.Equal(RsrTargetHostileType.AllTargetsCanAttack, RsrSettingsDecision.DefaultHostileType);
-		Assert.Equal(RsrTargetingType.HighHP, RsrSettingsDecision.DefaultTankTargeting);
-		Assert.Equal(RsrTargetingType.LowHP, RsrSettingsDecision.DefaultNonTankTargeting);
+		Assert.Equal(RsrTargetHostileType.TargetsHaveTarget, RsrSettingsDecision.DefaultHostileType);
+		Assert.Equal(RsrTargetingType.HighMaxHP, RsrSettingsDecision.DefaultTankTargeting);
+		Assert.Equal(RsrTargetingType.HighMaxHP, RsrSettingsDecision.DefaultNonTankTargeting);
 		Assert.Equal(1, RsrSettingsDecision.TankClassJobRole);
 		Assert.Equal(2, RsrSettingsDecision.MeleeDpsClassJobRole);
 	}
@@ -51,9 +51,9 @@ public sealed class RsrSettingsDecisionTests
 		=> Assert.Equal(type, RsrSettingsDecision.ClampHostileType(type));
 
 	[Fact]
-	public void ClampHostileType_undefined_falls_back_to_AllTargetsCanAttack()
+	public void ClampHostileType_undefined_falls_back_to_TargetsHaveTarget()
 		=> Assert.Equal(
-			RsrTargetHostileType.AllTargetsCanAttack,
+			RsrTargetHostileType.TargetsHaveTarget,
 			RsrSettingsDecision.ClampHostileType((RsrTargetHostileType)200));
 
 	[Theory]
@@ -71,8 +71,8 @@ public sealed class RsrSettingsDecisionTests
 			RsrSettingsDecision.ClampTargetingType((RsrTargetingType)999, RsrTargetingType.HighHP));
 
 	[Theory]
-	[InlineData(true, RsrTargetingType.HighHP)]
-	[InlineData(false, RsrTargetingType.LowHP)]
+	[InlineData(true, RsrTargetingType.HighMaxHP)]
+	[InlineData(false, RsrTargetingType.HighMaxHP)]
 	public void ResolveTargeting_role_defaults(bool isTank, RsrTargetingType expected)
 		=> Assert.Equal(
 			expected,
@@ -96,10 +96,10 @@ public sealed class RsrSettingsDecisionTests
 	public void ResolveTargeting_clamps_undefined_config_per_role_fallback()
 	{
 		Assert.Equal(
-			RsrTargetingType.HighHP,
+			RsrTargetingType.HighMaxHP,
 			RsrSettingsDecision.ResolveTargeting(true, (RsrTargetingType)999, RsrTargetingType.LowHP));
 		Assert.Equal(
-			RsrTargetingType.LowHP,
+			RsrTargetingType.HighMaxHP,
 			RsrSettingsDecision.ResolveTargeting(false, RsrTargetingType.HighHP, (RsrTargetingType)999));
 	}
 
@@ -112,7 +112,7 @@ public sealed class RsrSettingsDecisionTests
 			tankTargeting: RsrTargetingType.HighMaxHP,
 			nonTankTargeting: RsrTargetingType.LowHP);
 
-		Assert.Equal(RsrTargetHostileType.AllTargetsCanAttack, hostile);
+		Assert.Equal(RsrTargetHostileType.TargetsHaveTarget, hostile);
 		Assert.Equal(RsrTargetingType.HighMaxHP, targeting);
 	}
 
@@ -138,6 +138,6 @@ public sealed class RsrSettingsDecisionTests
 	{
 		var settings = RsrCommands.DefaultRotationAutoSettings(RsrSettingsDecision.DefaultHostileType);
 		Assert.Contains("AutoOffAfterCombat false", settings);
-		Assert.Equal("HostileType AllTargetsCanAttack", settings[0]);
+		Assert.Equal("HostileType TargetsHaveTarget", settings[0]);
 	}
 }

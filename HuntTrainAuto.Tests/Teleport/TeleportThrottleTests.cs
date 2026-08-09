@@ -173,6 +173,11 @@ public sealed class TeleportGateTests
 			true, false, false, false, false, idleSinceMs: 100, nowMs: 100 + TeleportGate.PostInvokeIdleRetryMs - 1));
 		Assert.True(TeleportGate.ShouldReleaseTeleportInvoked(
 			true, false, false, false, false, idleSinceMs: 100, nowMs: 100 + TeleportGate.PostInvokeIdleRetryMs));
+		// Cast already seen → never release (wait BetweenAreas).
+		Assert.False(TeleportGate.ShouldReleaseTeleportInvoked(
+			true, false, false, false, false, idleSinceMs: 100,
+			nowMs: 100 + TeleportGate.PostInvokeIdleRetryMs,
+			sawCastAfterInvoke: true));
 	}
 
 	[Fact]

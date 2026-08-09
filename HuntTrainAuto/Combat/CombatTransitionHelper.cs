@@ -87,13 +87,6 @@ public sealed class CombatTransitionHelper
 		{
 			pluginLog.Debug("[Combat] holding phase (FakeHunt / HoldCombatPhase)");
 		}
-		else if (kind == CombatTransitionKind.StayFollow
-		         && session.Phase == CombatPhase.Following
-		         && DebugThrottle.Try("combat.following.skip", 2000, Environment.TickCount64))
-		{
-			pluginLog.Debug(
-				$"[Combat] {CombatDecision.Describe(kind)} phase={session.Phase}; no engage signal");
-		}
 
 		session.Apply(kind);
 	}

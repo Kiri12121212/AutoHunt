@@ -1,4 +1,5 @@
 #nullable enable
+using System;
 
 namespace HuntTrainAuto.Domain;
 
@@ -52,10 +53,10 @@ public sealed class MountSession
 	}
 
 	/// <summary>Begin MountIfCan; refresh soft session timeout from the mounting start.</summary>
-	public void EnterMounting(long nowMs)
+	public void EnterMounting(long nowMs, int timeoutMs = MountDecision.SessionTimeoutMs)
 	{
 		Phase = MountPhase.Mounting;
-		DeadlineMs = nowMs + MountDecision.SessionTimeoutMs;
+		DeadlineMs = nowMs + System.Math.Max(1_000, timeoutMs);
 	}
 
 	public void Clear()

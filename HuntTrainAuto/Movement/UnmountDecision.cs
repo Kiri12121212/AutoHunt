@@ -164,10 +164,24 @@ public static class UnmountDecision
 			&& !teleportPlanActive
 			&& !instanceChangeActive;
 
-	/// <summary>Already unmounted → success / no-op.</summary>
+	/// <summary>Already unmounted and on the ground → success / no-op.</summary>
 	public static bool IsUnmountCompleteOrSkipped(bool mounted) => !mounted;
 
-	/// <summary>Force CheckUnmount throttle while in mount transition or casting.</summary>
+	/// <summary>
+	/// Unmount finished only when neither Mounted nor InFlight.
+	/// Completing on <c>!Mounted</c> alone while still InFlight made divert re-enqueue
+	/// every tick (ReadyForGroundFollow flicker / land spam).
+	/// </summary>
+	public static bool IsUnmountCompleteOrSkipped(bool mounted, bool inFlight)
+		=> !mounted && !inFlight;
+
+	/// <summary>
+	/// Divert land: start a job once; skip while active or already latched for ground follow.
+	/// </summary>
+	public static bool ShouldEnqueueDivertUnmount(bool unmountActive, bool readyForGroundFollow)
+		=> !unmountActive && !readyForGroundFollow;
+
+	/// <summary>Wait while mount transition or casting (no CheckUnmount re-extend).</summary>
 	public static bool NeedsTransitionWait(bool mountOrOrnamentTransition, bool casting)
 		=> mountOrOrnamentTransition || casting;
 
@@ -185,9 +199,10 @@ public static class UnmountDecision
 		bool checkThrottleReady,
 		bool dismountActionUsable,
 		bool animationLocked,
-		bool dismountThrottleReady)
+		bool dismountThrottleReady,
+		bool inFlight = false)
 	{
-		if (IsUnmountCompleteOrSkipped(mounted))
+		if (IsUnmountCompleteOrSkipped(mounted, inFlight))
 		{
 			return new UnmountTickResult
 			{
@@ -196,14 +211,14 @@ public static class UnmountDecision
 			};
 		}
 
-		var forceCheck = NeedsTransitionWait(mountOrOrnamentTransition, casting);
-		if (forceCheck || !checkThrottleReady)
+		// Casting / mount-transition: wait only — do not ForceCheckThrottle.
+		// Same post-combat stall as Mount: 2s CheckUnmount re-extend every cast tick.
+		if (NeedsTransitionWait(mountOrOrnamentTransition, casting) || !checkThrottleReady)
 		{
 			return new UnmountTickResult
 			{
 				Kind = UnmountTickKind.Wait,
-				ForceCheckThrottle = forceCheck,
-				WaitReason = forceCheck
+				WaitReason = NeedsTransitionWait(mountOrOrnamentTransition, casting)
 					? UnmountWaitReason.TransitionOrCasting
 					: UnmountWaitReason.CheckThrottle,
 			};

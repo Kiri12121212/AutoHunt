@@ -8,7 +8,7 @@ namespace HuntTrainAuto;
 public sealed class Configuration : IPluginConfiguration
 {
 	/// <summary>Bump when persisted fields need one-time migration (see Plugin ctor).</summary>
-	public int Version { get; set; } = 2;
+	public int Version { get; set; } = 3;
 
 	public bool Enabled { get; set; } = true;
 	public List<string> Conductors { get; set; } = [];
@@ -122,7 +122,8 @@ public sealed class Configuration : IPluginConfiguration
 	public float EngageRange { get; set; } = CombatDecision.DefaultEngageRange;
 
 	/// <summary>
-	/// RSR <c>HostileType</c> setting applied on RotationAuto (AD default AllTargetsCanAttack).
+	/// RSR <c>HostileType</c> setting applied on RotationAuto.
+	/// Hunt default: <see cref="RsrTargetHostileType.TargetsHaveTarget"/> (do not tab trash).
 	/// Clamped via <see cref="RsrSettingsDecision.ClampHostileType"/>.
 	/// </summary>
 	public RsrTargetHostileType RsrHostileType { get; set; } = RsrSettingsDecision.DefaultHostileType;

@@ -153,6 +153,8 @@ public sealed class Plugin : IDalamudPlugin
 	/// 0 while casting / not invoked. Used to release invoke for retry.
 	/// </summary>
 	private long teleportInvokeIdleSinceMs;
+	/// <summary>True once casting was observed after TeleportInvoked (blocks idle-grace re-fire).</summary>
+	private bool teleportSawCastAfterInvoke;
 	private bool isMoving;
 	private Vector3 lastPosition;
 
@@ -284,6 +286,7 @@ public sealed class Plugin : IDalamudPlugin
 		this.pluginLog = pluginLog;
 		Config = pluginInterface.GetPluginConfig() as Configuration ?? new Configuration();
 		var migratedSkipDistance = false;
+		var migratedConfigVersion = false;
 		if (ConfigTabs.NeedsYalmSkipDistanceMigration(Config.Version))
 		{
 			Config.AutoTeleportAetheryteDistanceDiff =
@@ -297,8 +300,22 @@ public sealed class Plugin : IDalamudPlugin
 				ConfigTabs.ClampAutoTeleportSkipDistance(Config.AutoTeleportAetheryteDistanceDiff);
 		}
 
+		if (ConfigTabs.NeedsHuntRsrTargetingMigration(Config.Version))
+		{
+			var hostile = Config.RsrHostileType;
+			var tank = Config.RsrTargetingTank;
+			var nonTank = Config.RsrTargetingNonTank;
+			_ = ConfigTabs.TryMigrateHuntRsrTargeting(ref hostile, ref tank, ref nonTank);
+			Config.RsrHostileType = hostile;
+			Config.RsrTargetingTank = tank;
+			Config.RsrTargetingNonTank = nonTank;
+			Config.Version = ConfigTabs.HuntRsrTargetingConfigVersion;
+			migratedConfigVersion = true;
+		}
+
 		Config.EngageRange = CombatDecision.ClampEngageRange(Config.EngageRange);
 		Config.ARankScanRange = EngageTargetDecision.ClampARankScanRange(Config.ARankScanRange);
+		Config.FlagArrivalTolerance = ConfigTabs.ClampFlagArrivalTolerance(Config.FlagArrivalTolerance);
 		Config.RsrHostileType = RsrSettingsDecision.ClampHostileType(Config.RsrHostileType);
 		Config.RsrTargetingTank = RsrSettingsDecision.ClampTargetingType(
 			Config.RsrTargetingTank,
@@ -308,7 +325,7 @@ public sealed class Plugin : IDalamudPlugin
 			RsrSettingsDecision.DefaultNonTankTargeting);
 		Config.BossModPreference = BossModCommands.ClampPreference(Config.BossModPreference);
 		Config.HuntPfRetryIntervalMs = HuntPfDecision.ClampRetryIntervalMs(Config.HuntPfRetryIntervalMs);
-		if (migratedSkipDistance)
+		if (migratedSkipDistance || migratedConfigVersion)
 			pluginInterface.SavePluginConfig(Config);
 
 		windowSystem = new WindowSystem(typeof(Plugin).Assembly.GetName()?.Name ?? "HuntTrainAuto");
@@ -338,7 +355,8 @@ public sealed class Plugin : IDalamudPlugin
 		mapManager = new MapManager(
 			dataManager,
 			msg => pluginLog.Warning(msg),
-			msg => DebugBehavior.Debug(pluginLog, Config.EnableDebugLogging, "Map", msg));
+			// MapManager messages already include a [Map] prefix.
+			msg => DebugBehavior.Debug(pluginLog, Config.EnableDebugLogging, area: "", msg));
 		// HuntAlerts → HuntFlag → world-visit / TP-nav intake (TASKS 10.3–10.5).
 		huntAlertsIpc = new HuntAlertsIpc(
 			pluginInterface,
@@ -422,7 +440,8 @@ public sealed class Plugin : IDalamudPlugin
 			condition,
 			dataManager,
 			pluginLog,
-			() => instanceChange.IsActive);
+			() => instanceChange.IsActive,
+			() => teleportPlan.HasActive);
 		flagWorld = new FlagWorldHelper(VNavmeshIpc, pluginLog);
 		flagArrival = new FlagArrivalHelper(VNavmeshIpc, pluginLog);
 		unmount = new UnmountRunner(
@@ -985,9 +1004,10 @@ public sealed class Plugin : IDalamudPlugin
 	private void LogTrainTransition()
 	{
 		var transition = train.LastTransitionDescription;
-		if (transition == null)
+		if (transition == null || transition == lastLoggedTrainTransition)
 			return;
 
+		lastLoggedTrainTransition = transition;
 		DebugBehavior.Info(pluginLog, "State", transition);
 		debugProbe.Record(Config.EnableDebugLogging, DebugEventKind.PhaseChange, transition);
 		if (transition.Contains("Navigate", StringComparison.Ordinal))
@@ -1150,6 +1170,14 @@ public sealed class Plugin : IDalamudPlugin
 			adopted = teleportPlan.TryAdoptFromIntent(chatMessageHandler.TeleportIntent);
 			alreadyClose = chatMessageHandler.TeleportIntent.LatestDecision is
 				{ Action: TeleportAction.Skip, SkipReason: TeleportSkipReason.AlreadyClose };
+			// Soft-start mount/nav while vnav path-cost samples — finalize may still TP.
+			if (!alreadyClose
+			    && chatMessageHandler.TeleportIntent.LatestDecision is
+			    {
+				    Action: TeleportAction.Skip,
+				    SkipReason: TeleportSkipReason.AwaitingTravelCost,
+			    })
+				alreadyClose = true;
 		}
 
 		var alreadyMounted = MountDecision.ShouldSkipEnqueueAlreadyReady(
@@ -1162,12 +1190,6 @@ public sealed class Plugin : IDalamudPlugin
 			alreadyClose,
 			true,
 			alreadyMountedOrSkipMount: alreadyMounted);
-		DebugBehavior.Debug(
-			pluginLog,
-			Config.EnableDebugLogging,
-			"State",
-			$"flag restart: {plan.Describe()}");
-
 		DebugBehavior.Debug(
 			pluginLog,
 			Config.EnableDebugLogging,
@@ -1413,6 +1435,7 @@ public sealed class Plugin : IDalamudPlugin
 					: "TeleportPlan cleared (territory leave)");
 			teleportPlan.Clear();
 			teleportInvokeIdleSinceMs = 0;
+			teleportSawCastAfterInvoke = false;
 		}
 
 		if (plan.ClearInstanceChange)
@@ -1474,11 +1497,14 @@ public sealed class Plugin : IDalamudPlugin
 			var isCasting = player!.IsCasting;
 
 			// After IPC accept: hold re-fire until BetweenAreas, or release after idle grace
-			// (cancelled cast / stuck invoke) so we do not double-cast a successful TP.
+			// only when cast never started (cancelled / stuck invoke — not a successful cast).
 			if (teleportPlan.TeleportInvoked)
 			{
 				if (casting || isCasting)
+				{
+					teleportSawCastAfterInvoke = true;
 					teleportInvokeIdleSinceMs = 0;
+				}
 				else if (teleportInvokeIdleSinceMs == 0)
 					teleportInvokeIdleSinceMs = now;
 
@@ -1489,16 +1515,19 @@ public sealed class Plugin : IDalamudPlugin
 					    betweenAreas,
 					    betweenAreas51,
 					    teleportInvokeIdleSinceMs,
-					    now))
+					    now,
+					    sawCastAfterInvoke: teleportSawCastAfterInvoke))
 				{
 					teleportPlan.ClearTeleportInvoked();
 					teleportInvokeIdleSinceMs = 0;
+					teleportSawCastAfterInvoke = false;
 					pluginLog.Debug("TeleportInvoked released for retry (idle grace, no BetweenAreas)");
 				}
 			}
 			else
 			{
 				teleportInvokeIdleSinceMs = 0;
+				teleportSawCastAfterInvoke = false;
 			}
 
 			if (TeleportGate.IsScreenReady(
@@ -1652,14 +1681,9 @@ public sealed class Plugin : IDalamudPlugin
 		}
 		// Train-end leave (LAST STOP / idle) — never on bare CombatEnded.
 		huntPfLeave.Tick(wasInCombatPhase, combat.InCombatPhase, nowMs);
-		// Remount on combat-end falling edge — same Enqueue as TP / AlreadyClose.
-		if (MountDecision.ShouldEnqueueOnCombatEnd(
-			    wasInCombatPhase,
-			    combat.InCombatPhase,
-			    true))
-			mount.EnqueueIfEnabled(true);
 		// Fake Hunt: never arm combat AI; force-stop sticky RSR/BM (AutoOffAfterCombat=false
 		// leaves AutoDuty on across reload — HTA latch alone will not Stop).
+		// Real combat-end: stop AI before remount enqueue so casting clears sooner.
 		if (fakeHunt.IsActive)
 		{
 			rsrEnable.Tick(false);
@@ -1677,6 +1701,12 @@ public sealed class Plugin : IDalamudPlugin
 			rsrEnable.Tick(combat.InCombatPhase);
 			bossModEnable.Tick(combat.InCombatPhase);
 		}
+		// Remount on combat-end falling edge — after AI stop; same Enqueue as TP / AlreadyClose.
+		if (MountDecision.ShouldEnqueueOnCombatEnd(
+			    wasInCombatPhase,
+			    combat.InCombatPhase,
+			    true))
+			mount.EnqueueIfEnabled(true);
 
 		// Advance HuntTrainController from live runner signals (one event per tick).
 		train.Tick(HuntTrainObserve.BuildProgressSnapshot(
@@ -1704,17 +1734,10 @@ public sealed class Plugin : IDalamudPlugin
 	{
 		try
 		{
+			// Phase INF is owned by LogTrainTransition — do not re-Info here (duplicate lines).
 			var transition = train.LastTransitionDescription;
-			if (transition != null && transition != lastLoggedTrainTransition)
-			{
-				lastLoggedTrainTransition = transition;
-				DebugBehavior.Info(pluginLog, "State", transition);
-				debugProbe.Record(Config.EnableDebugLogging, DebugEventKind.PhaseChange, transition);
-			}
-			else if (transition is null)
-			{
+			if (transition is null)
 				lastLoggedTrainTransition = null;
-			}
 
 			debugProbe.Observe(
 				Config.EnableDebugLogging,
@@ -1945,6 +1968,17 @@ public sealed class Plugin : IDalamudPlugin
 				: float.PositiveInfinity;
 
 			// Divert stay-in-range uses eligibility; land/unmount below uses player→mob.
+			if (EngageTargetDecision.ShouldHandOffDivertToGroundEngage(
+				    mounted,
+				    inFlight,
+				    unmount.ReadyForGroundFollow,
+				    probe.Distance,
+				    engageRange))
+			{
+				// On foot in engage range / ground-follow ready — engage.Tick owns the fight.
+				return;
+			}
+
 			if (!EngageTargetDecision.ShouldApproachMobFloorForEngage(
 				    mounted,
 				    inFlight,
@@ -1980,7 +2014,9 @@ public sealed class Plugin : IDalamudPlugin
 			{
 				// One-shot PathStop + enqueue: re-Stop every tick was Path.Stop spam;
 				// vert flicker restarting Move was the up/down loop.
-				if (!unmount.IsActive)
+				if (UnmountDecision.ShouldEnqueueDivertUnmount(
+					    unmount.IsActive,
+					    unmount.ReadyForGroundFollow))
 				{
 					try
 					{
@@ -2124,6 +2160,7 @@ public sealed class Plugin : IDalamudPlugin
 	{
 		if (TeleporterIpc.Teleport(aetheryteId, 0))
 		{
+			teleportSawCastAfterInvoke = false;
 			teleportPlan.MarkTeleportInvoked();
 			pluginLog.Information("Teleporting using Teleporter plugin");
 			return;
@@ -2131,6 +2168,7 @@ public sealed class Plugin : IDalamudPlugin
 
 		if (LifestreamIpc.Teleport(aetheryteId))
 		{
+			teleportSawCastAfterInvoke = false;
 			teleportPlan.MarkTeleportInvoked();
 			pluginLog.Information("Teleporting using Lifestream plugin");
 			return;
@@ -2460,10 +2498,11 @@ public sealed class Plugin : IDalamudPlugin
 
 	/// <summary>
 	/// After deferred time-aware resolve: adopt TP, instance switch, or mount/nav if still Idle and no plan.
+	/// May interrupt a soft-started Mount/Navigate (AwaitingTravelCost) when cost says TP.
 	/// </summary>
 	private void TryEngageAfterTravelCost(TeleportDecisionResult decision)
 	{
-		if (teleportPlan.HasActive || combat.InCombatPhase)
+		if (combat.InCombatPhase)
 			return;
 
 		if (decision is
@@ -2473,6 +2512,9 @@ public sealed class Plugin : IDalamudPlugin
 		    }
 		    && decision.Arrival is { } switchArr)
 		{
+			if (teleportPlan.HasActive)
+				return;
+
 			if (InstanceChangeDecision.ShouldAetheryteTeleportForInstanceSwitch(
 				    TryCanChangeInstance(),
 				    switchArr.AetheryteId))
@@ -2481,26 +2523,7 @@ public sealed class Plugin : IDalamudPlugin
 				ApplyDelayTeleport();
 				pluginLog.Information(
 					$"Engaging autoteleport for instance → {switchArr.Instance} (time-aware)");
-				if (train.Phase == HuntTrainPhase.Idle)
-				{
-					var alreadyMountedTp = MountDecision.ShouldSkipEnqueueAlreadyReady(
-						condition[ConditionFlag.Mounted],
-						condition[ConditionFlag.InFlight]);
-					var startTp = HuntTrainObserve.DecideFlagStart(
-						Config.Enabled,
-						teleportPlanActive: true,
-						alreadyCloseSkip: false,
-						true,
-						alreadyMountedTp);
-					if (startTp == HuntTrainEvent.StartMount)
-						mount.EnqueueIfEnabled(true);
-					if (startTp != HuntTrainEvent.None)
-					{
-						train.Apply(startTp);
-						LogTrainTransition();
-					}
-				}
-
+				BeginTimeAwareTeleportStart();
 				return;
 			}
 
@@ -2527,44 +2550,81 @@ public sealed class Plugin : IDalamudPlugin
 		{
 			ApplyDelayTeleport();
 			pluginLog.Information("Engaging autoteleport (time-aware)");
-			if (train.Phase == HuntTrainPhase.Idle)
-			{
-				var alreadyMounted = MountDecision.ShouldSkipEnqueueAlreadyReady(
-					condition[ConditionFlag.Mounted],
-					condition[ConditionFlag.InFlight]);
-				var start = HuntTrainObserve.DecideFlagStart(
-					Config.Enabled,
-					teleportPlanActive: true,
-					alreadyCloseSkip: false,
-					true,
-					alreadyMounted);
-				if (start == HuntTrainEvent.StartMount)
-					mount.EnqueueIfEnabled(true);
-				if (start != HuntTrainEvent.None)
-				{
-					train.Apply(start);
-					LogTrainTransition();
-				}
-			}
-
+			BeginTimeAwareTeleportStart();
 			return;
 		}
 
 		if (!alreadyClose)
 			return;
 
-		mount.EnqueueIfEnabled(true);
-		if (train.Phase != HuntTrainPhase.Idle)
+		if (teleportPlan.HasActive)
 			return;
 
+		mount.EnqueueIfEnabled(true);
 		var closeStart = HuntTrainObserve.DecideFlagStart(
 			Config.Enabled,
 			teleportPlanActive: false,
 			alreadyCloseSkip: true,
-			true);
-		if (closeStart != HuntTrainEvent.None)
+			true,
+			alreadyMountedOrSkipMount: MountDecision.ShouldSkipEnqueueAlreadyReady(
+				condition[ConditionFlag.Mounted],
+				condition[ConditionFlag.InFlight]));
+		if (train.Phase == HuntTrainPhase.Idle && closeStart != HuntTrainEvent.None)
 		{
 			train.Apply(closeStart);
+			LogTrainTransition();
+		}
+	}
+
+	/// <summary>
+	/// Start Mount/Teleport for a time-aware TP adopt, interrupting soft-started Navigate if needed.
+	/// </summary>
+	private void BeginTimeAwareTeleportStart()
+	{
+		try
+		{
+			if (train.Phase is HuntTrainPhase.Navigate or HuntTrainPhase.Mount)
+			{
+				try
+				{
+					movement.Stop();
+				}
+				catch
+				{
+					// soft-fail
+				}
+
+				unmount.ClearAll();
+				divertingToEngage = false;
+				if (train.Phase != HuntTrainPhase.Idle)
+				{
+					train.Reset();
+					LogTrainTransition();
+				}
+			}
+		}
+		catch (Exception ex)
+		{
+			pluginLog.Debug($"BeginTimeAwareTeleportStart soft-fail: {ex.Message}");
+		}
+
+		if (train.Phase != HuntTrainPhase.Idle)
+			return;
+
+		var alreadyMounted = MountDecision.ShouldSkipEnqueueAlreadyReady(
+			condition[ConditionFlag.Mounted],
+			condition[ConditionFlag.InFlight]);
+		var start = HuntTrainObserve.DecideFlagStart(
+			Config.Enabled,
+			teleportPlanActive: true,
+			alreadyCloseSkip: false,
+			true,
+			alreadyMounted);
+		if (start == HuntTrainEvent.StartMount)
+			mount.EnqueueIfEnabled(true);
+		if (start != HuntTrainEvent.None)
+		{
+			train.Apply(start);
 			LogTrainTransition();
 		}
 	}

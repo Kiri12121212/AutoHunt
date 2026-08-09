@@ -91,8 +91,39 @@ public sealed class ConfigTabsTests
 		=> Assert.Equal(expected, ConfigTabs.NeedsYalmSkipDistanceMigration(version));
 
 	[Theory]
+	[InlineData(0, true)]
+	[InlineData(2, true)]
+	[InlineData(3, false)]
+	public void NeedsHuntRsrTargetingMigration_by_version(int version, bool expected)
+		=> Assert.Equal(expected, ConfigTabs.NeedsHuntRsrTargetingMigration(version));
+
+	[Fact]
+	public void TryMigrateHuntRsrTargeting_upgrades_ad_defaults()
+	{
+		var hostile = RsrTargetHostileType.AllTargetsCanAttack;
+		var tank = RsrTargetingType.HighHP;
+		var nonTank = RsrTargetingType.LowHP;
+		Assert.True(ConfigTabs.TryMigrateHuntRsrTargeting(ref hostile, ref tank, ref nonTank));
+		Assert.Equal(RsrTargetHostileType.TargetsHaveTarget, hostile);
+		Assert.Equal(RsrTargetingType.HighMaxHP, tank);
+		Assert.Equal(RsrTargetingType.HighMaxHP, nonTank);
+	}
+
+	[Fact]
+	public void TryMigrateHuntRsrTargeting_keeps_custom_choices()
+	{
+		var hostile = RsrTargetHostileType.AllTargetsWhenSolo;
+		var tank = RsrTargetingType.Nearest;
+		var nonTank = RsrTargetingType.Farthest;
+		Assert.False(ConfigTabs.TryMigrateHuntRsrTargeting(ref hostile, ref tank, ref nonTank));
+		Assert.Equal(RsrTargetHostileType.AllTargetsWhenSolo, hostile);
+		Assert.Equal(RsrTargetingType.Nearest, tank);
+		Assert.Equal(RsrTargetingType.Farthest, nonTank);
+	}
+
+	[Theory]
 	[InlineData(float.NaN, 5f)]
-	[InlineData(0.1f, 1f)]
+	[InlineData(0.1f, 3f)]
 	[InlineData(5f, 5f)]
 	[InlineData(40f, 25f)]
 	public void ClampFlagArrivalTolerance_bounds(float input, float expected)

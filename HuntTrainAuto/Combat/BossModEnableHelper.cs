@@ -56,10 +56,7 @@ public sealed class BossModEnableHelper
 		{
 			var kind = BossModEnableDecision.DecideClear(aiStarted);
 			if (kind == BossModEnableKind.None)
-			{
-				pluginLog.Debug($"[BossMod] clear skipped; {BossModEnableDecision.Describe(kind)}");
 				return;
-			}
 
 			var ok = bossMod.DisableAi();
 			aiStarted = BossModEnableDecision.NextAiStarted(kind, ok, aiStarted);
@@ -158,12 +155,6 @@ public sealed class BossModEnableHelper
 					+ BossModEnableDecision.Describe(kind) + ")");
 			else
 				pluginLog.Debug("[BossMod] DisableAi soft-fail; will retry while latch held");
-		}
-		else if (DebugThrottle.Try("bossmod.enable.skip", 2000, Environment.TickCount64))
-		{
-			var reason = integrationOn ? "already in desired state" : "integration disabled";
-			pluginLog.Debug(
-				$"[BossMod] skipped ({reason}); {BossModEnableDecision.Describe(kind)}");
 		}
 	}
 }

@@ -36,7 +36,14 @@ public enum MoveWaitReason
 	PlayerInvalid,
 	TakeoffCasting,
 	DirectPathRunning,
+	/// <summary>Navmesh not loaded / player off ground mesh (ground pathfind only).</summary>
 	MeshNotReady,
+	/// <summary>Already following a mesh path — do not restart pathfind.</summary>
+	PathRunning,
+	/// <summary>Mesh pathfind IPC still in progress.</summary>
+	PathfindInProgress,
+	/// <summary>Waypoints present but path not marked running yet.</summary>
+	HasWaypoints,
 }
 
 /// <summary>Result of <see cref="MovementDecision.DecideMoveTick"/>.</summary>
@@ -324,7 +331,14 @@ public static class MovementDecision
 			{
 				Kind = MoveTickKind.Wait,
 				Fly = fly,
-				WaitReason = MoveWaitReason.MeshNotReady,
+				WaitReason = ClassifyMeshPathfindWait(
+					playerReady,
+					navReady,
+					pathfindInProgress,
+					numWaypoints,
+					pathIsRunning,
+					playerOnMesh,
+					fly),
 			};
 		}
 
@@ -333,6 +347,32 @@ public static class MovementDecision
 			Kind = MoveTickKind.StartMeshPath,
 			Fly = fly,
 		};
+	}
+
+	/// <summary>
+	/// Prefer specific wait reasons over a blanket <see cref="MoveWaitReason.MeshNotReady"/>
+	/// (flying mid-path with onMesh=false is normal PathRunning, not a mesh failure).
+	/// </summary>
+	public static MoveWaitReason ClassifyMeshPathfindWait(
+		bool playerReady,
+		bool navReady,
+		bool pathfindInProgress,
+		int numWaypoints,
+		bool pathIsRunning,
+		bool playerOnMesh,
+		bool fly)
+	{
+		if (!playerReady)
+			return MoveWaitReason.PlayerInvalid;
+		if (!navReady || (!fly && !playerOnMesh))
+			return MoveWaitReason.MeshNotReady;
+		if (pathIsRunning)
+			return MoveWaitReason.PathRunning;
+		if (pathfindInProgress)
+			return MoveWaitReason.PathfindInProgress;
+		if (numWaypoints > 0)
+			return MoveWaitReason.HasWaypoints;
+		return MoveWaitReason.MeshNotReady;
 	}
 
 }

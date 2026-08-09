@@ -28,7 +28,7 @@ public static class RsrCommands
 	/// <c>AutodutyChangeOperatingMode</c>.
 	/// </summary>
 	public static IReadOnlyList<string> DefaultRotationAutoSettings(
-		RsrTargetHostileType hostileType = RsrTargetHostileType.AllTargetsCanAttack)
+		RsrTargetHostileType hostileType = RsrTargetHostileType.TargetsHaveTarget)
 		=>
 		[
 			HostileTypeSetting(RsrSettingsDecision.ClampHostileType(hostileType)),
@@ -37,7 +37,7 @@ public static class RsrCommands
 		];
 
 	/// <summary>
-	/// AD tank vs non-tank targeting defaults (HighHP / LowHP).
+	/// Hunt tank vs non-tank targeting defaults (HighMaxHP).
 	/// Prefer <see cref="RsrSettingsDecision.ResolveTargeting"/> when config is available.
 	/// </summary>
 	public static RsrTargetingType DefaultTargetingForTankRole(bool isTank)

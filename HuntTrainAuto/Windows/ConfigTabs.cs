@@ -40,10 +40,16 @@ public static class ConfigTabs
 	/// </summary>
 	public const int YalmSkipDistanceConfigVersion = 2;
 
+	/// <summary>
+	/// Config <c>Version</c> once RSR defaults prefer hunt A-rank
+	/// (<c>TargetsHaveTarget</c> + <c>HighMaxHP</c>) instead of AutoDuty trash pulls.
+	/// </summary>
+	public const int HuntRsrTargetingConfigVersion = 3;
+
 	/// <summary>Legacy map-units → yalms (3 → 150).</summary>
 	public const float LegacyMapUnitToYalmFactor = 50f;
 
-	public const float MinFlagArrivalTolerance = 1f;
+	public const float MinFlagArrivalTolerance = 3f;
 	public const float MaxFlagArrivalTolerance = 25f;
 
 	public const float MinTeleportCastSeconds = 0f;
@@ -112,6 +118,41 @@ public static class ConfigTabs
 	/// <summary>True when persisted config still stores map-coordinate skip distances.</summary>
 	public static bool NeedsYalmSkipDistanceMigration(int configVersion)
 		=> configVersion < YalmSkipDistanceConfigVersion;
+
+	/// <summary>True when RSR settings still need hunt A-rank targeting migration.</summary>
+	public static bool NeedsHuntRsrTargetingMigration(int configVersion)
+		=> configVersion < HuntRsrTargetingConfigVersion;
+
+	/// <summary>
+	/// Upgrade AutoDuty-style RSR settings to hunt defaults when still on stock AD values.
+	/// Custom user choices are left alone. Returns true when any value changed.
+	/// </summary>
+	public static bool TryMigrateHuntRsrTargeting(
+		ref RsrTargetHostileType hostileType,
+		ref RsrTargetingType targetingTank,
+		ref RsrTargetingType targetingNonTank)
+	{
+		var changed = false;
+		if (hostileType == RsrTargetHostileType.AllTargetsCanAttack)
+		{
+			hostileType = RsrSettingsDecision.DefaultHostileType;
+			changed = true;
+		}
+
+		if (targetingTank is RsrTargetingType.HighHP or RsrTargetingType.LowHP)
+		{
+			targetingTank = RsrSettingsDecision.DefaultTankTargeting;
+			changed = true;
+		}
+
+		if (targetingNonTank is RsrTargetingType.HighHP or RsrTargetingType.LowHP)
+		{
+			targetingNonTank = RsrSettingsDecision.DefaultNonTankTargeting;
+			changed = true;
+		}
+
+		return changed;
+	}
 
 	public static float ClampFlagArrivalTolerance(float tolerance)
 	{

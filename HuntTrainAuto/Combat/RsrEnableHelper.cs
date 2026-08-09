@@ -58,10 +58,7 @@ public sealed class RsrEnableHelper
 		{
 			var kind = RsrStopDecision.DecideClear(rotationAutoStarted);
 			if (kind == RsrEnableKind.None)
-			{
-				pluginLog.Debug($"[RSR] clear skipped; {RsrEnableDecision.Describe(kind)}");
 				return;
-			}
 
 			var ok = rsr.RotationStop();
 			rotationAutoStarted = RsrEnableDecision.NextRotationAutoStarted(kind, ok, rotationAutoStarted);
@@ -126,10 +123,6 @@ public sealed class RsrEnableHelper
 				pluginLog.Debug($"[RSR] RotationStop (combat phase exit; {RsrEnableDecision.Describe(kind)})");
 			else
 				pluginLog.Debug("[RSR] RotationStop soft-fail; will retry while latch held");
-		}
-		else if (DebugThrottle.Try("rsr.enable.skip", 2000, Environment.TickCount64))
-		{
-			pluginLog.Debug($"[RSR] skipped; {RsrEnableDecision.Describe(kind)}");
 		}
 	}
 }

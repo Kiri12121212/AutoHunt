@@ -59,10 +59,7 @@ public sealed class SonarChatHintIntake : IDisposable
 
 			var shouldRememberHint = SonarChatHintDecision.ShouldRememberHint(senderText, messageText, mapLink != null);
 			if (!shouldRememberHint)
-			{
-				LogDebug(SonarChatHintDecision.Describe(shouldRememberHint));
 				return;
-			}
 
 			var flag = HuntFlag.FromMapLink(
 				mapLink!.TerritoryType.RowId,

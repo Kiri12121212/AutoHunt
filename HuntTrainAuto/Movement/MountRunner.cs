@@ -25,6 +25,8 @@ public sealed class MountRunner
 	private readonly IDataManager dataManager;
 	private readonly IPluginLog pluginLog;
 	private readonly Func<bool> isInstanceChangeActive;
+	private readonly Func<bool>? isTeleportPlanActive;
+	private long lastAbandonMs;
 
 	public MountRunner(
 		ILifestreamService lifestream,
@@ -33,7 +35,8 @@ public sealed class MountRunner
 		ICondition condition,
 		IDataManager dataManager,
 		IPluginLog pluginLog,
-		Func<bool> isInstanceChangeActive)
+		Func<bool> isInstanceChangeActive,
+		Func<bool>? isTeleportPlanActive = null)
 	{
 		// Lifestream retained in ctor for call-site stability; instance-change owns LS busy.
 		_ = lifestream;
@@ -43,6 +46,7 @@ public sealed class MountRunner
 		this.dataManager = dataManager;
 		this.pluginLog = pluginLog;
 		this.isInstanceChangeActive = isInstanceChangeActive;
+		this.isTeleportPlanActive = isTeleportPlanActive;
 	}
 
 	public MountSession Session => session;
@@ -55,6 +59,11 @@ public sealed class MountRunner
 		if (!MountDecision.ShouldEnqueueIfEnabled(useMount))
 			return;
 
+		var now = Environment.TickCount64;
+		if (lastAbandonMs > 0
+		    && now - lastAbandonMs < MountDecision.ReenqueueBackoffMs)
+			return;
+
 		// Same-zone TP often keeps Mounted/InFlight — do not open a WaitReady job.
 		var mounted = condition[ConditionFlag.Mounted];
 		var inFlight = condition[ConditionFlag.InFlight];
@@ -65,7 +74,7 @@ public sealed class MountRunner
 			return;
 		}
 
-		session.Enqueue(Environment.TickCount64);
+		session.Enqueue(now);
 		DebugBehavior.Info(pluginLog, "Mount", "job enqueued");
 	}
 
@@ -92,7 +101,12 @@ public sealed class MountRunner
 		var now = Environment.TickCount64;
 		if (MountDecision.IsSessionTimedOut(session.DeadlineMs, now))
 		{
-			DebugBehavior.Debug(pluginLog, enabled: true, "Mount", $"job timed out after {MountDecision.SessionTimeoutMs}ms");
+			DebugBehavior.Debug(
+				pluginLog,
+				enabled: true,
+				"Mount",
+				$"job timed out (phase={session.Phase})");
+			lastAbandonMs = now;
 			session.Clear();
 			return;
 		}
@@ -134,7 +148,10 @@ public sealed class MountRunner
 
 		if (session.Phase == MountPhase.WaitReady)
 		{
-			session.EnterMounting(now);
+			var mountingTimeout = isTeleportPlanActive?.Invoke() == true
+				? MountDecision.MountingBeforeTeleportTimeoutMs
+				: MountDecision.SessionTimeoutMs;
+			session.EnterMounting(now, mountingTimeout);
 			DebugBehavior.Debug(pluginLog, enabled: true, "Mount", "WaitReady → Mounting");
 		}
 

@@ -9,9 +9,9 @@ namespace HuntTrainAuto.Combat;
 public enum EngageTargetKind
 {
 	None,
-	/// <summary>Conductor is in combat — join their BattleNpc target.</summary>
+	/// <summary>Conductor is in combat on an A-rank — join that target.</summary>
 	ConductorFight,
-	/// <summary>Party ally is in combat — join their BattleNpc target.</summary>
+	/// <summary>Party ally is in combat on an A-rank — join that target.</summary>
 	PartyFight,
 	/// <summary>Nearest living NotoriousMonster Rank A within scan range.</summary>
 	NearbyARank,
@@ -65,10 +65,11 @@ public readonly struct EngageMobCandidate
 
 /// <summary>
 /// Pure engage-target priority (A-train):
-/// 1) Conductor fight target,
-/// 2) Party ally fight target (nearest mob),
+/// 1) Conductor fight target (A-rank only),
+/// 2) Party ally fight target (nearest A-rank),
 /// 3) Nearby A-rank in scan range (prefer nearest to Sonar/HA/conductor hint when enabled),
-/// else none. No player follow. S-ranks never selected via the A-rank path.
+/// else none. No player follow. Trash / S / B never selected — join-fight paths
+/// still require <see cref="EngageMobCandidate.IsARank"/>.
 /// </summary>
 public static class EngageTargetDecision
 {
@@ -111,6 +112,8 @@ public static class EngageTargetDecision
 
 	/// <summary>
 	/// Pick engage mob. Conductor &gt; party fight &gt; nearby A-rank.
+	/// Conductor/party fight picks require <see cref="EngageMobCandidate.IsARank"/>
+	/// so trash tab-targets never win over the hunt.
 	/// NearbyARank eligibility uses <see cref="EngageMobCandidate.EligibilityDistance"/> vs scan range.
 	/// When <paramref name="preferNearHint"/> and candidates carry finite
 	/// <see cref="EngageMobCandidate.DistanceToHint"/>, NearbyARank prefers
@@ -135,7 +138,7 @@ public static class EngageTargetDecision
 		for (var i = 0; i < candidates.Count; i++)
 		{
 			var c = candidates[i];
-			if (!c.IsAlive)
+			if (!c.IsAlive || !c.IsARank)
 				continue;
 
 			if (c.IsConductorFightTarget && c.Distance < bestConductorDist)
@@ -150,7 +153,7 @@ public static class EngageTargetDecision
 				bestPartyDist = c.Distance;
 			}
 
-			if (!c.IsARank || c.EligibilityDistance > range)
+			if (c.EligibilityDistance > range)
 				continue;
 
 			var hasHint = preferNearHint
@@ -289,13 +292,27 @@ public static class EngageTargetDecision
 			&& ShouldDivertFromFlagNav(distanceToMob, divertRange);
 
 	/// <summary>
-	/// Flush a combat-deferred flag once combat is idle (level-triggered).
-	/// Edge-only missed clears when combat.Clear() skipped the falling edge.
+	/// On foot during divert: do not require remount — hand off to engage / ground follow.
+	/// Avoids <c>skip approach (need mounted/flight)</c> spam after a successful land.
+	/// </summary>
+	public static bool ShouldHandOffDivertToGroundEngage(
+		bool mounted,
+		bool inFlight,
+		bool readyForGroundFollow,
+		float distanceToMob,
+		float engageRange)
+		=> !mounted
+			&& !inFlight
+			&& (readyForGroundFollow || ShouldEnterCombatOnMob(distanceToMob, engageRange));
+
+	/// <summary>
+	/// Flush a combat-deferred flag on combat falling edge only.
+	/// Level-triggered flush aborted mid-fight when the combat latch briefly cleared.
 	/// </summary>
 	public static bool ShouldFlushDeferredFlagAfterCombat(
 		bool wasInCombatPhase,
 		bool inCombatPhase,
 		bool hasDeferredFlag)
-		=> !inCombatPhase && hasDeferredFlag;
+		=> wasInCombatPhase && !inCombatPhase && hasDeferredFlag;
 
 }

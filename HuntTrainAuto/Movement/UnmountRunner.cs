@@ -172,7 +172,8 @@ public sealed class UnmountRunner
 	private void TickUnmounting(long now)
 	{
 		var mounted = condition[ConditionFlag.Mounted];
-		if (UnmountDecision.IsUnmountCompleteOrSkipped(mounted))
+		var inFlight = condition[ConditionFlag.InFlight];
+		if (UnmountDecision.IsUnmountCompleteOrSkipped(mounted, inFlight))
 		{
 			session.MarkGroundFollowReady();
 			session.Clear();
@@ -193,7 +194,8 @@ public sealed class UnmountRunner
 			checkReady,
 			actionUsable,
 			animLock,
-			dismountReady);
+			dismountReady,
+			inFlight);
 
 		if (decision.ForceCheckThrottle)
 		{

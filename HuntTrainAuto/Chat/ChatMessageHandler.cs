@@ -69,34 +69,30 @@ public sealed class ChatMessageHandler : IDisposable
 		ConductorSenderName = null;
 
 		if (!config.Enabled)
-		{
-			LogDebug("message ignored: plugin disabled");
 			return;
-		}
 
 		var isConductorMessage = TryDecodeSender(message.Sender, out var senderName)
 			&& ChatSender.IsConductor(config.Conductors, senderName);
-		LogDebug(isConductorMessage ? "conductor sender matched" : "sender rejected");
+		if (!isConductorMessage)
+			return;
 
-		if (isConductorMessage)
+		LogDebug("conductor sender matched");
+		IsConductorMessage = true;
+		ConductorSenderName = senderName;
+		TryExtractHuntFlag(message);
+		var isLastStop = ConductorLastStopParse.IsLastStop(message.Message.TextValue);
+		LogDebug(ConductorLastStopParse.Describe(isLastStop));
+		try
 		{
-			IsConductorMessage = true;
-			ConductorSenderName = senderName;
-			TryExtractHuntFlag(message);
-			var isLastStop = ConductorLastStopParse.IsLastStop(message.Message.TextValue);
-			LogDebug(ConductorLastStopParse.Describe(isLastStop));
-			try
-			{
-				ConductorTextReceived?.Invoke(message.Message.TextValue);
-			}
-			catch
-			{
-				// soft-fail subscriber
-				LogDebug("conductor text subscriber soft-fail");
-			}
-
-			message.Message = HighlightConductorMessage(message.Message);
+			ConductorTextReceived?.Invoke(message.Message.TextValue);
 		}
+		catch
+		{
+			// soft-fail subscriber
+			LogDebug("conductor text subscriber soft-fail");
+		}
+
+		message.Message = HighlightConductorMessage(message.Message);
 	}
 
 	/// <summary>

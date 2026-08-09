@@ -35,10 +35,10 @@ public static class TeleportGate
 
 	/// <summary>
 	/// Idle grace after cast ends (or invoke never cast) before releasing
-	/// <c>TeleportInvoked</c> for a retry. Must outlast normal cast→BetweenAreas
-	/// so a successful TP is not re-fired mid-transition.
+	/// <c>TeleportInvoked</c> for a retry. Must outlast slow cast→BetweenAreas
+	/// (live same-zone hops can exceed 6s before BetweenAreas).
 	/// </summary>
-	public const int PostInvokeIdleRetryMs = 6000;
+	public const int PostInvokeIdleRetryMs = 15_000;
 
 	/// <summary>
 	/// Whether the Framework loop may call Teleporter/Lifestream this tick
@@ -65,6 +65,8 @@ public static class TeleportGate
 	/// Release <c>TeleportInvoked</c> so a cancelled / stuck TP can retry.
 	/// Requires continuous idle (not casting) for <paramref name="idleRetryMs"/>
 	/// without BetweenAreas — successful hops clear via plan handoff sooner.
+	/// Once a cast was observed after invoke, never release (wait for BetweenAreas);
+	/// only never-cast stuck invokes use the idle grace.
 	/// <paramref name="idleSinceMs"/> ≤ 0 means not idle yet (still casting / just invoked).
 	/// </summary>
 	public static bool ShouldReleaseTeleportInvoked(
@@ -75,9 +77,13 @@ public static class TeleportGate
 		bool betweenAreas51,
 		long idleSinceMs,
 		long nowMs,
-		int idleRetryMs = PostInvokeIdleRetryMs)
+		int idleRetryMs = PostInvokeIdleRetryMs,
+		bool sawCastAfterInvoke = false)
 	{
 		if (!teleportInvoked || IsBetweenAreas(betweenAreas, betweenAreas51))
+			return false;
+		// Cast started → trust BetweenAreas / TpArrivalHandoff; do not double-fire.
+		if (sawCastAfterInvoke)
 			return false;
 		if (casting || isCasting || idleSinceMs <= 0)
 			return false;

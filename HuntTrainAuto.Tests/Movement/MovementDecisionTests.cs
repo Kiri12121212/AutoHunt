@@ -301,7 +301,39 @@ public sealed class MovementDecisionTests
 	{
 		var r = Decide(distance: 10f, numWaypoints: 4);
 		Assert.Equal(MoveTickKind.Wait, r.Kind);
+		Assert.Equal(MoveWaitReason.HasWaypoints, r.WaitReason);
 	}
+
+	[Fact]
+	public void DecideMoveTick_path_running_is_not_mesh_not_ready()
+	{
+		var r = Decide(
+			flyRequested: true,
+			zoneSupportsFlying: true,
+			inFlight: true,
+			distance: 50f,
+			playerReady: true,
+			navReady: true,
+			pathfindInProgress: false,
+			numWaypoints: 0,
+			pathIsRunning: true,
+			playerOnMesh: false);
+		Assert.Equal(MoveTickKind.Wait, r.Kind);
+		Assert.Equal(MoveWaitReason.PathRunning, r.WaitReason);
+	}
+
+	[Fact]
+	public void ClassifyMeshPathfindWait_prefers_path_running()
+		=> Assert.Equal(
+			MoveWaitReason.PathRunning,
+			MovementDecision.ClassifyMeshPathfindWait(
+				playerReady: true,
+				navReady: true,
+				pathfindInProgress: false,
+				numWaypoints: 0,
+				pathIsRunning: true,
+				playerOnMesh: false,
+				fly: true));
 
 	[Fact]
 	public void DecideMoveTick_starts_mesh_path_when_ready()

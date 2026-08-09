@@ -222,7 +222,7 @@ public sealed class MountDecisionTests
 	}
 
 	[Fact]
-	public void DecideMountTick_waits_and_forces_throttle_during_transition()
+	public void DecideMountTick_waits_without_throttle_during_transition()
 	{
 		var r = MountDecision.DecideMountTick(
 			mounted: false,
@@ -235,11 +235,12 @@ public sealed class MountDecisionTests
 			animationLocked: false,
 			summonThrottleReady: true);
 		Assert.Equal(MountTickKind.Wait, r.Kind);
-		Assert.True(r.ForceCheckThrottle);
+		Assert.Equal(MountWaitReason.TransitionOrCasting, r.WaitReason);
+		Assert.False(r.ForceCheckThrottle);
 	}
 
 	[Fact]
-	public void DecideMountTick_waits_and_forces_throttle_while_casting()
+	public void DecideMountTick_waits_without_throttle_while_casting()
 	{
 		var r = MountDecision.DecideMountTick(
 			mounted: false,
@@ -252,7 +253,8 @@ public sealed class MountDecisionTests
 			animationLocked: false,
 			summonThrottleReady: true);
 		Assert.Equal(MountTickKind.Wait, r.Kind);
-		Assert.True(r.ForceCheckThrottle);
+		Assert.Equal(MountWaitReason.TransitionOrCasting, r.WaitReason);
+		Assert.False(r.ForceCheckThrottle);
 	}
 
 	[Fact]

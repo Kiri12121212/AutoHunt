@@ -68,7 +68,7 @@ public sealed class EngageTargetDecisionTests
 		var candidates = new List<EngageMobCandidate>
 		{
 			Mob(0, isA: true, dist: 5f),
-			Mob(1, conductor: true, dist: 40f),
+			Mob(1, conductor: true, isA: true, dist: 40f),
 		};
 		var pick = EngageTargetDecision.Resolve(candidates, 50f);
 		Assert.Equal(EngageTargetKind.ConductorFight, pick.Kind);
@@ -80,8 +80,8 @@ public sealed class EngageTargetDecisionTests
 	{
 		var candidates = new List<EngageMobCandidate>
 		{
-			Mob(0, party: true, dist: 5f),
-			Mob(1, conductor: true, dist: 40f),
+			Mob(0, party: true, isA: true, dist: 5f),
+			Mob(1, conductor: true, isA: true, dist: 40f),
 		};
 		var pick = EngageTargetDecision.Resolve(candidates, 50f);
 		Assert.Equal(EngageTargetKind.ConductorFight, pick.Kind);
@@ -94,7 +94,7 @@ public sealed class EngageTargetDecisionTests
 		var candidates = new List<EngageMobCandidate>
 		{
 			Mob(0, isA: true, dist: 5f),
-			Mob(1, party: true, dist: 20f),
+			Mob(1, party: true, isA: true, dist: 20f),
 		};
 		var pick = EngageTargetDecision.Resolve(candidates, 50f);
 		Assert.Equal(EngageTargetKind.PartyFight, pick.Kind);
@@ -106,12 +106,38 @@ public sealed class EngageTargetDecisionTests
 	{
 		var candidates = new List<EngageMobCandidate>
 		{
-			Mob(0, party: true, dist: 30f),
-			Mob(1, party: true, dist: 12f),
+			Mob(0, party: true, isA: true, dist: 30f),
+			Mob(1, party: true, isA: true, dist: 12f),
 		};
 		var pick = EngageTargetDecision.Resolve(candidates, 50f);
 		Assert.Equal(EngageTargetKind.PartyFight, pick.Kind);
 		Assert.Equal(1, pick.Index);
+	}
+
+	[Fact]
+	public void Resolve_ignores_non_a_conductor_and_party_fight()
+	{
+		// Trash tab-targets must not steal engage from the nearby A-rank.
+		var candidates = new List<EngageMobCandidate>
+		{
+			Mob(0, isA: true, dist: 25f),
+			Mob(1, conductor: true, isA: false, dist: 5f),
+			Mob(2, party: true, isA: false, dist: 3f),
+		};
+		var pick = EngageTargetDecision.Resolve(candidates, 50f);
+		Assert.Equal(EngageTargetKind.NearbyARank, pick.Kind);
+		Assert.Equal(0, pick.Index);
+	}
+
+	[Fact]
+	public void Resolve_non_a_fight_alone_yields_none()
+	{
+		var candidates = new List<EngageMobCandidate>
+		{
+			Mob(0, conductor: true, isA: false, dist: 5f),
+			Mob(1, party: true, isA: false, dist: 4f),
+		};
+		Assert.False(EngageTargetDecision.Resolve(candidates, 50f).Found);
 	}
 
 	[Fact]
@@ -214,7 +240,7 @@ public sealed class EngageTargetDecisionTests
 		var candidates = new List<EngageMobCandidate>
 		{
 			Mob(0, isA: true, dist: 5f, hintDist: 1f),
-			Mob(1, conductor: true, dist: 40f, hintDist: 100f),
+			Mob(1, conductor: true, isA: true, dist: 40f, hintDist: 100f),
 		};
 		var pick = EngageTargetDecision.Resolve(candidates, 50f, preferNearHint: true);
 		Assert.Equal(EngageTargetKind.ConductorFight, pick.Kind);
@@ -240,8 +266,8 @@ public sealed class EngageTargetDecisionTests
 		var candidates = new List<EngageMobCandidate>
 		{
 			Mob(0, isA: true, dist: 5f, alive: false),
-			Mob(1, conductor: true, dist: 8f, alive: false),
-			Mob(2, party: true, dist: 6f, alive: false),
+			Mob(1, conductor: true, isA: true, dist: 8f, alive: false),
+			Mob(2, party: true, isA: true, dist: 6f, alive: false),
 		};
 		Assert.False(EngageTargetDecision.Resolve(candidates, 50f).Found);
 	}
@@ -350,7 +376,7 @@ public sealed class EngageTargetDecisionTests
 	[Theory]
 	[InlineData(true, false, true, true)]
 	[InlineData(true, true, true, false)]
-	[InlineData(false, false, true, true)]
+	[InlineData(false, false, true, false)]
 	[InlineData(true, false, false, false)]
 	public void ShouldFlushDeferredFlagAfterCombat(
 		bool wasInCombat,
@@ -361,6 +387,24 @@ public sealed class EngageTargetDecisionTests
 			expected,
 			EngageTargetDecision.ShouldFlushDeferredFlagAfterCombat(wasInCombat, inCombat, hasDeferred));
 
+	[Theory]
+	[InlineData(false, false, true, 5f, 20f, true)]
+	[InlineData(false, false, false, 5f, 20f, true)]
+	[InlineData(false, false, false, 50f, 20f, false)]
+	[InlineData(true, false, true, 5f, 20f, false)]
+	[InlineData(false, true, true, 5f, 20f, false)]
+	public void ShouldHandOffDivertToGroundEngage(
+		bool mounted,
+		bool inFlight,
+		bool ready,
+		float dist,
+		float engageRange,
+		bool expected)
+		=> Assert.Equal(
+			expected,
+			EngageTargetDecision.ShouldHandOffDivertToGroundEngage(
+				mounted, inFlight, ready, dist, engageRange));
+
 	[Fact]
 	public void ARankHuntIndex_only_rank_a()
 	{
@@ -370,11 +414,26 @@ public sealed class EngageTargetDecisionTests
 			(20u, 200u, (byte)HuntMarkRank.A),
 			(30u, 300u, (byte)HuntMarkRank.S),
 		]);
-		Assert.Equal(2, ids.Count);
+		Assert.Single(ids.NameIds);
+		Assert.Single(ids.BaseIds);
 		Assert.True(ARankHuntIndex.IsARank(ids, 20, 0));
 		Assert.True(ARankHuntIndex.IsARank(ids, 0, 200));
 		Assert.False(ARankHuntIndex.IsARank(ids, 10, 100));
 		Assert.False(ARankHuntIndex.IsARank(ids, 30, 300));
+	}
+
+	[Fact]
+	public void ARankHuntIndex_does_not_cross_name_and_base_namespaces()
+	{
+		// A-rank NameId 5000 must not make trash with BaseId 5000 look like an A.
+		var ids = ARankHuntIndex.BuildARankIds(
+		[
+			(5000u, 9001u, (byte)HuntMarkRank.A),
+		]);
+		Assert.True(ARankHuntIndex.IsARank(ids, 5000, 0));
+		Assert.True(ARankHuntIndex.IsARank(ids, 0, 9001));
+		Assert.False(ARankHuntIndex.IsARank(ids, 0, 5000));
+		Assert.False(ARankHuntIndex.IsARank(ids, 9001, 0));
 	}
 
 	private static EngageMobCandidate Mob(

@@ -33,12 +33,12 @@ public sealed class RsrCommandsTests
 		=> Assert.Equal(expected, RsrCommands.AutoOffAfterCombatSetting(enabled));
 
 	[Fact]
-	public void DefaultRotationAutoSettings_matches_AD_sequence()
+	public void DefaultRotationAutoSettings_matches_hunt_sequence()
 	{
 		var settings = RsrCommands.DefaultRotationAutoSettings();
 		Assert.Equal(
 			[
-				"HostileType AllTargetsCanAttack",
+				"HostileType TargetsHaveTarget",
 				"FriendlyPartyNpcHealRaise3 true",
 				"AutoOffAfterCombat false",
 			],
@@ -48,13 +48,13 @@ public sealed class RsrCommandsTests
 	[Fact]
 	public void DefaultRotationAutoSettings_respects_hostile_override()
 	{
-		var settings = RsrCommands.DefaultRotationAutoSettings(RsrTargetHostileType.TargetsHaveTarget);
-		Assert.Equal("HostileType TargetsHaveTarget", settings[0]);
+		var settings = RsrCommands.DefaultRotationAutoSettings(RsrTargetHostileType.AllTargetsCanAttack);
+		Assert.Equal("HostileType AllTargetsCanAttack", settings[0]);
 	}
 
 	[Theory]
-	[InlineData(true, RsrTargetingType.HighHP)]
-	[InlineData(false, RsrTargetingType.LowHP)]
+	[InlineData(true, RsrTargetingType.HighMaxHP)]
+	[InlineData(false, RsrTargetingType.HighMaxHP)]
 	public void DefaultTargetingForTankRole(bool isTank, RsrTargetingType expected)
 		=> Assert.Equal(expected, RsrCommands.DefaultTargetingForTankRole(isTank));
 

@@ -90,10 +90,19 @@ public sealed class UnmountDecisionTests
 				pathReady, screenReady, playerReady, teleportActive, instanceActive));
 
 	[Theory]
-	[InlineData(false, true)]
-	[InlineData(true, false)]
-	public void IsUnmountCompleteOrSkipped(bool mounted, bool expected)
-		=> Assert.Equal(expected, UnmountDecision.IsUnmountCompleteOrSkipped(mounted));
+	[InlineData(false, false, true)]
+	[InlineData(true, false, false)]
+	[InlineData(false, true, false)]
+	[InlineData(true, true, false)]
+	public void IsUnmountCompleteOrSkipped(bool mounted, bool inFlight, bool expected)
+		=> Assert.Equal(expected, UnmountDecision.IsUnmountCompleteOrSkipped(mounted, inFlight));
+
+	[Theory]
+	[InlineData(false, false, true)]
+	[InlineData(true, false, false)]
+	[InlineData(false, true, false)]
+	public void ShouldEnqueueDivertUnmount(bool active, bool ready, bool expected)
+		=> Assert.Equal(expected, UnmountDecision.ShouldEnqueueDivertUnmount(active, ready));
 
 	[Theory]
 	[InlineData(true, false, true)]
@@ -130,6 +139,21 @@ public sealed class UnmountDecisionTests
 	}
 
 	[Fact]
+	public void DecideUnmountTick_not_done_while_in_flight_unmounted()
+	{
+		var r = UnmountDecision.DecideUnmountTick(
+			mounted: false,
+			mountOrOrnamentTransition: false,
+			casting: false,
+			checkThrottleReady: true,
+			dismountActionUsable: true,
+			animationLocked: false,
+			dismountThrottleReady: true,
+			inFlight: true);
+		Assert.NotEqual(UnmountTickKind.Done, r.Kind);
+	}
+
+	[Fact]
 	public void DecideUnmountTick_wait_on_transition()
 	{
 		var r = UnmountDecision.DecideUnmountTick(
@@ -141,7 +165,8 @@ public sealed class UnmountDecisionTests
 			animationLocked: false,
 			dismountThrottleReady: true);
 		Assert.Equal(UnmountTickKind.Wait, r.Kind);
-		Assert.True(r.ForceCheckThrottle);
+		Assert.Equal(UnmountWaitReason.TransitionOrCasting, r.WaitReason);
+		Assert.False(r.ForceCheckThrottle);
 		Assert.False(r.ReadyForGroundFollow);
 	}
 
@@ -157,7 +182,8 @@ public sealed class UnmountDecisionTests
 			animationLocked: false,
 			dismountThrottleReady: true);
 		Assert.Equal(UnmountTickKind.Wait, r.Kind);
-		Assert.True(r.ForceCheckThrottle);
+		Assert.Equal(UnmountWaitReason.TransitionOrCasting, r.WaitReason);
+		Assert.False(r.ForceCheckThrottle);
 	}
 
 	[Fact]

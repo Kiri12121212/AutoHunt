@@ -15,14 +15,17 @@ public static class RsrSettingsDecision
 	/// <summary>Lumina <c>ClassJob.Role</c> value for melee DPS.</summary>
 	public const byte MeleeDpsClassJobRole = 2;
 
-	/// <summary>AD default: <see cref="RsrTargetHostileType.AllTargetsCanAttack"/>.</summary>
-	public static RsrTargetHostileType DefaultHostileType => RsrTargetHostileType.AllTargetsCanAttack;
+	/// <summary>
+	/// Hunt default: <see cref="RsrTargetHostileType.TargetsHaveTarget"/> —
+	/// only engage hostiles that already have a target (avoids random trash).
+	/// </summary>
+	public static RsrTargetHostileType DefaultHostileType => RsrTargetHostileType.TargetsHaveTarget;
 
-	/// <summary>AD default tank targeting: <see cref="RsrTargetingType.HighHP"/>.</summary>
-	public static RsrTargetingType DefaultTankTargeting => RsrTargetingType.HighHP;
+	/// <summary>Hunt default tank targeting: <see cref="RsrTargetingType.HighMaxHP"/> (prefer A-rank).</summary>
+	public static RsrTargetingType DefaultTankTargeting => RsrTargetingType.HighMaxHP;
 
-	/// <summary>AD default non-tank targeting: <see cref="RsrTargetingType.LowHP"/>.</summary>
-	public static RsrTargetingType DefaultNonTankTargeting => RsrTargetingType.LowHP;
+	/// <summary>Hunt default non-tank targeting: <see cref="RsrTargetingType.HighMaxHP"/> (prefer A-rank).</summary>
+	public static RsrTargetingType DefaultNonTankTargeting => RsrTargetingType.HighMaxHP;
 
 	/// <summary>True when <paramref name="classJobRole"/> is tank (<see cref="TankClassJobRole"/>).</summary>
 	public static bool IsTankRole(byte classJobRole) => classJobRole == TankClassJobRole;
