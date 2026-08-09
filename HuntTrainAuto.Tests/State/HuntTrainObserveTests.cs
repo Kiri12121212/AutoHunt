@@ -183,7 +183,12 @@ public sealed class HuntTrainObserveTests
 
 		phase = HuntTrainTransition.Tick(
 			phase,
-			HuntTrainObserve.BuildProgressSnapshot(pluginEnabled: true, withinFlagArrival: true));
+			HuntTrainObserve.BuildProgressSnapshot(
+				pluginEnabled: true,
+				withinFlagArrival: true,
+				mounted: false,
+				autoUnmountAtFlag: true,
+				readyForGroundFollow: true));
 		Assert.Equal(HuntTrainPhase.Unmount, phase);
 
 		// ReadyForGroundFollow latch alone does not leave Unmount.

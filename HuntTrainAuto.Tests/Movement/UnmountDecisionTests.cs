@@ -5,6 +5,28 @@ namespace HuntTrainAuto.Tests.Movement;
 public sealed class UnmountDecisionTests
 {
 	[Theory]
+	[InlineData(true, true, true, false, false)]
+	[InlineData(true, true, true, true, true)]
+	[InlineData(true, true, false, false, true)]
+	[InlineData(true, false, true, false, false)]
+	[InlineData(true, false, false, false, true)]
+	[InlineData(false, true, true, false, false)]
+	[InlineData(false, true, false, false, false)]
+	public void ShouldFlagArrived(
+		bool withinArrival,
+		bool autoUnmount,
+		bool mountedOrFlying,
+		bool readyFollow,
+		bool expected)
+		=> Assert.Equal(
+			expected,
+			UnmountDecision.ShouldFlagArrived(
+				withinArrival,
+				autoUnmount,
+				mountedOrFlying,
+				readyFollow));
+
+	[Theory]
 	[InlineData(true, true)]
 	[InlineData(false, false)]
 	public void ShouldEnqueueIfEnabled(bool autoUnmount, bool expected)

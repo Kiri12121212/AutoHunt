@@ -60,6 +60,12 @@ public sealed class FlagArrivalHelper
 				vnav.PathStop();
 				pathStoppedForArrival = true;
 			}
+			else if (!result.IsArrived && pathStoppedForArrival)
+			{
+				// Left the arrive band (e.g. still descending / bounced) — allow PathStop again
+				// and let Navigate re-fly (8sy1).
+				pathStoppedForArrival = false;
+			}
 
 			return result;
 		}

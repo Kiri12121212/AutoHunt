@@ -53,6 +53,7 @@ public static class HuntTrainObserve
 	/// <param name="inFlight">Local player <c>ConditionFlag.InFlight</c>.</param>
 	/// <param name="mountConfig"><see cref="Configuration.Mount"/> (-1 never).</param>
 	/// <param name="withinFlagArrival">Flag-area arrival this tick.</param>
+	/// <param name="autoUnmountAtFlag"><see cref="Configuration.AutoUnmountAtFlag"/>.</param>
 	/// <param name="readyForGroundFollow"><see cref="UnmountRunner.ReadyForGroundFollow"/>.</param>
 	/// <param name="inCombatPhase"><see cref="CombatSession.InCombatPhase"/>.</param>
 	public static HuntTrainTickSnapshot BuildProgressSnapshot(
@@ -64,6 +65,7 @@ public static class HuntTrainObserve
 		bool inFlight = false,
 		int mountConfig = 0,
 		bool withinFlagArrival = false,
+		bool autoUnmountAtFlag = true,
 		bool readyForGroundFollow = false,
 		bool inCombatPhase = false)
 		=> new()
@@ -80,6 +82,8 @@ public static class HuntTrainObserve
 				inFlight,
 				mountConfig),
 			WithinFlagArrival = withinFlagArrival,
+			AutoUnmountAtFlag = autoUnmountAtFlag,
+			MountedOrInFlight = mounted || inFlight,
 			ReadyForGroundFollow = readyForGroundFollow,
 			PartyEngaged = inCombatPhase,
 			CombatEnded = !inCombatPhase,

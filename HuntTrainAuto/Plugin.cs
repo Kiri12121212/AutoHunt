@@ -1420,8 +1420,11 @@ public sealed class Plugin : IDalamudPlugin
 		TryRetryPendingHuntAlertsChangeWorld();
 		TryFlushPendingHuntAlerts();
 
-		// Navigate: path toward flag world pos (existing MovementHelper).
-		if (train.Phase == HuntTrainPhase.Navigate)
+		// Navigate (and Unmount while still mounted): path toward flag — keeps 8sy1 descent recovery.
+		if (train.Phase == HuntTrainPhase.Navigate
+		    || (train.Phase == HuntTrainPhase.Unmount
+		        && !unmount.ReadyForGroundFollow
+		        && (condition[ConditionFlag.Mounted] || condition[ConditionFlag.InFlight])))
 			TickNavigateToFlag();
 
 		// Nearby A-rank / conductor fight: stop flag nav, land, unmount (hgb1/55fa).
@@ -1496,6 +1499,7 @@ public sealed class Plugin : IDalamudPlugin
 			inFlight: condition[ConditionFlag.InFlight],
 			mountConfig: Config.Mount,
 			withinFlagArrival: withinArrival,
+			autoUnmountAtFlag: Config.AutoUnmountAtFlag,
 			readyForGroundFollow: unmount.ReadyForGroundFollow,
 			inCombatPhase: combat.InCombatPhase));
 
@@ -1700,10 +1704,12 @@ public sealed class Plugin : IDalamudPlugin
 			var probe = engage.Probe(Config.Conductors, flagWorldPos);
 			if (!probe.Found
 			    || !EngageTargetDecision.ShouldDivertFromFlagNav(
-				    probe.EligibilityDistance,
+				    probe.Distance,
 				    Config.ARankScanRange))
 			{
 				// Mob gone / out of divert range — unblock Navigate (hgb1).
+				// Use player→mob for PathStop (not flag-centered eligibility) so a mob near
+				// the flag cannot cancel fly-to while the player is still far away.
 				divertingToEngage = false;
 				return;
 			}

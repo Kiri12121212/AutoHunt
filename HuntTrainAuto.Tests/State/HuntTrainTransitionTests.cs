@@ -175,6 +175,9 @@ public sealed class HuntTrainTransitionTests
 			PartyEngaged = partyEngaged,
 			CombatEnded = combatEnded,
 			NeedsTeleport = needsTeleport,
+			// On foot so WithinFlagArrival alone can FlagArrived (auto-unmount default).
+			AutoUnmountAtFlag = true,
+			MountedOrInFlight = false,
 		};
 		Assert.Equal(expectedEvent, HuntTrainTransition.Decide(from, snap));
 		Assert.Equal(expectedPhase, HuntTrainTransition.Tick(from, snap));
@@ -208,6 +211,25 @@ public sealed class HuntTrainTransitionTests
 		};
 		Assert.Equal(HuntTrainEvent.EnterCombat, HuntTrainTransition.Decide(from, snap));
 		Assert.Equal(HuntTrainPhase.Combat, HuntTrainTransition.Tick(from, snap));
+	}
+
+	[Fact]
+	public void Decide_Navigate_arrival_while_mounted_stays_until_ReadyForGroundFollow()
+	{
+		var arrivedMounted = new HuntTrainTickSnapshot
+		{
+			PluginEnabled = true,
+			WithinFlagArrival = true,
+			AutoUnmountAtFlag = true,
+			MountedOrInFlight = true,
+			ReadyForGroundFollow = false,
+		};
+		Assert.Equal(HuntTrainEvent.None, HuntTrainTransition.Decide(HuntTrainPhase.Navigate, arrivedMounted));
+		Assert.Equal(HuntTrainPhase.Navigate, HuntTrainTransition.Tick(HuntTrainPhase.Navigate, arrivedMounted));
+
+		var dismounted = arrivedMounted with { ReadyForGroundFollow = true };
+		Assert.Equal(HuntTrainEvent.FlagArrived, HuntTrainTransition.Decide(HuntTrainPhase.Navigate, dismounted));
+		Assert.Equal(HuntTrainPhase.Unmount, HuntTrainTransition.Tick(HuntTrainPhase.Navigate, dismounted));
 	}
 
 	[Fact]

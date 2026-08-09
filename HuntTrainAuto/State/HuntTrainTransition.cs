@@ -94,9 +94,15 @@ public readonly struct HuntTrainTickSnapshot
 	/// <summary>Within flag arrival tolerance / arrival signaled.</summary>
 	public bool WithinFlagArrival { get; init; }
 
+	/// <summary><see cref="Configuration.AutoUnmountAtFlag"/> — gates Navigate→Unmount while mounted.</summary>
+	public bool AutoUnmountAtFlag { get; init; }
+
+	/// <summary>Mounted or InFlight — stay Navigate until dismounted when auto-unmount is on.</summary>
+	public bool MountedOrInFlight { get; init; }
+
 	/// <summary>
 	/// Dismounted / ReadyForGroundFollow latch (PF / engage gates).
-	/// Does not advance the train phase.
+	/// Does not advance the train phase by itself; with arrival, allows FlagArrived.
 	/// </summary>
 	public bool ReadyForGroundFollow { get; init; }
 
@@ -188,7 +194,11 @@ public static class HuntTrainTransition
 						: HuntTrainEvent.None,
 			HuntTrainPhase.Navigate => snap.PartyEngaged
 				? HuntTrainEvent.EnterCombat
-				: snap.WithinFlagArrival
+				: UnmountDecision.ShouldFlagArrived(
+					snap.WithinFlagArrival,
+					snap.AutoUnmountAtFlag,
+					snap.MountedOrInFlight,
+					snap.ReadyForGroundFollow)
 					? HuntTrainEvent.FlagArrived
 					: HuntTrainEvent.None,
 			HuntTrainPhase.Unmount => snap.PartyEngaged

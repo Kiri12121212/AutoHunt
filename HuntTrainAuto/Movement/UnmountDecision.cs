@@ -61,6 +61,27 @@ public static class UnmountDecision
 	/// </summary>
 	public const bool PreferCanFlyForGroundFollow = false;
 
+	/// <summary>
+	/// Navigate → Unmount only after arrival <b>and</b> dismount when auto-unmount is on.
+	/// Staying in Navigate while Mounted/InFlight keeps mid-air PathStop/descent recovery alive.
+	/// </summary>
+	public static bool ShouldFlagArrived(
+		bool withinFlagArrival,
+		bool autoUnmountAtFlag,
+		bool mountedOrInFlight,
+		bool readyForGroundFollow)
+	{
+		if (!withinFlagArrival)
+			return false;
+
+		if (!autoUnmountAtFlag)
+			return !mountedOrInFlight;
+
+		// Auto-unmount: wait for ReadyForGroundFollow while still mounted/flying.
+		// Already on foot → advance (unmount skip / latch may catch up same tick).
+		return readyForGroundFollow || !mountedOrInFlight;
+	}
+
 	/// <summary>HTA-style gate on <see cref="Configuration.AutoUnmountAtFlag"/>.</summary>
 	public static bool ShouldEnqueueIfEnabled(bool autoUnmountAtFlag) => autoUnmountAtFlag;
 
