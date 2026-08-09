@@ -303,4 +303,18 @@ public static class MovementDecision
 			Fly = fly,
 		};
 	}
+
+	public static string Describe(MoveTickResult result)
+		=> result.Kind switch
+		{
+			MoveTickKind.WaitPlayerInvalid => "wait (player invalid)",
+			MoveTickKind.Arrived => result.StopPath ? "arrived (stop path)" : "arrived",
+			MoveTickKind.Takeoff => "takeoff",
+			MoveTickKind.SetLastPointToleranceAndWait => "set last-point tolerance",
+			MoveTickKind.Wait => "wait",
+			MoveTickKind.StartMeshPath => $"start mesh path (fly={result.Fly})",
+			MoveTickKind.StartDirectPath => $"start direct path (fly={result.Fly})",
+			_ => $"unknown ({result.Kind})",
+		};
+
 }

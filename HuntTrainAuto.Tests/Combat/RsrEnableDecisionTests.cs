@@ -28,6 +28,10 @@ public sealed class RsrEnableDecisionTests
 	}
 
 	[Fact]
+	public void Describe_formats_action()
+		=> Assert.Equal("action=StartAuto", RsrEnableDecision.Describe(RsrEnableKind.StartAuto));
+
+	[Fact]
 	public void Rising_edge_then_hold_only_starts_once_after_success()
 	{
 		Assert.Equal(RsrEnableKind.StartAuto, RsrEnableDecision.Decide(true, false));

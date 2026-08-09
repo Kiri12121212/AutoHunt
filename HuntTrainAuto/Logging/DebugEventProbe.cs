@@ -28,6 +28,14 @@ public sealed class DebugEventProbe
 		log.Record(DebugEventKind.FlagReceived, DebugEventFormatter.FormatFlagReceived(placeName));
 	}
 
+	public void Record(bool debugEnabled, DebugEventKind kind, string message)
+	{
+		if (!DebugEventFormatter.ShouldRecord(debugEnabled))
+			return;
+
+		log.Record(kind, message);
+	}
+
 	/// <summary>
 	/// Observe live pipeline edges. Seeds baselines on first call without recording noise.
 	/// </summary>

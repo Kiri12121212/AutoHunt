@@ -53,6 +53,10 @@ public sealed class BossModEnableDecisionTests
 	}
 
 	[Fact]
+	public void Describe_formats_action()
+		=> Assert.Equal("action=StartAi", BossModEnableDecision.Describe(BossModEnableKind.StartAi));
+
+	[Fact]
 	public void NextAiStarted_ignores_none_kind()
 	{
 		Assert.True(BossModEnableDecision.NextAiStarted(BossModEnableKind.None, true, true));

@@ -5,6 +5,17 @@ namespace HuntTrainAuto.Tests.State;
 public sealed class FlagRestartDecisionTests
 {
 	[Fact]
+	public void Plan_Describe_includes_kind_start_and_side_effects()
+	{
+		var description = FlagRestartDecision.AbortThenRestart(HuntTrainEvent.StartTeleport).Describe();
+
+		Assert.Contains("kind=AbortThenRestart", description);
+		Assert.Contains("start=StartTeleport", description);
+		Assert.Contains("stopNav=True", description);
+		Assert.Contains("resetTrain=True", description);
+	}
+
+	[Fact]
 	public void IsPipelineActive_Idle_without_inflight_is_false()
 	{
 		Assert.False(FlagRestartDecision.IsPipelineActive(HuntTrainPhase.Idle, hasInFlightWork: false));

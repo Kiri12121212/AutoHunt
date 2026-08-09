@@ -199,4 +199,8 @@ public static class CombatDecision
 			CombatTransitionKind.StayFollow => phase,
 			_ => phase,
 		};
+
+	public static string Describe(CombatTransitionKind kind)
+		=> $"transition={kind}";
+
 }

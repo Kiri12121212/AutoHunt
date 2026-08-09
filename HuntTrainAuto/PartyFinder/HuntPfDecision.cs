@@ -36,6 +36,10 @@ public static class HuntPfDecision
 	public const int MinOpenSettleMs = 100;
 	public const int MaxOpenSettleMs = 5_000;
 
+	/// <summary>Compact, side-effect-free decision diagnostic for call-site logging.</summary>
+	public static string Describe(HuntPfKind kind)
+		=> $"action={kind}";
+
 	public static int ClampRetryIntervalMs(int ms)
 	{
 		if (ms < MinRetryIntervalMs)

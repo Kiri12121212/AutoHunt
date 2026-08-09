@@ -75,4 +75,16 @@ public static class TeleportGate
 	/// </summary>
 	public static bool ShouldEnqueueInstanceChange(int instance)
 		=> InstanceChangeDecision.ShouldEnqueue(instance);
+
+	/// <summary>Debug summary when a teleport attempt is gated off.</summary>
+	public static string DescribeBlock(
+		bool inCombat,
+		bool betweenAreas,
+		bool betweenAreas51,
+		bool casting,
+		bool isMoving,
+		bool animationLocked,
+		bool teleportInvoked)
+		=> $"blocked: invoked={teleportInvoked}, combat={inCombat}, betweenAreas={betweenAreas || betweenAreas51}, casting={casting}, moving={isMoving}, animLock={animationLocked}";
+
 }

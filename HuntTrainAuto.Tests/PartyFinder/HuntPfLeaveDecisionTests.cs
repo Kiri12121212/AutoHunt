@@ -139,4 +139,10 @@ public sealed class HuntPfLeaveDecisionTests
 	[InlineData(99_999_999, HuntPfLeaveDecision.MaxIdleLeaveMs)]
 	public void ClampIdleLeaveMs(int input, int expected)
 		=> Assert.Equal(expected, HuntPfLeaveDecision.ClampIdleLeaveMs(input));
+
+	[Fact]
+	public void Describe_reports_action()
+		=> Assert.Equal(
+			"action=LeaveIdleTimeout",
+			HuntPfLeaveDecision.Describe(HuntPfLeaveKind.LeaveIdleTimeout));
 }

@@ -113,4 +113,15 @@ public static class MeshPathfindRetryDecision
 		bool playerOnMesh,
 		bool hadNavProgressThisEpoch)
 		=> playerOnMesh || (fly && hadNavProgressThisEpoch);
+
+	public static string Describe(MeshPathfindRetryKind result)
+		=> result switch
+		{
+			MeshPathfindRetryKind.WaitNotReady => "wait (not ready)",
+			MeshPathfindRetryKind.WaitCooldown => "wait (cooldown)",
+			MeshPathfindRetryKind.Start => "start",
+			MeshPathfindRetryKind.Exhausted => "exhausted",
+			_ => $"unknown ({result})",
+		};
+
 }

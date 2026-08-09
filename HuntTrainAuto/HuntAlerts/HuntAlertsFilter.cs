@@ -345,6 +345,28 @@ public static class HuntAlertsFilter
 	/// Master gate: integration on, rank allowed, world not blacklisted,
 	/// train group allowed (ExVersion preferred over huntKind).
 	/// </summary>
+	public static string DescribeAcceptance(
+		bool huntAlertsIntegration,
+		IReadOnlyList<HuntMarkRank>? rankFilter,
+		IReadOnlyList<string>? worldBlacklist,
+		HuntMarkRank rank,
+		string? worldName,
+		uint worldId = 0,
+		IReadOnlyList<string>? trainGroupFilter = null,
+		string? huntKind = null,
+		uint? exVersion = null)
+	{
+		if (!huntAlertsIntegration)
+			return "rejected: integration off";
+		if (!IsRankAllowed(rankFilter, rank))
+			return $"rejected: rank filter blocked {rank}";
+		if (IsWorldBlacklisted(worldBlacklist, worldName, worldId))
+			return $"rejected: world blacklisted '{worldName?.Trim() ?? "?"}'";
+		if (!IsTrainGroupAllowed(trainGroupFilter, huntKind, exVersion))
+			return $"rejected: expansion filter blocked kind='{huntKind?.Trim() ?? "?"}' ex={exVersion?.ToString() ?? "?"}";
+		return $"accepted: rank={rank} world={worldName?.Trim() ?? "?"}";
+	}
+
 	public static bool ShouldAccept(
 		bool huntAlertsIntegration,
 		IReadOnlyList<HuntMarkRank>? rankFilter,

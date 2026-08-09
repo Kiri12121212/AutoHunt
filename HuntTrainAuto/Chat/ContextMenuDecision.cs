@@ -45,4 +45,8 @@ public static class ContextMenuDecision
 			return false;
 		return ValidAddons.Contains(addonName);
 	}
+
+	/// <summary>Compact, side-effect-free menu visibility diagnostic for call-site logging.</summary>
+	public static string Describe(bool shouldShow)
+		=> shouldShow ? "show=true" : "show=false";
 }

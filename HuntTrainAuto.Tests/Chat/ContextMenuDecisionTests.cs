@@ -69,4 +69,10 @@ public sealed class ContextMenuDecisionTests
 			addonName: addon,
 			hasPlayerName: true));
 	}
+
+	[Theory]
+	[InlineData(true, "show=true")]
+	[InlineData(false, "show=false")]
+	public void Describe_reports_visibility(bool shouldShow, string expected)
+		=> Assert.Equal(expected, ContextMenuDecision.Describe(shouldShow));
 }

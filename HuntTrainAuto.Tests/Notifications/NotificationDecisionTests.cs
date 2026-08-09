@@ -44,4 +44,13 @@ public sealed class NotificationDecisionTests
 	[Fact]
 	public void FormatTitle_is_stable()
 		=> Assert.Equal(NotificationDecision.DefaultTitle, NotificationDecision.FormatTitle());
+
+	[Theory]
+	[InlineData(true, "toast=show", "sound=play")]
+	[InlineData(false, "toast=suppressed", "sound=suppressed")]
+	public void Describe_reports_notification_outcomes(bool enabled, string toast, string sound)
+	{
+		Assert.Equal(toast, NotificationDecision.DescribeToast(enabled));
+		Assert.Equal(sound, NotificationDecision.DescribeSound(enabled));
+	}
 }

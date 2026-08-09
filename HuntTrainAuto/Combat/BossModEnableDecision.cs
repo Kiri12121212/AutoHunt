@@ -35,4 +35,8 @@ public static class BossModEnableDecision
 	/// <summary>Abort Clear: stop when we believe AI is on.</summary>
 	public static BossModEnableKind DecideClear(bool aiStarted)
 		=> aiStarted ? BossModEnableKind.Stop : BossModEnableKind.None;
+
+	/// <summary>Compact, side-effect-free AI decision diagnostic for helper logging.</summary>
+	public static string Describe(BossModEnableKind kind)
+		=> $"action={kind}";
 }

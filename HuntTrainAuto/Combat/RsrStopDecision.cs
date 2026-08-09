@@ -93,4 +93,8 @@ public static class RsrStopDecision
 	/// </summary>
 	public static RsrEnableKind DecideTick(bool inCombatPhase, bool rotationAutoStarted)
 		=> RsrEnableDecision.Decide(inCombatPhase, rotationAutoStarted);
+
+	/// <summary>Compact, side-effect-free stop-path diagnostic for helper logging.</summary>
+	public static string Describe(RsrStopTrigger trigger, RsrStopPath path)
+		=> $"trigger={trigger}, path={path}";
 }

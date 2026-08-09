@@ -42,6 +42,17 @@ public readonly struct TeleportDecisionResult
 	/// <summary>Intended arrival when action is a teleport; null on skip.</summary>
 	public ArrivalData? Arrival { get; init; }
 
+
+	public string Describe()
+	{
+		var arrival = Arrival == null
+			? "arrival=none"
+			: $"arrival=aetheryte:{Arrival.AetheryteId}, territory:{Arrival.Territory}, instance:{Arrival.Instance}";
+		return Action == TeleportAction.Skip
+			? $"action={Action}, skip={SkipReason}, {arrival}"
+			: $"action={Action}, {arrival}";
+	}
+
 	public bool ShouldTeleport =>
 		Action is TeleportAction.TeleportToZone
 			or TeleportAction.SwitchInstance

@@ -55,6 +55,7 @@ public sealed class Plugin : IDalamudPlugin
 	private readonly HuntTrainController train = new();
 	private readonly DebugEventLog debugLog = new();
 	private readonly DebugEventProbe debugProbe;
+	private string? lastLoggedTrainTransition;
 	private readonly HuntNotificator notificator;
 	private readonly SonarChatHintIntake sonarChatHintIntake;
 
@@ -582,9 +583,23 @@ public sealed class Plugin : IDalamudPlugin
 				        newHuntWorld: decision.World))
 			{
 				case HuntAlertsPipelineIntakeKind.EnterPipeline:
+					DebugBehavior.Debug(
+						pluginLog,
+						Config.EnableDebugLogging,
+						"HuntAlerts",
+						HuntAlertsPipelineIntake.Describe(HuntAlertsPipelineIntakeKind.EnterPipeline));
+					debugProbe.Record(
+						Config.EnableDebugLogging,
+						DebugEventKind.HuntAlerts,
+						HuntAlertsPipelineIntake.Describe(HuntAlertsPipelineIntakeKind.EnterPipeline));
 					ApplyEnterPipeline(flag, decision.World);
 					break;
 				case HuntAlertsPipelineIntakeKind.DeferUntilOnWorld:
+					DebugBehavior.Debug(
+						pluginLog,
+						Config.EnableDebugLogging,
+						"HuntAlerts",
+						HuntAlertsPipelineIntake.Describe(HuntAlertsPipelineIntakeKind.DeferUntilOnWorld));
 					// Do not start same-world TP until on the hunt world.
 					// RequestWorldVisit: single slot, newer defer replaces prior (newest wins).
 					// Store after successful ChangeWorld (RequestWorldVisit), or after
@@ -804,11 +819,9 @@ public sealed class Plugin : IDalamudPlugin
 			var targetInst = decision.Arrival?.Instance
 				?? (targetInstanceHint > 0 ? targetInstanceHint : flag.ReportedInstance);
 			pluginLog.Information(
-				$"Teleport decision: {decision.Action} reported={flag.ReportedInstance} "
-				+ $"hint={targetInstanceHint} target={targetInst} current={currentInst}"
-				+ (decision.Action == TeleportAction.Skip
-					? $" skip={decision.SkipReason}"
-					: string.Empty));
+				$"Teleport decision: {decision.Describe()} reported={flag.ReportedInstance} "
+				+ $"hint={targetInstanceHint} target={targetInst} current={currentInst}");
+			debugProbe.Record(Config.EnableDebugLogging, DebugEventKind.Teleport, decision.Describe());
 
 			if (decision.SkipReason != TeleportSkipReason.AwaitingTravelCost)
 				pendingSameZoneTravelCost = null;
@@ -1064,6 +1077,11 @@ public sealed class Plugin : IDalamudPlugin
 			Config.UseMount,
 			alreadyMountedOrSkipMount: alreadyMounted);
 
+		DebugBehavior.Debug(
+			pluginLog,
+			Config.EnableDebugLogging,
+			"State",
+			$"flag restart: {plan.Describe()}");
 		ApplyFlagRestart(plan);
 		// Probe post-abort Idle/clears before Start* so mid-pipeline restarts do not
 		// collapse Combat→Teleport (etc.) into one impossible edge.
@@ -1205,6 +1223,11 @@ public sealed class Plugin : IDalamudPlugin
 				teleportPlan.HasActive,
 				hunting,
 				hasActiveHuntFlag: activeHuntFlag != null);
+			DebugBehavior.Debug(
+				pluginLog,
+				Config.EnableDebugLogging,
+				"State",
+				$"territory={territoryId}: {plan.Describe()}");
 			ApplyTerritoryCleanup(territoryId, plan);
 		}
 		catch (Exception ex)
@@ -1514,6 +1537,18 @@ public sealed class Plugin : IDalamudPlugin
 	{
 		try
 		{
+			var transition = train.LastTransitionDescription;
+			if (transition != null && transition != lastLoggedTrainTransition)
+			{
+				lastLoggedTrainTransition = transition;
+				DebugBehavior.Info(pluginLog, "State", transition);
+				debugProbe.Record(Config.EnableDebugLogging, DebugEventKind.PhaseChange, transition);
+			}
+			else if (transition is null)
+			{
+				lastLoggedTrainTransition = null;
+			}
+
 			debugProbe.Observe(
 				Config.EnableDebugLogging,
 				train.Phase,

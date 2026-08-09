@@ -63,4 +63,8 @@ public static class RsrEnableDecision
 			_ => rotationAutoStarted,
 		};
 	}
+
+	/// <summary>Compact, side-effect-free RSR decision diagnostic for helper logging.</summary>
+	public static string Describe(RsrEnableKind kind)
+		=> $"action={kind}";
 }

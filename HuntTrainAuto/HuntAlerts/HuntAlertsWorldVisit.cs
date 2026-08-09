@@ -31,7 +31,8 @@ public static class HuntAlertsWorldVisit
 		ILifestreamService lifestream,
 		string? currentWorldName,
 		bool hasPendingDefer = false,
-		string? pendingDeferWorld = null)
+		string? pendingDeferWorld = null,
+		Action<string>? onDebug = null)
 	{
 		ArgumentNullException.ThrowIfNull(flag);
 		ArgumentNullException.ThrowIfNull(lifestream);
@@ -100,7 +101,7 @@ public static class HuntAlertsWorldVisit
 
 		if (decision.Action != HuntAlertsWorldVisitAction.RequestWorldVisit
 		    || string.IsNullOrEmpty(decision.World))
-			return decision;
+			return Return(decision, onDebug);
 
 		// Different-world defer replace: Abort prior visit before queuing the new one.
 		// Store pending only after successful ChangeWorld (Plugin Defers on RequestWorldVisit).
@@ -113,10 +114,12 @@ public static class HuntAlertsWorldVisit
 			try
 			{
 				lifestream.Abort();
+				onDebug?.Invoke($"aborted prior world visit world={pendingDeferWorld ?? "?"}");
 			}
-			catch
+			catch (Exception ex)
 			{
 				// Soft-fail: mirror ChangeWorld / Plugin Abort paths.
+				onDebug?.Invoke($"abort prior world visit soft-fail: {ex.GetType().Name}");
 			}
 		}
 
@@ -125,10 +128,11 @@ public static class HuntAlertsWorldVisit
 		{
 			queued = lifestream.ChangeWorld(decision.World);
 		}
-		catch
+		catch (Exception ex)
 		{
 			// Soft-fail: ChangeWorld wrapper should already catch; belt-and-suspenders.
 			queued = false;
+			onDebug?.Invoke($"change world soft-fail world={decision.World}: {ex.GetType().Name}");
 		}
 
 		// Only claim RequestWorldVisit when Lifestream accepted the queue.
@@ -143,16 +147,16 @@ public static class HuntAlertsWorldVisit
 				// ChangeWorld once for the incoming world before giving up.
 				queued = TryChangeWorldOnceMoreIfNotBusy(lifestream, decision.World);
 				if (queued)
-					return decision with { AttemptedChangeWorld = true };
+					return Return(decision with { AttemptedChangeWorld = true }, onDebug);
 
 				// Still failed — retain incoming as pending (World set for Store).
 				// Never silent-drop the new hunt after Abort wiped the prior visit.
-				return new HuntAlertsWorldVisitDecisionResult
+				return Return(new HuntAlertsWorldVisitDecisionResult
 				{
 					Action = HuntAlertsWorldVisitAction.DeferReplaceFailed,
 					World = decision.World,
 					AttemptedChangeWorld = true,
-				};
+				}, onDebug);
 			}
 
 			// Same-world pending replace: ChangeWorld failed without Abort — return
@@ -161,23 +165,31 @@ public static class HuntAlertsWorldVisit
 			if (hasPendingDefer
 			    && HuntAlertsWorldVisitDecision.IsSameWorld(pendingDeferWorld, decision.World))
 			{
-				return new HuntAlertsWorldVisitDecisionResult
+				return Return(new HuntAlertsWorldVisitDecisionResult
 				{
 					Action = HuntAlertsWorldVisitAction.BusyMidVisit,
 					World = decision.World,
 					AttemptedChangeWorld = true,
-				};
+				}, onDebug);
 			}
 
-			return new HuntAlertsWorldVisitDecisionResult
+			return Return(new HuntAlertsWorldVisitDecisionResult
 			{
 				Action = HuntAlertsWorldVisitAction.NoOp,
 				World = null,
 				AttemptedChangeWorld = true,
-			};
+			}, onDebug);
 		}
 
-		return decision with { AttemptedChangeWorld = true };
+		return Return(decision with { AttemptedChangeWorld = true }, onDebug);
+	}
+
+	private static HuntAlertsWorldVisitDecisionResult Return(
+		HuntAlertsWorldVisitDecisionResult result,
+		Action<string>? onDebug)
+	{
+		onDebug?.Invoke(HuntAlertsWorldVisitDecision.Describe(result));
+		return result;
 	}
 
 	/// <summary>

@@ -46,6 +46,12 @@ public readonly struct FlagRestartPlan
 	/// Idle start after abort (or from Idle). <see cref="HuntTrainEvent.None"/> when master off / no plan.
 	/// </summary>
 	public HuntTrainEvent StartEvent { get; init; }
+
+	/// <summary>Compact, side-effect-free restart diagnostic for call-site logging.</summary>
+	public string Describe()
+		=> $"kind={Kind}, start={StartEvent}, stopNav={StopNavPath}, resetTrain={ResetTrainController}, "
+			+ $"clear=instance:{ClearInstanceChange},mount:{ClearMount},arrival:{ClearFlagArrival},"
+			+ $"unmount:{ClearUnmount},engage:{ClearEngage},combat:{ClearCombat},rsr:{ClearRsr}";
 }
 
 /// <summary>
