@@ -61,14 +61,20 @@ public static class HuntAlertsFlagDedupe
 	/// <paramref name="distanceThreshold"/> of <paramref name="active"/> (scaled coords).
 	/// Positive <see cref="ArrivalData.Instance"/> on incoming that differs from active
 	/// is not a near-duplicate (same-spot re-flag for instance swap must proceed).
+	/// <paramref name="instanceSwapReflag"/> (kill-history 3rd marker / near prior kill)
+	/// also forces false so swap heuristics can evaluate.
 	/// </summary>
 	public static bool IsNearDuplicate(
 		HuntFlag? active,
 		HuntFlag incoming,
-		float distanceThreshold = NearDuplicateDistanceThreshold)
+		float distanceThreshold = NearDuplicateDistanceThreshold,
+		bool instanceSwapReflag = false)
 	{
 		ArgumentNullException.ThrowIfNull(incoming);
 		if (active == null)
+			return false;
+
+		if (instanceSwapReflag)
 			return false;
 
 		if (active.TerritoryTypeId != incoming.TerritoryTypeId)
@@ -107,10 +113,11 @@ public static class HuntAlertsFlagDedupe
 		HuntFlag incoming,
 		bool pipelineActive,
 		bool forceAccept = false,
-		float distanceThreshold = NearDuplicateDistanceThreshold)
+		float distanceThreshold = NearDuplicateDistanceThreshold,
+		bool instanceSwapReflag = false)
 		=> !forceAccept
 		   && pipelineActive
-		   && IsNearDuplicate(activeFlag, incoming, distanceThreshold);
+		   && IsNearDuplicate(activeFlag, incoming, distanceThreshold, instanceSwapReflag);
 
 	/// <summary>
 	/// Cross-source (chat ↔ HuntAlerts) windowed suppress (TASKS 10.7).
@@ -130,7 +137,8 @@ public static class HuntAlertsFlagDedupe
 		DateTimeOffset now,
 		bool huntAlertsIntegration,
 		TimeSpan? window = null,
-		float distanceThreshold = NearDuplicateDistanceThreshold)
+		float distanceThreshold = NearDuplicateDistanceThreshold,
+		bool instanceSwapReflag = false)
 	{
 		ArgumentNullException.ThrowIfNull(incoming);
 
@@ -150,7 +158,7 @@ public static class HuntAlertsFlagDedupe
 		if (now - mem.AcceptedAt > w)
 			return false;
 
-		return IsNearDuplicate(mem.Flag, incoming, distanceThreshold);
+		return IsNearDuplicate(mem.Flag, incoming, distanceThreshold, instanceSwapReflag);
 	}
 
 	/// <summary>
@@ -202,9 +210,13 @@ public static class HuntAlertsFlagDedupe
 		HuntFlag incoming,
 		DateTimeOffset now,
 		TimeSpan? window = null,
-		float distanceThreshold = NearDuplicateDistanceThreshold)
+		float distanceThreshold = NearDuplicateDistanceThreshold,
+		bool instanceSwapReflag = false)
 	{
 		ArgumentNullException.ThrowIfNull(incoming);
+
+		if (instanceSwapReflag)
+			return false;
 
 		var w = window ?? DefaultCrossSourceWindow;
 		if (w <= TimeSpan.Zero)
@@ -216,7 +228,7 @@ public static class HuntAlertsFlagDedupe
 		if (now - mem.AcceptedAt > w)
 			return false;
 
-		return IsNearDuplicate(mem.Flag, incoming, distanceThreshold);
+		return IsNearDuplicate(mem.Flag, incoming, distanceThreshold, instanceSwapReflag: false);
 	}
 
 	/// <summary>
@@ -233,14 +245,16 @@ public static class HuntAlertsFlagDedupe
 		DateTimeOffset now,
 		bool huntAlertsIntegration,
 		TimeSpan? crossSourceWindow = null,
-		float distanceThreshold = NearDuplicateDistanceThreshold)
+		float distanceThreshold = NearDuplicateDistanceThreshold,
+		bool instanceSwapReflag = false)
 	{
 		if (ShouldSuppress(
 			    activeFlag,
 			    incoming,
 			    pipelineActive,
 			    forceAccept: false,
-			    distanceThreshold))
+			    distanceThreshold,
+			    instanceSwapReflag))
 			return true;
 
 		if (ShouldSuppressRecentNearDuplicate(
@@ -248,7 +262,8 @@ public static class HuntAlertsFlagDedupe
 			    incoming,
 			    now,
 			    crossSourceWindow,
-			    distanceThreshold))
+			    distanceThreshold,
+			    instanceSwapReflag))
 			return true;
 
 		return ShouldSuppressCrossSource(
@@ -258,7 +273,8 @@ public static class HuntAlertsFlagDedupe
 			now,
 			huntAlertsIntegration,
 			crossSourceWindow,
-			distanceThreshold);
+			distanceThreshold,
+			instanceSwapReflag);
 	}
 
 	/// <summary>
@@ -274,14 +290,16 @@ public static class HuntAlertsFlagDedupe
 		DateTimeOffset? now = null,
 		bool huntAlertsIntegration = true,
 		TimeSpan? crossSourceWindow = null,
-		float distanceThreshold = NearDuplicateDistanceThreshold)
+		float distanceThreshold = NearDuplicateDistanceThreshold,
+		bool instanceSwapReflag = false)
 	{
 		if (ShouldSuppress(
 			    activeFlag,
 			    incoming,
 			    pipelineActive,
 			    forceAccept: false,
-			    distanceThreshold))
+			    distanceThreshold,
+			    instanceSwapReflag))
 			return false;
 
 		var at = now ?? DateTimeOffset.UtcNow;
@@ -290,7 +308,8 @@ public static class HuntAlertsFlagDedupe
 			    incoming,
 			    at,
 			    crossSourceWindow,
-			    distanceThreshold))
+			    distanceThreshold,
+			    instanceSwapReflag))
 			return false;
 
 		if (ShouldSuppressCrossSource(
@@ -300,7 +319,8 @@ public static class HuntAlertsFlagDedupe
 			    at,
 			    huntAlertsIntegration,
 			    crossSourceWindow,
-			    distanceThreshold))
+			    distanceThreshold,
+			    instanceSwapReflag))
 			return false;
 
 		return true;

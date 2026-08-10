@@ -85,6 +85,18 @@ public readonly struct CombatEngageSnapshot
 	public bool LatchedEngageTargetInCombat { get; init; }
 
 	/// <summary>
+	/// Latched EnterCombat mob still exists with HP &gt; 0.
+	/// Holds combat through the pre-pull window (idle A has no InCombat yet).
+	/// </summary>
+	public bool LatchedEngageTargetAlive { get; init; }
+
+	/// <summary>
+	/// Living A-rank still in engage scan (probe). Holds Combat when the entity latch
+	/// misses (invalid EntityId) or InCombat flickers while the hunt mob is still up.
+	/// </summary>
+	public bool NearbyEngageTargetAlive { get; init; }
+
+	/// <summary>
 	/// Fake Hunt synthetic combat — no real ConditionFlag.InCombat / entity latch.
 	/// When true, stay in Combat until caller clears (auto/manual end).
 	/// </summary>
@@ -154,10 +166,11 @@ public static class CombatDecision
 	}
 
 	/// <summary>
-	/// Combat ended when the local player and latched engage mob are clear.
+	/// Combat ended when the local player is clear and no living engage A remains.
 	/// Does not wait on distant party allies (PF adds / lagging InCombat) — that delayed
 	/// remount and deferred walk/TP after the A-rank was already dead.
-	/// Latched mob covers the pull we entered on (corpse/despawn cleared by wiring).
+	/// Living latched mob / nearby probe A holds through pre-pull and InCombat flicker;
+	/// corpse/despawn / out-of-scan clears the hold so remount can fire.
 	/// <see cref="CombatEngageSnapshot.HoldCombatPhase"/> keeps Fake Hunt synthetic combat
 	/// until auto/manual end (no real InCombat / entity).
 	/// </summary>
@@ -165,7 +178,10 @@ public static class CombatDecision
 	{
 		if (snap.HoldCombatPhase)
 			return false;
-		return !snap.PlayerInCombat && !snap.LatchedEngageTargetInCombat;
+		return !snap.PlayerInCombat
+			&& !snap.LatchedEngageTargetAlive
+			&& !snap.LatchedEngageTargetInCombat
+			&& !snap.NearbyEngageTargetAlive;
 	}
 
 	/// <summary>

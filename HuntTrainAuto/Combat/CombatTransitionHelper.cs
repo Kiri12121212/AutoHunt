@@ -26,6 +26,7 @@ public sealed class CombatTransitionHelper
 	private readonly IPluginLog pluginLog;
 	private readonly Func<float> getEngageRange;
 	private readonly Func<bool> holdCombatPhase;
+	private readonly Func<bool> nearbyEngageAlive;
 
 	public CombatTransitionHelper(
 		IObjectTable objectTable,
@@ -33,7 +34,8 @@ public sealed class CombatTransitionHelper
 		ICondition condition,
 		IPluginLog pluginLog,
 		Func<float> getEngageRange,
-		Func<bool>? holdCombatPhase = null)
+		Func<bool>? holdCombatPhase = null,
+		Func<bool>? nearbyEngageAlive = null)
 	{
 		this.objectTable = objectTable;
 		this.partyList = partyList;
@@ -41,6 +43,7 @@ public sealed class CombatTransitionHelper
 		this.pluginLog = pluginLog;
 		this.getEngageRange = getEngageRange;
 		this.holdCombatPhase = holdCombatPhase ?? (() => false);
+		this.nearbyEngageAlive = nearbyEngageAlive ?? (() => false);
 	}
 
 	/// <summary>Phase latch — Phase 6 observes <see cref="CombatSession.InCombatPhase"/>.</summary>
@@ -77,15 +80,21 @@ public sealed class CombatTransitionHelper
 		{
 			pluginLog.Debug(
 				$"[Combat] {CombatDecision.Describe(kind)} from {session.Phase} "
-				+ $"playerInCombat={snap.PlayerInCombat} latchedMob={snap.LatchedEngageTargetInCombat} "
+				+ $"playerInCombat={snap.PlayerInCombat} "
+				+ $"latchedAlive={snap.LatchedEngageTargetAlive} "
+				+ $"latchedMob={snap.LatchedEngageTargetInCombat} "
+				+ $"nearbyA={snap.NearbyEngageTargetAlive} "
 				+ $"hold={snap.HoldCombatPhase} dead={snap.PlayerDead}");
 		}
 		else if (kind == CombatTransitionKind.StayFollow
 		         && session.Phase == CombatPhase.Combat
-		         && snap.HoldCombatPhase
+		         && (snap.HoldCombatPhase || snap.NearbyEngageTargetAlive || snap.LatchedEngageTargetAlive)
 		         && DebugThrottle.Try("combat.hold", 2000, Environment.TickCount64))
 		{
-			pluginLog.Debug("[Combat] holding phase (FakeHunt / HoldCombatPhase)");
+			pluginLog.Debug(
+				"[Combat] holding phase "
+				+ $"(hold={snap.HoldCombatPhase} nearbyA={snap.NearbyEngageTargetAlive} "
+				+ $"latchedAlive={snap.LatchedEngageTargetAlive} inCombat={snap.PlayerInCombat})");
 		}
 
 		session.Apply(kind);
@@ -109,7 +118,7 @@ public sealed class CombatTransitionHelper
 			ref distPartyMob,
 			ref anyAllyInCombat);
 
-		var latchedInCombat = IsLatchedEngageTargetInCombat();
+		ResolveLatchedEngage(out var latchedAlive, out var latchedInCombat);
 		var hold = false;
 		try
 		{
@@ -120,6 +129,20 @@ public sealed class CombatTransitionHelper
 			hold = false;
 		}
 
+		var nearbyA = false;
+		// Only probe while in Combat — avoid scanning every Idle tick.
+		if (session.Phase == CombatPhase.Combat)
+		{
+			try
+			{
+				nearbyA = nearbyEngageAlive();
+			}
+			catch
+			{
+				nearbyA = false;
+			}
+		}
+
 		return new CombatEngageSnapshot
 		{
 			PluginEnabled = pluginEnabled,
@@ -128,17 +151,25 @@ public sealed class CombatTransitionHelper
 			DistanceToPartyHuntMob = distPartyMob,
 			PlayerInCombat = playerInCombat,
 			AnyPartyAllyInCombat = anyAllyInCombat,
+			LatchedEngageTargetAlive = latchedAlive,
 			LatchedEngageTargetInCombat = latchedInCombat,
+			NearbyEngageTargetAlive = nearbyA,
 			HoldCombatPhase = hold,
 			EngageRange = CombatDecision.ClampEngageRange(getEngageRange()),
 		};
 	}
 
-	private bool IsLatchedEngageTargetInCombat()
+	/// <summary>
+	/// Living latched mob holds Combat through pre-pull; InCombat is secondary.
+	/// Dead / despawned → both false so remount can fire after the kill.
+	/// </summary>
+	private void ResolveLatchedEngage(out bool alive, out bool inCombat)
 	{
+		alive = false;
+		inCombat = false;
 		var id = session.LatchedEngageEntityId;
 		if (id == null)
-			return false;
+			return;
 
 		try
 		{
@@ -146,17 +177,18 @@ public sealed class CombatTransitionHelper
 			{
 				if (!TryIsValid(obj) || TryEntityId(obj) != id.Value)
 					continue;
-				// Dead / despawning corpses often keep StatusFlags.InCombat — treat HP≤0 as clear.
-				return obj is ICharacter ch && ch.CurrentHp > 0 && IsInCombat(ch);
+				if (obj is not ICharacter ch || ch.CurrentHp <= 0)
+					return;
+				alive = true;
+				inCombat = IsInCombat(ch);
+				return;
 			}
 		}
 		catch
 		{
-			return false;
+			alive = false;
+			inCombat = false;
 		}
-
-		// Entity gone (despawned) — latch no longer holds combat.
-		return false;
 	}
 
 	private void ScanParty(
@@ -314,7 +346,11 @@ public sealed class CombatTransitionHelper
 			return null;
 		try
 		{
-			return obj.EntityId;
+			var id = obj.EntityId;
+			// 0 / E0000000 are non-entities — latching them makes latchedAlive always false.
+			if (id == 0 || id == 0xE0000000)
+				return null;
+			return id;
 		}
 		catch
 		{

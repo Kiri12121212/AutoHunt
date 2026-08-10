@@ -138,6 +138,12 @@ public sealed class Plugin : IDalamudPlugin
 	private HuntFlagDedupeMemory? lastFlagIntakeMemory;
 
 	/// <summary>
+	/// Session A-rank kill list for instance-swap heuristics (kata 6cdc).
+	/// Cleared on full hunting leave / dispose.
+	/// </summary>
+	private readonly TrainKillHistory trainKillHistory = new();
+
+	/// <summary>
 	/// After Drain/Process attempted <c>ChangeWorld</c> this tick
 	/// (<see cref="HuntAlertsWorldVisitDecisionResult.AttemptedChangeWorld"/> — success
 	/// or fail, including BusyMidVisit refresh after same-pending fail), skip
@@ -495,7 +501,24 @@ public sealed class Plugin : IDalamudPlugin
 			condition,
 			pluginLog,
 			ResolveEngageRange,
-			() => fakeHunt.IsActive && fakeHunt.EnteredCombatAtMs > 0);
+			() => fakeHunt.IsActive && fakeHunt.EnteredCombatAtMs > 0,
+			() =>
+			{
+				try
+				{
+					// Hold only while a living A is still near the player — not any A in scan.
+					// Prevents remount on InCombat flicker; allows remount after kill/leave.
+					var probe = engage.Probe(Config.Conductors, TryActiveFlagWorldPos());
+					if (!probe.Found)
+						return false;
+					var holdRange = Math.Max(CombatDecision.ClampEngageRange(ResolveEngageRange()) * 2f, 30f);
+					return probe.Distance <= holdRange;
+				}
+				catch
+				{
+					return false;
+				}
+			});
 		rsrEnable = new RsrEnableHelper(RsrIpc, pluginLog, ResolveRsrRotationSettings);
 		bossModEnable = new BossModEnableHelper(
 			BossModIpc,
@@ -574,7 +597,8 @@ public sealed class Plugin : IDalamudPlugin
 				    flag,
 				    HuntFlagIntakeSource.HuntAlerts,
 				    DateTimeOffset.UtcNow,
-				    Config.HuntAlertsIntegration))
+				    Config.HuntAlertsIntegration,
+				    instanceSwapReflag: IsInstanceSwapReflag(flag)))
 			{
 				// Clear only a stale same-hunt defer (near chat-won memory); keep an
 				// unrelated pending world visit even if its coords happen to lie near
@@ -752,7 +776,8 @@ public sealed class Plugin : IDalamudPlugin
 					    pipelineActive,
 					    lastFlagIntakeMemory,
 					    DateTimeOffset.UtcNow,
-					    Config.HuntAlertsIntegration))
+					    Config.HuntAlertsIntegration,
+					    instanceSwapReflag: IsInstanceSwapReflag(flag)))
 				{
 					pluginLog.Information(
 						"HuntAlerts AbortVisitThenEnter skipped (near-dup / cross-source suppress); pending visit kept");
@@ -817,12 +842,14 @@ public sealed class Plugin : IDalamudPlugin
 			train.Phase,
 			HasInFlightPipelineWork());
 		var now = DateTimeOffset.UtcNow;
+		var swapReflag = IsInstanceSwapReflag(flag);
 
 		if (HuntAlertsFlagDedupe.ShouldSuppress(
 			    activeHuntFlag,
 			    flag,
 			    pipelineActive,
-			    forceAccept: forceAccept))
+			    forceAccept: forceAccept,
+			    instanceSwapReflag: swapReflag))
 			return;
 
 		// Same-source HA→HA re-share (forceAccept flush still strips Arrival via
@@ -831,7 +858,8 @@ public sealed class Plugin : IDalamudPlugin
 		    && HuntAlertsFlagDedupe.ShouldSuppressRecentNearDuplicate(
 			    lastFlagIntakeMemory,
 			    flag,
-			    now))
+			    now,
+			    instanceSwapReflag: swapReflag))
 		{
 			pluginLog.Information(
 				"HuntAlerts intake skipped (recent near-duplicate window)");
@@ -843,7 +871,8 @@ public sealed class Plugin : IDalamudPlugin
 			    flag,
 			    HuntFlagIntakeSource.HuntAlerts,
 			    now,
-			    Config.HuntAlertsIntegration))
+			    Config.HuntAlertsIntegration,
+			    instanceSwapReflag: swapReflag))
 		{
 			pluginLog.Information(
 				"HuntAlerts intake skipped (cross-source chat↔HA window dedupe)");
@@ -870,9 +899,50 @@ public sealed class Plugin : IDalamudPlugin
 		try
 		{
 			var snapshot = TryGetPlayerSnapshot(flag);
-			if (snapshot is { } s && targetInstanceHint > 0)
+			var rawPublic = PublicInstanceReader.TryReadInstanceId();
+			var lifestreamCount = 0;
+			try
 			{
-				snapshot = s with { TargetInstance = targetInstanceHint };
+				lifestreamCount = LifestreamIpc.GetNumberOfInstances();
+			}
+			catch
+			{
+				// soft-fail: keep 0
+			}
+
+			trainKillHistory.NoteInstanceCount(flag.TerritoryTypeId, lifestreamCount);
+			var effectiveInstances = InstanceSwapHeuristic.EffectiveInstanceCount(
+				lifestreamCount,
+				rawPublic,
+				trainKillHistory.RememberedMaxInstances(flag.TerritoryTypeId));
+
+			var hint = targetInstanceHint > 0 ? targetInstanceHint : flag.ReportedInstance;
+			var heuristicNote = "heuristic=n/a";
+			if (snapshot is { } snap)
+			{
+				var inferred = TryInferInstanceSwapTarget(
+					flag,
+					snap,
+					hint,
+					effectiveInstances,
+					lifestreamCount,
+					rawPublic,
+					out heuristicNote);
+				if (inferred > 0)
+				{
+					hint = inferred;
+					flag.ReportedInstance = inferred;
+				}
+			}
+			else
+			{
+				heuristicNote = "heuristic=skip:no-snapshot";
+				pluginLog.Information($"Instance heuristic: {heuristicNote}");
+			}
+
+			if (snapshot is { } s && hint > 0)
+			{
+				snapshot = s with { TargetInstance = hint };
 				if (pendingSameZoneTravelCost is { } pending && ReferenceEquals(pending.Flag, flag))
 					pending.Snapshot = snapshot.Value;
 			}
@@ -888,13 +958,14 @@ public sealed class Plugin : IDalamudPlugin
 			LogTeleportDecision(decision, "flag intake");
 
 			var currentInst = snapshot?.CurrentInstance ?? -1;
-			var rawPublic = PublicInstanceReader.TryReadInstanceId();
 			var targetInst = decision.Arrival?.Instance
-				?? (targetInstanceHint > 0 ? targetInstanceHint : flag.ReportedInstance);
+				?? (hint > 0 ? hint : flag.ReportedInstance);
 			pluginLog.Information(
 				$"Teleport decision: {decision.Describe()} reported={flag.ReportedInstance} "
-				+ $"hint={targetInstanceHint} target={targetInst} current={currentInst} "
-				+ $"rawPublic={rawPublic}");
+				+ $"hint={hint} target={targetInst} current={currentInst} "
+				+ $"rawPublic={rawPublic} instances={lifestreamCount} effectiveInstances={effectiveInstances} "
+				+ $"{trainKillHistory.DescribeTerritory(flag.TerritoryTypeId)} "
+				+ heuristicNote);
 			debugProbe.Record(Config.EnableDebugLogging, DebugEventKind.Teleport, decision.Describe());
 
 			if (decision.SkipReason != TeleportSkipReason.AwaitingTravelCost)
@@ -909,6 +980,109 @@ public sealed class Plugin : IDalamudPlugin
 				SkipReason = TeleportSkipReason.PlayerStateUnavailable,
 			});
 		}
+	}
+
+	/// <summary>
+	/// Kill-based / stale-explicit instance target (kata 6cdc). Always logs fire or skip.
+	/// </summary>
+	private int TryInferInstanceSwapTarget(
+		HuntFlag flag,
+		TeleportPlayerSnapshot snapshot,
+		int explicitReported,
+		int effectiveInstances,
+		int lifestreamCount,
+		int rawPublic,
+		out string explain)
+	{
+		try
+		{
+			var killCount = trainKillHistory.CountForTerritoryOnInstance(
+				flag.TerritoryTypeId,
+				snapshot.CurrentInstance);
+			var nearKill = trainKillHistory.IsNearPriorKillOnInstance(
+				flag.TerritoryTypeId,
+				flag.RawX,
+				flag.RawY,
+				snapshot.CurrentInstance);
+			var sameZone = snapshot.CurrentTerritory == flag.TerritoryTypeId;
+			var inferred = InstanceSwapHeuristic.ResolveTargetInstance(
+				explicitReported,
+				snapshot.CurrentInstance,
+				effectiveInstances,
+				killCount,
+				nearKill,
+				sameZone);
+			explain = InstanceSwapHeuristic.Explain(
+				explicitReported,
+				snapshot.CurrentInstance,
+				effectiveInstances,
+				killCount,
+				nearKill,
+				sameZone,
+				inferred);
+			pluginLog.Information(
+				$"Instance heuristic: {explain} "
+				+ $"{trainKillHistory.DescribeTerritory(flag.TerritoryTypeId)} "
+				+ $"lifestreamInstances={lifestreamCount} rawPublic={rawPublic} "
+				+ $"flagTerritory={flag.TerritoryTypeId} playerTerritory={snapshot.CurrentTerritory} "
+				+ $"flagRaw=({flag.RawX},{flag.RawY})");
+			return inferred;
+		}
+		catch (Exception ex)
+		{
+			explain = $"heuristic=soft-fail:{ex.Message}";
+			pluginLog.Warning($"Instance heuristic soft-fail: {ex.Message}");
+			return 0;
+		}
+	}
+
+	/// <summary>Record combat-end as a train kill for instance heuristics.</summary>
+	private void TryRecordTrainKill()
+	{
+		try
+		{
+			var flag = activeHuntFlag;
+			if (flag == null)
+			{
+				pluginLog.Information(
+					$"Train kill skipped: no active flag ({trainKillHistory.DescribeTerritory(0)})");
+				return;
+			}
+
+			var rawPublic = PublicInstanceReader.TryReadInstanceId();
+			var instanceAtKill = InstanceChangeDecision.ResolveCurrentInstance(
+				rawPublic,
+				LifestreamIpc.GetCurrentInstance(),
+				(int)clientState.Instance);
+			var numberOfInstances = LifestreamIpc.GetNumberOfInstances();
+			trainKillHistory.NoteInstanceCount(flag.TerritoryTypeId, numberOfInstances);
+			trainKillHistory.Record(
+				flag.TerritoryTypeId,
+				flag.RawX,
+				flag.RawY,
+				instanceAtKill);
+			pluginLog.Information(
+				$"Train kill recorded: {trainKillHistory.DescribeTerritory(flag.TerritoryTypeId)} "
+				+ $"raw=({flag.RawX},{flag.RawY}) instance={instanceAtKill} "
+				+ $"instances={numberOfInstances} rawPublic={rawPublic}");
+		}
+		catch (Exception ex)
+		{
+			pluginLog.Warning($"Train kill record soft-fail: {ex.Message}");
+		}
+	}
+
+	private bool IsInstanceSwapReflag(HuntFlag flag)
+	{
+		var current = InstanceChangeDecision.ResolveCurrentInstance(
+			PublicInstanceReader.TryReadInstanceId(),
+			LifestreamIpc.GetCurrentInstance(),
+			(int)clientState.Instance);
+		return trainKillHistory.SuggestsInstanceSwapReflag(
+			flag.TerritoryTypeId,
+			flag.RawX,
+			flag.RawY,
+			current);
 	}
 
 	/// <summary>
@@ -1051,10 +1225,12 @@ public sealed class Plugin : IDalamudPlugin
 		var pipelineActive = FlagRestartDecision.IsPipelineActive(
 			train.Phase,
 			HasInFlightPipelineWork());
+		var swapReflag = IsInstanceSwapReflag(flag);
 		var nearDupPipeline = HuntAlertsFlagDedupe.ShouldSuppress(
 			activeHuntFlag,
 			flag,
-			pipelineActive);
+			pipelineActive,
+			instanceSwapReflag: swapReflag);
 
 		if (HuntAlertsFlagDedupe.ShouldSuppressChatIntake(
 			    activeHuntFlag,
@@ -1062,13 +1238,15 @@ public sealed class Plugin : IDalamudPlugin
 			    pipelineActive,
 			    lastFlagIntakeMemory,
 			    now,
-			    Config.HuntAlertsIntegration))
+			    Config.HuntAlertsIntegration,
+			    instanceSwapReflag: swapReflag))
 		{
 			var recentNearDup = !nearDupPipeline
 				&& HuntAlertsFlagDedupe.ShouldSuppressRecentNearDuplicate(
 					lastFlagIntakeMemory,
 					flag,
-					now);
+					now,
+					instanceSwapReflag: swapReflag);
 			pluginLog.Information(
 				nearDupPipeline
 					? "Conductor flag skipped (near-duplicate, pipeline active)"
@@ -1450,6 +1628,8 @@ public sealed class Plugin : IDalamudPlugin
 			engageHint.Clear();
 			fakeHunt.Clear();
 		}
+		if (plan.Kind == TerritoryCleanupKind.LeaveHuntingFull)
+			trainKillHistory.Clear();
 		if (plan.ClearConductors)
 			ConductorList.Clear(Config.Conductors);
 		if (plan.ResetTrainController)
@@ -1588,6 +1768,7 @@ public sealed class Plugin : IDalamudPlugin
 			divertingToEngage = false;
 			fakeHunt.Clear();
 			lastFlagIntakeMemory = HuntAlertsFlagDedupe.Clear(lastFlagIntakeMemory);
+			trainKillHistory.Clear();
 			HuntAlertsFlagQueue.Clear(huntAlertsFlagQueue, DebugHuntAlerts);
 			mount.Clear();
 			unmount.ClearAll();
@@ -1666,6 +1847,8 @@ public sealed class Plugin : IDalamudPlugin
 			var combatMessage = combat.InCombatPhase ? "combat phase entered" : "combat phase exited";
 			DebugBehavior.Info(pluginLog, "Combat", combatMessage);
 			debugProbe.Record(Config.EnableDebugLogging, DebugEventKind.Combat, combatMessage);
+			if (wasInCombatPhase && !combat.InCombatPhase)
+				TryRecordTrainKill();
 		}
 		if (combat.InCombatPhase)
 			divertingToEngage = false;
@@ -2883,6 +3066,7 @@ public sealed class Plugin : IDalamudPlugin
 		// RSR stop: RsrStopTrigger.Dispose → ImmediateClear.
 		ClearPendingHuntAlerts();
 		lastFlagIntakeMemory = HuntAlertsFlagDedupe.Clear(lastFlagIntakeMemory);
+		trainKillHistory.Clear();
 		HuntAlertsFlagQueue.Clear(huntAlertsFlagQueue, DebugHuntAlerts);
 		instanceChange.Clear();
 		mount.Clear();

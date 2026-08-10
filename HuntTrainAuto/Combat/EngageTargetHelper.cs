@@ -279,7 +279,7 @@ public sealed class EngageTargetHelper
 			combat.Apply(CombatTransitionKind.EnterCombat, entityId);
 			pluginLog.Information(
 				$"[Engage] {CombatDecision.Describe(CombatTransitionKind.EnterCombat)} via {pick.Kind} "
-				+ $"dist={dist:0.0} range={engageRange:0.0} (vnav stop)");
+				+ $"dist={dist:0.0} range={engageRange:0.0} entity={entityId?.ToString() ?? "none"} (vnav stop)");
 			return true;
 		}
 
@@ -688,7 +688,10 @@ public sealed class EngageTargetHelper
 			return null;
 		try
 		{
-			return obj.EntityId;
+			var id = obj.EntityId;
+			if (id == 0 || id == 0xE0000000)
+				return null;
+			return id;
 		}
 		catch
 		{

@@ -61,6 +61,21 @@ public sealed class HuntAlertsFlagDedupeTests
 	}
 
 	[Fact]
+	public void ShouldSuppress_false_when_kill_history_swap_reflag()
+	{
+		var active = Flag(813, 0, 0);
+		active.ReportedInstance = 1;
+		var incoming = Flag(813, 500, 0);
+		incoming.ReportedInstance = 1;
+		Assert.True(HuntAlertsFlagDedupe.ShouldSuppress(active, incoming, pipelineActive: true));
+		Assert.False(HuntAlertsFlagDedupe.ShouldSuppress(
+			active,
+			incoming,
+			pipelineActive: true,
+			instanceSwapReflag: true));
+	}
+
+	[Fact]
 	public void IsNearDuplicate_true_when_within_threshold()
 	{
 		// Scaled distance: |5000|/1000 = 5 < 10
