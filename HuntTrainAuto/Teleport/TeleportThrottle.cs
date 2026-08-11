@@ -105,8 +105,12 @@ public static class TeleportThrottle
 		int delayMaxMs,
 		int randomOffset)
 	{
-		if (!enabled || delayMaxMs <= 0 || delayMaxMs < delayMinMs)
-			return nextAllowedMs;
+		// Fresh adopt: do not inherit a stale SoftWait / TryFire deadline from a prior hop.
+		if (!enabled)
+			return nowMs;
+
+		if (delayMaxMs <= 0 || delayMaxMs < delayMinMs)
+			return nowMs;
 
 		var delay = delayMinMs + Math.Max(0, randomOffset);
 		if (RemainingMs(nextAllowedMs, nowMs) < delay)

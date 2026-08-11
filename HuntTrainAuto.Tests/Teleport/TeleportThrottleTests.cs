@@ -124,11 +124,19 @@ public sealed class TeleportThrottleTests
 	}
 
 	[Fact]
-	public void ApplyPreDelay_noop_when_disabled()
+	public void ApplyPreDelay_resets_to_now_when_disabled()
 	{
 		Assert.Equal(
-			0,
-			TeleportThrottle.ApplyPreDelay(0, 100, enabled: false, 200, 700, 50));
+			100,
+			TeleportThrottle.ApplyPreDelay(5000, 100, enabled: false, 200, 700, 50));
+	}
+
+	[Fact]
+	public void ApplyPreDelay_resets_to_now_when_delay_range_invalid()
+	{
+		Assert.Equal(
+			100,
+			TeleportThrottle.ApplyPreDelay(5000, 100, enabled: true, delayMinMs: 700, delayMaxMs: 200, 0));
 	}
 }
 

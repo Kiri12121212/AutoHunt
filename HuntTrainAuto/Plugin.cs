@@ -1852,6 +1852,11 @@ public sealed class Plugin : IDalamudPlugin
 		}
 		if (combat.InCombatPhase)
 			divertingToEngage = false;
+		// Some short/“small monster” fights can flip ConditionFlag.InCombat
+		// without our internal A-rank combat phase latching. If local combat
+		// is now clear, un-block post-TP remount / flag travel.
+		else if (divertingToEngage && !condition[ConditionFlag.InCombat])
+			divertingToEngage = false;
 		TryFlushDeferredCombatFlag(wasInCombatPhase, combat.InCombatPhase);
 		// Hunt PF join after combat tick so we skip mid-fight thrash.
 		var nowMs = Environment.TickCount64;
@@ -2042,6 +2047,15 @@ public sealed class Plugin : IDalamudPlugin
 			if (divertingToEngage)
 				return;
 
+			// Instance swap approach relies on /automove toward the selected aetheryte.
+			// During the swap, vnavmesh nav to the fight mark will override automove and
+			// move the player away, causing the swap to soft-abort.
+			if (instanceChange.IsActive)
+			{
+				movement.Stop();
+				return;
+			}
+
 			var flag = activeHuntFlag;
 			var player = objectTable.LocalPlayer;
 			if (flag == null || player == null)
@@ -2099,6 +2113,9 @@ public sealed class Plugin : IDalamudPlugin
 	{
 		try
 		{
+			if (instanceChange.IsActive)
+				return;
+
 			if (combat.InCombatPhase || IsLocalPlayerDead())
 				return;
 
