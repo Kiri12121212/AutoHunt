@@ -40,6 +40,36 @@ public sealed class MovementDecisionTests
 	public void PreferFlyWhenMounted(bool mounted, bool zoneOk, bool expected)
 		=> Assert.Equal(expected, MovementDecision.PreferFlyWhenMounted(mounted, zoneOk));
 
+	[Theory]
+	[InlineData(true, false, false, true)]
+	[InlineData(true, true, false, false)]
+	[InlineData(true, false, true, false)]
+	[InlineData(true, true, true, false)]
+	[InlineData(false, false, false, false)]
+	public void ShouldWaitForMountBeforeFlyNav(
+		bool zoneSupportsFlying,
+		bool mounted,
+		bool inFlight,
+		bool expected)
+		=> Assert.Equal(
+			expected,
+			MovementDecision.ShouldWaitForMountBeforeFlyNav(zoneSupportsFlying, mounted, inFlight));
+
+	[Theory]
+	[InlineData(true, false, true, true)]
+	[InlineData(true, true, true, false)]
+	[InlineData(true, false, false, false)]
+	[InlineData(false, false, true, false)]
+	[InlineData(true, true, false, true)]
+	public void ShouldRestartPathForFlyMismatch(
+		bool pathActive,
+		bool recordedFly,
+		bool desiredFly,
+		bool expected)
+		=> Assert.Equal(
+			expected,
+			MovementDecision.ShouldRestartPathForFlyMismatch(pathActive, recordedFly, desiredFly));
+
 	[Fact]
 	public void IsArrived_zero_destination()
 		=> Assert.True(MovementDecision.IsArrived(Vector3.Zero, 100f, 0.25f, useMesh: true));

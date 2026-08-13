@@ -120,6 +120,27 @@ public static class MovementDecision
 		=> mounted && zoneSupportsFlying;
 
 	/// <summary>
+	/// Skip flag nav until mounted/in-flight when the zone supports flying.
+	/// Prevents unmounted ground PathfindAndMoveTo during the instance-swap remount window.
+	/// Ground-only zones still navigate on foot.
+	/// </summary>
+	public static bool ShouldWaitForMountBeforeFlyNav(
+		bool zoneSupportsFlying,
+		bool mounted,
+		bool inFlight)
+		=> zoneSupportsFlying && !mounted && !inFlight;
+
+	/// <summary>
+	/// True when an in-flight pathfind/follow was started with a different fly flag
+	/// than the current Move decision — caller should PathStop and restart.
+	/// </summary>
+	public static bool ShouldRestartPathForFlyMismatch(
+		bool pathActive,
+		bool recordedFly,
+		bool desiredFly)
+		=> pathActive && recordedFly != desiredFly;
+
+	/// <summary>
 	/// AD arrival: zero destination, or distance (minus 1 yalm when <paramref name="useMesh"/> is false)
 	/// within <paramref name="lastPointTolerance"/>.
 	/// </summary>

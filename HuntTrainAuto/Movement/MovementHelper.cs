@@ -32,6 +32,7 @@ public sealed class MovementHelper
 	private bool meshPathfindExhaustedLogged;
 	private bool lastPlayerOnMesh = true;
 	private bool meshPathfindHadNavProgress;
+	private bool? runningPathFly;
 
 	public MovementHelper(
 		IVnavmeshService vnav,
@@ -59,9 +60,13 @@ public sealed class MovementHelper
 	public bool Stop()
 	{
 		if (!vnav.PathIsRunning())
+		{
+			runningPathFly = null;
 			return false;
+		}
 
 		vnav.PathStop();
+		runningPathFly = null;
 		DebugBehavior.Debug(pluginLog, enabled: true, "Move", "PathStop requested");
 		return true;
 	}
@@ -88,6 +93,7 @@ public sealed class MovementHelper
 		MeshPathfindRetryDecision.Reset(ref nextMeshPathfindAttemptMs, ref meshPathfindAttempts);
 		meshPathfindExhaustedLogged = false;
 		meshPathfindHadNavProgress = false;
+		runningPathFly = null;
 	}
 
 	/// <summary>
@@ -228,6 +234,37 @@ public sealed class MovementHelper
 			pathIsRunning,
 			playerOnMesh);
 
+		var pathActive = pathIsRunning || pathfindInProgress || numWaypoints > 0;
+		if (runningPathFly is { } recorded
+			&& MovementDecision.ShouldRestartPathForFlyMismatch(pathActive, recorded, decision.Fly))
+		{
+			vnav.PathStop();
+			runningPathFly = null;
+			ResetMeshPathfindRetry();
+			pathfindInProgress = false;
+			numWaypoints = 0;
+			pathIsRunning = false;
+			decision = MovementDecision.DecideMoveTick(
+				playerValid,
+				fly,
+				IsFlyingSupported(),
+				condition[ConditionFlag.Mounted],
+				condition[ConditionFlag.InFlight],
+				condition[ConditionFlag.Casting],
+				position,
+				distance,
+				lastPointTolerance,
+				useMesh,
+				playerReady,
+				navReady,
+				pathfindInProgress,
+				numWaypoints,
+				pathIsRunning,
+				playerOnMesh);
+			DebugBehavior.Debug(pluginLog, enabled: true, "Move",
+				$"restart path fly mismatch → fly={decision.Fly}");
+		}
+
 		switch (decision.Kind)
 		{
 			case MoveTickKind.WaitPlayerInvalid:
@@ -246,7 +283,11 @@ public sealed class MovementHelper
 				return false;
 			case MoveTickKind.Arrived:
 				if (decision.StopPath)
+				{
 					vnav.PathStop();
+					runningPathFly = null;
+				}
+
 				ResetMeshPathfindRetry();
 				DebugBehavior.Debug(pluginLog, enabled: true, "Move", $"{MovementDecision.Describe(decision)} dist={distance:0.0} fly={decision.Fly}");
 				return true;
@@ -275,6 +316,7 @@ public sealed class MovementHelper
 					"Move",
 					$"{MovementDecision.Describe(decision)} → ({position.X:0.0},{position.Y:0.0},{position.Z:0.0})");
 				vnav.PathMoveTo(new List<Vector3> { position }, decision.Fly);
+				runningPathFly = decision.Fly;
 				return false;
 			case MoveTickKind.StartMeshPath:
 				return TryStartMeshPath(position, tolerance, decision.Fly, playerOnMesh);
@@ -349,6 +391,7 @@ public sealed class MovementHelper
 			$"mesh pathfind {MeshPathfindRetryDecision.Describe(retry)}: fly={fly} onMesh={playerOnMesh} "
 			+ $"→ ({position.X:0.0},{position.Y:0.0},{position.Z:0.0})");
 		_ = vnav.SimpleMovePathfindAndMoveTo(position, fly);
+		runningPathFly = fly;
 		// Throttle always; only burn attempt budget when on-mesh (mid-air fly post-TP).
 		if (MeshPathfindRetryDecision.ShouldCountStartAttempt(playerOnMesh))
 		{

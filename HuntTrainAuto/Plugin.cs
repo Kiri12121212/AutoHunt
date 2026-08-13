@@ -2056,6 +2056,15 @@ public sealed class Plugin : IDalamudPlugin
 				return;
 			}
 
+			if (MovementDecision.ShouldWaitForMountBeforeFlyNav(
+				movement.IsFlyingSupported(),
+				condition[ConditionFlag.Mounted],
+				condition[ConditionFlag.InFlight]))
+			{
+				movement.Stop();
+				return;
+			}
+
 			var flag = activeHuntFlag;
 			var player = objectTable.LocalPlayer;
 			if (flag == null || player == null)
