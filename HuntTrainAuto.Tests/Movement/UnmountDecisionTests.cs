@@ -5,18 +5,21 @@ namespace HuntTrainAuto.Tests.Movement;
 public sealed class UnmountDecisionTests
 {
 	[Theory]
-	[InlineData(true, true, true, false, false)]
-	[InlineData(true, true, true, true, true)]
-	[InlineData(true, true, false, false, true)]
-	[InlineData(true, false, true, false, false)]
-	[InlineData(true, false, false, false, true)]
-	[InlineData(false, true, true, false, false)]
-	[InlineData(false, true, false, false, false)]
+	[InlineData(true, true, true, false, false, false)]
+	[InlineData(true, true, true, true, true, true)]
+	[InlineData(true, true, false, false, true, true)]
+	[InlineData(true, true, false, false, false, false)]
+	[InlineData(true, true, true, false, true, false)]
+	[InlineData(true, false, true, false, true, false)]
+	[InlineData(true, false, false, false, true, true)]
+	[InlineData(false, true, true, false, true, false)]
+	[InlineData(false, true, false, false, true, false)]
 	public void ShouldFlagArrived(
 		bool withinArrival,
 		bool autoUnmount,
 		bool mountedOrFlying,
 		bool readyFollow,
+		bool huntTargetFound,
 		bool expected)
 		=> Assert.Equal(
 			expected,
@@ -24,7 +27,8 @@ public sealed class UnmountDecisionTests
 				withinArrival,
 				autoUnmount,
 				mountedOrFlying,
-				readyFollow));
+				readyFollow,
+				huntTargetFound));
 
 	[Theory]
 	[InlineData(true, true)]
@@ -43,18 +47,24 @@ public sealed class UnmountDecisionTests
 			UnmountDecision.ShouldStartUnmountJob(autoUnmount, alreadyActive));
 
 	[Theory]
-	[InlineData(true, true, false, true)]
-	[InlineData(true, true, true, false)]
-	[InlineData(true, false, false, false)]
-	[InlineData(false, true, false, false)]
+	[InlineData(true, true, false, false, false)]
+	[InlineData(true, true, false, true, true)]
+	[InlineData(true, true, true, false, false)]
+	[InlineData(true, false, false, false, false)]
+	[InlineData(false, true, false, false, false)]
 	public void ShouldEnqueueOnArrival(
 		bool autoUnmount,
 		bool isArrived,
 		bool alreadyActive,
+		bool huntTargetFound,
 		bool expected)
 		=> Assert.Equal(
 			expected,
-			UnmountDecision.ShouldEnqueueOnArrival(autoUnmount, isArrived, alreadyActive));
+			UnmountDecision.ShouldEnqueueOnArrival(
+				autoUnmount,
+				isArrived,
+				alreadyActive,
+				huntTargetFound));
 
 	[Theory]
 	[InlineData(false, false, false, true)]
@@ -75,7 +85,7 @@ public sealed class UnmountDecisionTests
 	[InlineData(false, true, true, false, false, false)]
 	[InlineData(true, false, true, false, false, false)]
 	[InlineData(true, true, false, false, false, false)]
-	[InlineData(true, true, true, true, false, false)]
+	[InlineData(true, true, true, true, false, true)] // leftover HasActive must not block (a6pb)
 	[InlineData(true, true, true, false, true, false)]
 	public void CanBeginUnmountAttempt(
 		bool pathReady,

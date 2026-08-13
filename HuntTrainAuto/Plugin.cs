@@ -75,6 +75,12 @@ public sealed class Plugin : IDalamudPlugin
 	/// </summary>
 	private bool divertingToEngage;
 
+	/// <summary>A-rank probe result for the current Framework tick (arrival unmount + train Decide).</summary>
+	private bool huntTargetFoundThisTick;
+
+	/// <summary>Active flag hop is SwitchInstance — widen A-rank scan until flag clears.</summary>
+	private bool instanceSwapHopActive;
+
 	/// <summary>In-flight same-zone vnav path-cost sample for time-aware TP.</summary>
 	private PendingSameZoneTravelCost? pendingSameZoneTravelCost;
 
@@ -520,7 +526,7 @@ public sealed class Plugin : IDalamudPlugin
 			pluginLog,
 			movement,
 			ResolveEngageRange,
-			() => Config.ARankScanRange,
+			() => EngageTargetDecision.ResolveARankScanRange(Config.ARankScanRange, instanceSwapHopActive),
 			() => Config.PreferARankNearHuntHint,
 			ResolveEngagePositionHint,
 			() => fakeHunt.FakeARankWorldPos,
@@ -1352,6 +1358,7 @@ public sealed class Plugin : IDalamudPlugin
 			Action: TeleportAction.SwitchInstance,
 			Arrival.Instance: > 0,
 		};
+		SetInstanceSwapHopActive(switchInstance);
 
 		var adopted = false;
 		var alreadyClose = false;
@@ -1647,6 +1654,7 @@ public sealed class Plugin : IDalamudPlugin
 		if (plan.ClearActiveHuntFlag)
 		{
 			activeHuntFlag = null;
+			instanceSwapHopActive = false;
 			deferredCombatFlag = null;
 			divertingToEngage = false;
 			engageHint.Clear();
@@ -1926,6 +1934,7 @@ public sealed class Plugin : IDalamudPlugin
 			inFlight: condition[ConditionFlag.InFlight],
 			mountConfig: MountDecision.RandomMount,
 			withinFlagArrival: withinArrival,
+			huntTargetFound: huntTargetFoundThisTick,
 			autoUnmountAtFlag: Config.AutoUnmountAtFlag,
 			readyForGroundFollow: unmount.ReadyForGroundFollow,
 			inCombatPhase: combat.InCombatPhase));
@@ -2155,11 +2164,14 @@ public sealed class Plugin : IDalamudPlugin
 				return;
 
 			var flagWorldPos = TryActiveFlagWorldPos();
+			var scanRange = EngageTargetDecision.ResolveARankScanRange(
+				Config.ARankScanRange,
+				instanceSwapHopActive);
 			var probe = engage.Probe(Config.Conductors, flagWorldPos);
 			if (!probe.Found
 			    || !EngageTargetDecision.ShouldDivertFromFlagNav(
 				    probe.Distance,
-				    Config.ARankScanRange))
+				    scanRange))
 			{
 				// Mob gone / out of divert range — unblock Navigate (hgb1).
 				// Use player→mob for PathStop (not flag-centered eligibility) so a mob near
@@ -2212,7 +2224,7 @@ public sealed class Plugin : IDalamudPlugin
 				    mounted,
 				    inFlight,
 				    probe.EligibilityDistance,
-				    Config.ARankScanRange))
+				    scanRange))
 			{
 				if (Config.EnableDebugLogging
 				    && DebugThrottle.Try("divert.skipApproach", 2000, Environment.TickCount64))
@@ -2310,6 +2322,19 @@ public sealed class Plugin : IDalamudPlugin
 		return null;
 	}
 
+	private void SetInstanceSwapHopActive(bool active)
+	{
+		if (active && !instanceSwapHopActive)
+		{
+			var configured = EngageTargetDecision.ClampARankScanRange(Config.ARankScanRange);
+			var resolved = EngageTargetDecision.ResolveARankScanRange(Config.ARankScanRange, true);
+			pluginLog.Information(
+				$"Instance-swap hop: A-rank scan {configured:0.0} → {resolved:0.0} yalms");
+		}
+
+		instanceSwapHopActive = active;
+	}
+
 	/// <summary>Adopt combat-deferred conductor flag once A-rank combat ends (3wr1).</summary>
 	private void TryFlushDeferredCombatFlag(bool wasInCombatPhase, bool inCombatPhase)
 	{
@@ -2347,6 +2372,7 @@ public sealed class Plugin : IDalamudPlugin
 	/// </summary>
 	private bool TickFlagArrivalAndUnmount()
 	{
+		huntTargetFoundThisTick = false;
 		try
 		{
 			var flag = activeHuntFlag;
@@ -2354,10 +2380,17 @@ public sealed class Plugin : IDalamudPlugin
 			if (flag == null || player == null)
 				return false;
 
+			// Wrong-zone flag projected onto this mesh must not look like arrival (a6pb).
+			if (flag.TerritoryTypeId != 0 && flag.TerritoryTypeId != clientState.TerritoryType)
+				return false;
+
 			if (flag.WorldPos is null || flag.WorldPos == Vector3.Zero)
 				flagWorld.TryResolve(flag);
 
 			RefreshEngageHintFromActiveFlag(flag);
+
+			var probe = engage.Probe(Config.Conductors, TryActiveFlagWorldPos());
+			huntTargetFoundThisTick = probe.Found;
 
 			var inFlight = condition[ConditionFlag.InFlight];
 			var arrival = flagArrival.Tick(
@@ -2365,11 +2398,30 @@ public sealed class Plugin : IDalamudPlugin
 				flag.WorldPos,
 				Config.FlagArrivalTolerance,
 				inFlight);
+			var betweenAreas = condition[ConditionFlag.BetweenAreas];
+			var betweenAreas51 = condition[ConditionFlag.BetweenAreas51];
+			if (TeleportGate.ShouldClearStalePlanAtFlagArrival(
+				    teleportPlan.HasActive,
+				    arrival.IsArrived,
+				    TeleportGate.IsScreenReady(
+					    betweenAreas,
+					    betweenAreas51,
+					    condition[ConditionFlag.OccupiedInCutSceneEvent],
+					    condition[ConditionFlag.WatchingCutscene]),
+				    condition[ConditionFlag.Casting],
+				    teleportPlan.Active?.Instance ?? 0))
+			{
+				teleportPlan.Clear();
+				DebugBehavior.Info(pluginLog, "Teleport", "plan cleared (stale at flag arrival)");
+			}
 			// AlreadyClose: clear pending mount before unmount so it cannot remount after.
 			// After ReadyForGroundFollow, keep combat-end remount while still at the kill flag.
 			if (MountDecision.ShouldClearMountOnArrival(arrival.IsArrived, unmount.ReadyForGroundFollow))
 				mount.Clear();
-			unmount.EnqueueOnArrivalIfEnabled(Config.AutoUnmountAtFlag, arrival.IsArrived);
+			unmount.EnqueueOnArrivalIfEnabled(
+				Config.AutoUnmountAtFlag,
+				arrival.IsArrived,
+				huntTargetFound: probe.Found);
 			// Divert land PathStop is not flag-arrival; tell Unmount path is ready so WaitReady
 			// is not blocked while PathIsRunning briefly lags after Stop.
 			unmount.Tick(
@@ -2443,6 +2495,7 @@ public sealed class Plugin : IDalamudPlugin
 
 			pluginLog.Information(
 				$"Instance change enqueued: instance {instance}, territory {territoryId} (current={current})");
+			SetInstanceSwapHopActive(true);
 			instanceChange.Enqueue(instance, territoryId);
 		}
 		catch (Exception ex)
@@ -2931,6 +2984,7 @@ public sealed class Plugin : IDalamudPlugin
 			combat.Clear();
 			divertingToEngage = false;
 			activeHuntFlag = null;
+			instanceSwapHopActive = false;
 			deferredCombatFlag = null;
 			engageHint.Clear();
 			fakeHunt.Clear();
@@ -3134,6 +3188,7 @@ public sealed class Plugin : IDalamudPlugin
 		huntJoin.Clear();
 		mount.Clear();
 		activeHuntFlag = null;
+		instanceSwapHopActive = false;
 		flagArrival.Clear();
 		unmount.ClearAll();
 		engageHint.Clear();

@@ -17,6 +17,31 @@ public sealed class EngageTargetDecisionTests
 	public void ClampARankScanRange(float input, float expected)
 		=> Assert.Equal(expected, EngageTargetDecision.ClampARankScanRange(input));
 
+	[Theory]
+	[InlineData(175f, false, 175f)]
+	[InlineData(175f, true, 200f)]
+	[InlineData(340f, true, EngageTargetDecision.MaxARankScanRange)]
+	[InlineData(float.NaN, true, 200f)]
+	public void ResolveARankScanRange(float configured, bool instanceSwapHop, float expected)
+		=> Assert.Equal(
+			expected,
+			EngageTargetDecision.ResolveARankScanRange(configured, instanceSwapHop));
+
+	[Fact]
+	public void ResolveARankScanRange_instance_swap_picks_mob_beyond_base_scan()
+	{
+		var candidates = new List<EngageMobCandidate>
+		{
+			Mob(0, isA: true, dist: 180f),
+		};
+		var baseScan = EngageTargetDecision.ResolveARankScanRange(175f, false);
+		var swapScan = EngageTargetDecision.ResolveARankScanRange(175f, true);
+		Assert.False(EngageTargetDecision.Resolve(candidates, baseScan).Found);
+		var pick = EngageTargetDecision.Resolve(candidates, swapScan);
+		Assert.Equal(EngageTargetKind.NearbyARank, pick.Kind);
+		Assert.Equal(0, pick.Index);
+	}
+
 	[Fact]
 	public void ARankScanRange_constants_cover_flag_area()
 	{

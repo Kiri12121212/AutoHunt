@@ -133,6 +133,8 @@ public static class TerritoryCleanupDecision
 			StopNavPath = true,
 			InvalidateFlagWorldPos = true,
 			ClearFlagArrival = true,
+			// New mesh / zone: drop prior-hop unmount latches (a6pb later-hop skip).
+			ClearUnmount = true,
 		};
 
 	public static TerritoryCleanupPlan TpArrivalHandoff()

@@ -57,6 +57,7 @@ public static class HuntTrainObserve
 	/// <param name="inFlight">Local player <c>ConditionFlag.InFlight</c>.</param>
 	/// <param name="mountConfig"><see cref="Configuration.Mount"/> (-1 never).</param>
 	/// <param name="withinFlagArrival">Flag-area arrival this tick.</param>
+	/// <param name="huntTargetFound">Living A-rank / conductor-fight target in scan range.</param>
 	/// <param name="autoUnmountAtFlag"><see cref="Configuration.AutoUnmountAtFlag"/>.</param>
 	/// <param name="readyForGroundFollow"><see cref="UnmountRunner.ReadyForGroundFollow"/>.</param>
 	/// <param name="inCombatPhase"><see cref="CombatSession.InCombatPhase"/>.</param>
@@ -69,6 +70,7 @@ public static class HuntTrainObserve
 		bool inFlight = false,
 		int mountConfig = 0,
 		bool withinFlagArrival = false,
+		bool huntTargetFound = false,
 		bool autoUnmountAtFlag = true,
 		bool readyForGroundFollow = false,
 		bool inCombatPhase = false)
@@ -86,6 +88,7 @@ public static class HuntTrainObserve
 				inFlight,
 				mountConfig),
 			WithinFlagArrival = withinFlagArrival,
+			HuntTargetFound = huntTargetFound,
 			AutoUnmountAtFlag = autoUnmountAtFlag,
 			MountedOrInFlight = mounted || inFlight,
 			ReadyForGroundFollow = readyForGroundFollow,

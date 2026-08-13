@@ -47,6 +47,7 @@ public sealed class TerritoryCleanupDecisionTests
 		Assert.True(plan.StopNavPath);
 		Assert.True(plan.InvalidateFlagWorldPos);
 		Assert.True(plan.ClearFlagArrival);
+		Assert.True(plan.ClearUnmount);
 		Assert.False(plan.ClearTeleportPlan);
 		Assert.False(plan.EnqueueMount);
 		Assert.False(plan.ResetTrainController);

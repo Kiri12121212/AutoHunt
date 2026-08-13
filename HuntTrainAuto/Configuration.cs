@@ -101,7 +101,9 @@ public sealed class Configuration : IPluginConfiguration
 	/// divert. When the active flag <see cref="HuntFlag.WorldPos"/> is known,
 	/// eligibility uses flag-centered distance (see
 	/// <see cref="EngageTargetDecision.EligibilityDistance"/>). Conductor-fight
-	/// join ignores this and uses the conductor's target.
+	/// join ignores this and uses the conductor's target. Instance-swap hops add
+	/// <see cref="EngageTargetDecision.InstanceSwapScanBonusYalms"/> via
+	/// <see cref="EngageTargetDecision.ResolveARankScanRange"/>.
 	/// </summary>
 	public float ARankScanRange { get; set; } = EngageTargetDecision.DefaultARankScanRange;
 

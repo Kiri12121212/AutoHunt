@@ -70,12 +70,13 @@ public sealed class UnmountRunner
 	/// Enqueue once when <paramref name="isArrived"/> and config allows.
 	/// Latches so Framework arrival ticks do not re-enqueue until <see cref="ClearArrivalLatch"/> / new flag.
 	/// </summary>
-	public void EnqueueOnArrivalIfEnabled(bool autoUnmountAtFlag, bool isArrived)
+	public void EnqueueOnArrivalIfEnabled(bool autoUnmountAtFlag, bool isArrived, bool huntTargetFound)
 	{
 		if (!UnmountDecision.ShouldEnqueueOnArrival(
 			autoUnmountAtFlag,
 			isArrived,
-			enqueuedForCurrentArrival || session.IsActive))
+			enqueuedForCurrentArrival || session.IsActive,
+			huntTargetFound))
 			return;
 
 		EnqueueIfEnabled(autoUnmountAtFlag);
@@ -115,7 +116,14 @@ public sealed class UnmountRunner
 		var now = Environment.TickCount64;
 		if (UnmountDecision.IsSessionTimedOut(session.DeadlineMs, now))
 		{
-			DebugBehavior.Debug(pluginLog, enabled: true, "Unmount", $"job timed out after {UnmountDecision.SessionTimeoutMs}ms");
+			var timeoutMs = session.Phase == UnmountPhase.WaitReady
+				? UnmountDecision.WaitReadyTimeoutMs
+				: UnmountDecision.SessionTimeoutMs;
+			DebugBehavior.Debug(
+				pluginLog,
+				enabled: true,
+				"Unmount",
+				$"job timed out after {timeoutMs}ms (phase={session.Phase})");
 			// Drop latch so a still-arrived / still-mounted player can re-enqueue.
 			enqueuedForCurrentArrival = false;
 			session.Clear();
@@ -154,7 +162,7 @@ public sealed class UnmountRunner
 					$"WaitReady: pathReady={pathReady} pathRunning={vnav.PathIsRunning()} "
 					+ $"arrival={arrivalSignaled} pathStop={pathStoppedForArrival} "
 					+ $"screen={screenReady} player={playerReady} "
-					+ $"tp={isTeleportPlanActive()} inst={isInstanceChangeActive()}");
+					+ $"tp(ignored)={isTeleportPlanActive()} inst={isInstanceChangeActive()}");
 			}
 
 			return;

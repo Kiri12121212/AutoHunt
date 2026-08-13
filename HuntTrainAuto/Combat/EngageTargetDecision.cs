@@ -82,6 +82,23 @@ public static class EngageTargetDecision
 	public const float MinARankScanRange = 15f;
 	public const float MaxARankScanRange = 350f;
 
+	/// <summary>
+	/// Extra scan yalms on a SwitchInstance hop so a living A is not missed after the swap.
+	/// </summary>
+	public const float InstanceSwapScanBonusYalms = 25f;
+
+	/// <summary>
+	/// Configured A-rank scan, plus <see cref="InstanceSwapScanBonusYalms"/> on instance-swap hops.
+	/// Always clamped.
+	/// </summary>
+	public static float ResolveARankScanRange(float configured, bool instanceSwapHop)
+	{
+		var baseRange = ClampARankScanRange(configured);
+		if (!instanceSwapHop)
+			return baseRange;
+		return ClampARankScanRange(baseRange + InstanceSwapScanBonusYalms);
+	}
+
 	public static float ClampARankScanRange(float range)
 	{
 		if (float.IsNaN(range) || float.IsInfinity(range))

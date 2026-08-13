@@ -40,7 +40,7 @@ public enum HuntTrainEvent
 	/// <summary>Mount → Navigate when mounted/skipped and no pending TP.</summary>
 	MountReady,
 
-	/// <summary>Navigate → Unmount when within flag arrival tolerance.</summary>
+	/// <summary>Navigate → Unmount when within flag arrival tolerance and hunt target detected.</summary>
 	FlagArrived,
 
 	/// <summary>
@@ -93,6 +93,9 @@ public readonly struct HuntTrainTickSnapshot
 
 	/// <summary>Within flag arrival tolerance / arrival signaled.</summary>
 	public bool WithinFlagArrival { get; init; }
+
+	/// <summary>Living A-rank / conductor-fight hunt target in scan range this tick.</summary>
+	public bool HuntTargetFound { get; init; }
 
 	/// <summary><see cref="Configuration.AutoUnmountAtFlag"/> — gates Navigate→Unmount while mounted.</summary>
 	public bool AutoUnmountAtFlag { get; init; }
@@ -202,7 +205,8 @@ public static class HuntTrainTransition
 					snap.WithinFlagArrival,
 					snap.AutoUnmountAtFlag,
 					snap.MountedOrInFlight,
-					snap.ReadyForGroundFollow)
+					snap.ReadyForGroundFollow,
+					snap.HuntTargetFound)
 					? HuntTrainEvent.FlagArrived
 					: HuntTrainEvent.None,
 			HuntTrainPhase.Unmount => snap.PartyEngaged

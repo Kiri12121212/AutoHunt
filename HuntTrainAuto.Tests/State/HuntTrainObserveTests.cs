@@ -192,6 +192,7 @@ public sealed class HuntTrainObserveTests
 			HuntTrainObserve.BuildProgressSnapshot(
 				pluginEnabled: true,
 				withinFlagArrival: true,
+				huntTargetFound: true,
 				mounted: false,
 				autoUnmountAtFlag: true,
 				readyForGroundFollow: true));

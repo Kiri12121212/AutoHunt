@@ -182,11 +182,12 @@ public sealed class HuntTrainTransitionTests
 			TeleportComplete = teleportComplete,
 			MountComplete = mountComplete,
 			WithinFlagArrival = withinArrival,
+			HuntTargetFound = withinArrival && expectedEvent == HuntTrainEvent.FlagArrived,
 			ReadyForGroundFollow = readyFollow,
 			PartyEngaged = partyEngaged,
 			CombatEnded = combatEnded,
 			NeedsTeleport = needsTeleport,
-			// On foot so WithinFlagArrival alone can FlagArrived (auto-unmount default).
+			// On foot so WithinFlagArrival + hunt target can FlagArrived (auto-unmount default).
 			AutoUnmountAtFlag = true,
 			MountedOrInFlight = false,
 		};
@@ -225,6 +226,21 @@ public sealed class HuntTrainTransitionTests
 	}
 
 	[Fact]
+	public void Decide_Navigate_empty_flag_arrival_stays_Navigate()
+	{
+		var snap = new HuntTrainTickSnapshot
+		{
+			PluginEnabled = true,
+			WithinFlagArrival = true,
+			AutoUnmountAtFlag = true,
+			MountedOrInFlight = false,
+			HuntTargetFound = false,
+		};
+		Assert.Equal(HuntTrainEvent.None, HuntTrainTransition.Decide(HuntTrainPhase.Navigate, snap));
+		Assert.Equal(HuntTrainPhase.Navigate, HuntTrainTransition.Tick(HuntTrainPhase.Navigate, snap));
+	}
+
+	[Fact]
 	public void Decide_Navigate_arrival_while_mounted_stays_until_ReadyForGroundFollow()
 	{
 		var arrivedMounted = new HuntTrainTickSnapshot
@@ -234,6 +250,7 @@ public sealed class HuntTrainTransitionTests
 			AutoUnmountAtFlag = true,
 			MountedOrInFlight = true,
 			ReadyForGroundFollow = false,
+			HuntTargetFound = true,
 		};
 		Assert.Equal(HuntTrainEvent.None, HuntTrainTransition.Decide(HuntTrainPhase.Navigate, arrivedMounted));
 		Assert.Equal(HuntTrainPhase.Navigate, HuntTrainTransition.Tick(HuntTrainPhase.Navigate, arrivedMounted));
@@ -241,6 +258,10 @@ public sealed class HuntTrainTransitionTests
 		var dismounted = arrivedMounted with { ReadyForGroundFollow = true };
 		Assert.Equal(HuntTrainEvent.FlagArrived, HuntTrainTransition.Decide(HuntTrainPhase.Navigate, dismounted));
 		Assert.Equal(HuntTrainPhase.Unmount, HuntTrainTransition.Tick(HuntTrainPhase.Navigate, dismounted));
+
+		var noHuntReady = dismounted with { HuntTargetFound = false };
+		Assert.Equal(HuntTrainEvent.None, HuntTrainTransition.Decide(HuntTrainPhase.Navigate, noHuntReady));
+		Assert.Equal(HuntTrainPhase.Navigate, HuntTrainTransition.Tick(HuntTrainPhase.Navigate, noHuntReady));
 	}
 
 	[Fact]

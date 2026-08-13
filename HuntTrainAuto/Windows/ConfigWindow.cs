@@ -363,7 +363,9 @@ public sealed class ConfigWindow : Window, IDisposable
 		DrawBoolOption(
 			"Dismount at the flag",
 			() => config.AutoUnmountAtFlag,
-			v => config.AutoUnmountAtFlag = v);
+			v => config.AutoUnmountAtFlag = v,
+			"Only dismount when a hunt target (A-rank) is detected. Stay mounted at empty flags. "
+			+ "Instance-swap hops use a slightly larger scan so the target is not missed.");
 
 		ImGui.Spacing();
 		ImGui.Separator();

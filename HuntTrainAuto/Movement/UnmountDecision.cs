@@ -100,16 +100,17 @@ public static class UnmountDecision
 	public const bool PreferCanFlyForGroundFollow = false;
 
 	/// <summary>
-	/// Navigate → Unmount only after arrival <b>and</b> dismount when auto-unmount is on.
+	/// Navigate → Unmount only after arrival, hunt target detected, and dismount when auto-unmount is on.
 	/// Staying in Navigate while Mounted/InFlight keeps mid-air PathStop/descent recovery alive.
 	/// </summary>
 	public static bool ShouldFlagArrived(
 		bool withinFlagArrival,
 		bool autoUnmountAtFlag,
 		bool mountedOrInFlight,
-		bool readyForGroundFollow)
+		bool readyForGroundFollow,
+		bool huntTargetFound)
 	{
-		if (!withinFlagArrival)
+		if (!withinFlagArrival || !huntTargetFound)
 			return false;
 
 		if (!autoUnmountAtFlag)
@@ -131,13 +132,14 @@ public static class UnmountDecision
 		=> autoUnmountAtFlag && !alreadyActive;
 
 	/// <summary>
-	/// One-shot enqueue when flag arrival is signaled and no job is already active/latched.
+	/// One-shot enqueue when flag arrival is signaled, hunt target detected, and no job is active/latched.
 	/// </summary>
 	public static bool ShouldEnqueueOnArrival(
 		bool autoUnmountAtFlag,
 		bool isArrived,
-		bool alreadyActiveOrEnqueued)
-		=> autoUnmountAtFlag && isArrived && !alreadyActiveOrEnqueued;
+		bool alreadyActiveOrEnqueued,
+		bool huntTargetFound)
+		=> autoUnmountAtFlag && isArrived && huntTargetFound && !alreadyActiveOrEnqueued;
 
 	/// <summary>
 	/// Path / arrival gate: path stopped for this arrival, arrival already signaled, or path not running.
@@ -150,7 +152,11 @@ public static class UnmountDecision
 
 	/// <summary>
 	/// Wait-for-ready before UnmountIfCan: path/arrival ready, screen ready (not between-areas),
-	/// player ready, no mid-TP plan, instance-change idle.
+	/// player ready, instance-change idle.
+	/// <paramref name="teleportPlanActive"/> is ignored — leftover <c>HasActive</c> after
+	/// same-zone TP (missed BetweenAreas) pinned WaitReady and skipped dismount (a6pb).
+	/// Real TP transitions already fail <paramref name="screenReady"/> (BetweenAreas) or
+	/// wait in <see cref="DecideUnmountTick"/> (casting).
 	/// </summary>
 	public static bool CanBeginUnmountAttempt(
 		bool pathReadyForUnmount,
@@ -158,11 +164,13 @@ public static class UnmountDecision
 		bool playerReady,
 		bool teleportPlanActive,
 		bool instanceChangeActive)
-		=> pathReadyForUnmount
+	{
+		_ = teleportPlanActive;
+		return pathReadyForUnmount
 			&& screenReady
 			&& playerReady
-			&& !teleportPlanActive
 			&& !instanceChangeActive;
+	}
 
 	/// <summary>Already unmounted and on the ground → success / no-op.</summary>
 	public static bool IsUnmountCompleteOrSkipped(bool mounted) => !mounted;

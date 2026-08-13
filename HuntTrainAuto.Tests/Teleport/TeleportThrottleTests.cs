@@ -243,6 +243,40 @@ public sealed class TeleportGateTests
 		Assert.False(TeleportGate.ShouldClearPlanOnBetweenAreas(
 			false, false, hasActivePlan: true, teleportInvoked: true));
 	}
+
+	[Theory]
+	[InlineData(true, true, true, false, true)]
+	[InlineData(false, true, true, false, false)]
+	[InlineData(true, false, true, false, false)]
+	[InlineData(true, true, false, false, false)]
+	[InlineData(true, true, true, true, false)]
+	public void ShouldClearStalePlanAtFlagArrival(
+		bool hasActivePlan,
+		bool isArrived,
+		bool screenReady,
+		bool casting,
+		bool expected)
+		=> Assert.Equal(
+			expected,
+			TeleportGate.ShouldClearStalePlanAtFlagArrival(
+				hasActivePlan, isArrived, screenReady, casting));
+
+	[Fact]
+	public void ShouldClearStalePlanAtFlagArrival_skips_instance_swap()
+	{
+		Assert.False(TeleportGate.ShouldClearStalePlanAtFlagArrival(
+			hasActivePlan: true,
+			isArrived: true,
+			screenReady: true,
+			casting: false,
+			requestedInstance: 2));
+		Assert.True(TeleportGate.ShouldClearStalePlanAtFlagArrival(
+			hasActivePlan: true,
+			isArrived: true,
+			screenReady: true,
+			casting: false,
+			requestedInstance: 0));
+	}
 }
 
 public sealed class TeleportPlanTests

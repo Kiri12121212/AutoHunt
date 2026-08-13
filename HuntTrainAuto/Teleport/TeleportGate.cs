@@ -109,6 +109,25 @@ public static class TeleportGate
 		=> betweenAreas || betweenAreas51;
 
 	/// <summary>
+	/// Leftover <c>TeleportPlan</c> while already at the hunt flag and not in a TP transition.
+	/// Same-zone hops often miss BetweenAreas, so <c>HasActive</c> outlives the hop (a6pb).
+	/// Caller should <c>Clear()</c> only — not <c>TpArrivalHandoff</c> (that remounts / wipes WorldPos).
+	/// Instance-swap plans (<paramref name="requestedInstance"/> &gt; 0) stay — being at the flag
+	/// does not obsolete the aetheryte TP used to change instance.
+	/// </summary>
+	public static bool ShouldClearStalePlanAtFlagArrival(
+		bool hasActivePlan,
+		bool isArrived,
+		bool screenReady,
+		bool casting,
+		int requestedInstance = 0)
+		=> hasActivePlan
+			&& isArrived
+			&& screenReady
+			&& !casting
+			&& !ShouldEnqueueInstanceChange(requestedInstance);
+
+	/// <summary>
 	/// BetweenAreas handoff: clear plan + mount only after we actually invoked Teleporter/Lifestream.
 	/// Prevents residual / unrelated BetweenAreas from wiping a plan that never fired.
 	/// </summary>

@@ -53,6 +53,8 @@ public sealed class TrainScenarioDriver
 
 	public bool ReadyForGroundFollow { get; set; }
 
+	public bool HuntTargetFound { get; set; }
+
 	public List<HuntTrainPhase> PhaseHistory { get; } = new();
 
 	public List<string> Trace { get; } = new();
@@ -380,7 +382,9 @@ public sealed class TrainScenarioDriver
 		var arrived = FlagArrival.IsArrived(Position, leg.FlagWorld, FlagArrivalTolerance, InFlight);
 		Note($"flag-arrival={arrived} dist={MovementDecision.DistanceXZ(Position, leg.FlagWorld):0.##}");
 
-		if (AutoUnmountAtFlag && (Mounted || InFlight))
+		HuntTargetFound = leg.Engage != EngageScriptKind.None;
+
+		if (AutoUnmountAtFlag && HuntTargetFound && (Mounted || InFlight))
 		{
 			Mounted = false;
 			InFlight = false;
@@ -580,6 +584,7 @@ public sealed class TrainScenarioDriver
 			mountConfig: MountConfig,
 			withinFlagArrival: ActiveFlag?.WorldPos is { } wp
 				&& FlagArrival.IsArrived(Position, wp, FlagArrivalTolerance, InFlight),
+			huntTargetFound: HuntTargetFound,
 			autoUnmountAtFlag: AutoUnmountAtFlag,
 			readyForGroundFollow: ReadyForGroundFollow,
 			inCombatPhase: InCombatPhase);
