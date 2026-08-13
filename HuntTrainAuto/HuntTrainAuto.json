@@ -2,7 +2,7 @@
     "Author": "Kiri12121212",
     "Name": "HuntTrainAuto",
     "InternalName": "HuntTrainAuto",
-    "AssemblyVersion": "1.0.2.0",
+    "AssemblyVersion": "1.0.3.0",
     "Punchline": "Automated hunt train runner.",
     "Description": "Runs a hunt train from conductor marks: parses map flags, auto-teleports or walks, mounts and navigates with vnavmesh, approaches the mob at fight range on foot, unmounts, and engages with Rotation Solver Reborn.",
     "ApplicableVersion": "any",

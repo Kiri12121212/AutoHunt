@@ -10,7 +10,7 @@ public enum InstanceChangePhase
 	WaitLanded,
 	/// <summary>Screen ready; approach aetheryte until <c>CanChangeInstance</c>.</summary>
 	Approach,
-	/// <summary>Issue <c>ChangeInstance</c> and wait until current == target (15s).</summary>
+	/// <summary>Issue <c>ChangeInstance</c> and wait until current == target.</summary>
 	Changing,
 }
 
@@ -34,6 +34,9 @@ public sealed class InstanceChangeSession
 
 	public bool ChangeIssued { get; set; }
 
+	/// <summary>Earliest tick for another <c>ChangeInstance</c> after a prior issue.</summary>
+	public long NextIssueMs { get; set; }
+
 	public long NextTargetMs { get; set; }
 
 	public long NextLockonMs { get; set; }
@@ -47,6 +50,7 @@ public sealed class InstanceChangeSession
 		ChangeDeadlineMs = 0;
 		AutomoveStarted = false;
 		ChangeIssued = false;
+		NextIssueMs = 0;
 		NextTargetMs = 0;
 		NextLockonMs = 0;
 	}
@@ -61,6 +65,7 @@ public sealed class InstanceChangeSession
 		Phase = InstanceChangePhase.Changing;
 		ChangeDeadlineMs = nowMs + InstanceChangeDecision.ChangeTimeoutMs;
 		ChangeIssued = false;
+		NextIssueMs = 0;
 	}
 
 	public void Clear()
@@ -71,6 +76,7 @@ public sealed class InstanceChangeSession
 		ChangeDeadlineMs = 0;
 		AutomoveStarted = false;
 		ChangeIssued = false;
+		NextIssueMs = 0;
 		NextTargetMs = 0;
 		NextLockonMs = 0;
 	}

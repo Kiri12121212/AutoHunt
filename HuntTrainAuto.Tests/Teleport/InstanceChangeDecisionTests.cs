@@ -125,7 +125,7 @@ public sealed class InstanceChangeDecisionTests
 	}
 
 	[Fact]
-	public void DecideChangeTick_succeed_timeout_issue()
+	public void DecideChangeTick_succeed_timeout_issue_reissue()
 	{
 		Assert.Equal(
 			InstanceChangeDecision.ChangeTickResult.Succeeded,
@@ -139,6 +139,9 @@ public sealed class InstanceChangeDecisionTests
 		Assert.Equal(
 			InstanceChangeDecision.ChangeTickResult.Continue,
 			InstanceChangeDecision.DecideChangeTick(false, true, true, false));
+		Assert.Equal(
+			InstanceChangeDecision.ChangeTickResult.IssueChange,
+			InstanceChangeDecision.DecideChangeTick(false, true, true, false, reissueReady: true));
 		Assert.Equal(
 			InstanceChangeDecision.ChangeTickResult.Continue,
 			InstanceChangeDecision.DecideChangeTick(false, false, false, false));

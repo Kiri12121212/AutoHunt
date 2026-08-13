@@ -252,12 +252,28 @@ public sealed class InstanceChangeRunner
 		var already = InstanceChangeDecision.IsAlreadyOnInstance(session.Instance, current);
 		var timedOut = now >= session.ChangeDeadlineMs;
 		var canChange = lifestream.CanChangeInstance();
+		var busy = false;
+		try
+		{
+			busy = lifestream.IsBusy();
+		}
+		catch
+		{
+			busy = false;
+		}
+
+		// Prior ChangeInstance may have NRE'd / aborted — re-issue when LS is idle
+		// and CanChangeInstance is true again (still in range).
+		var reissueReady = session.ChangeIssued
+			&& !busy
+			&& now >= session.NextIssueMs;
 
 		var result = InstanceChangeDecision.DecideChangeTick(
 			already,
 			canChange,
 			session.ChangeIssued,
-			timedOut);
+			timedOut,
+			reissueReady);
 		DebugBehavior.DebugThrottled(
 			pluginLog,
 			debugEnabled(),
@@ -265,7 +281,7 @@ public sealed class InstanceChangeRunner
 			1000,
 			now,
 			"Instance",
-			$"{InstanceChangeDecision.Describe(result)}: requested={session.Instance}, current={current}, canChange={canChange}, issued={session.ChangeIssued}");
+			$"{InstanceChangeDecision.Describe(result)}: requested={session.Instance}, current={current}, canChange={canChange}, issued={session.ChangeIssued}, busy={busy}");
 
 		switch (result)
 		{
@@ -281,12 +297,21 @@ public sealed class InstanceChangeRunner
 				Clear(stopAutomove: true);
 				return;
 			case InstanceChangeDecision.ChangeTickResult.IssueChange:
+			{
+				var isReissue = session.ChangeIssued;
 				if (session.AutomoveStarted)
 					StopAutomove();
 				lifestream.ChangeInstance(session.Instance);
 				session.ChangeIssued = true;
-				DebugBehavior.Info(pluginLog, "Instance", $"issuing change: requested={session.Instance}");
+				session.NextIssueMs = now + InstanceChangeDecision.ChangeReissueMs;
+				DebugBehavior.Info(
+					pluginLog,
+					"Instance",
+					isReissue
+						? $"re-issuing change: requested={session.Instance}"
+						: $"issuing change: requested={session.Instance}");
 				return;
+			}
 			case InstanceChangeDecision.ChangeTickResult.Continue:
 				return;
 		}

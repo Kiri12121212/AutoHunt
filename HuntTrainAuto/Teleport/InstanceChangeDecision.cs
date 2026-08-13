@@ -8,8 +8,17 @@ namespace HuntTrainAuto.Teleport;
 /// </summary>
 public static class InstanceChangeDecision
 {
-	/// <summary>HTA timed wait for <c>ChangeInstance</c> / current-instance match.</summary>
-	public const int ChangeTimeoutMs = 15_000;
+	/// <summary>
+	/// Wait for <c>ChangeInstance</c> / current-instance match.
+	/// Must exceed Lifestream <c>InteractWithAetheryte</c> (30s) + BetweenAreas load.
+	/// </summary>
+	public const int ChangeTimeoutMs = 45_000;
+
+	/// <summary>
+	/// Min gap between <c>ChangeInstance</c> IPC calls when a prior issue failed
+	/// (Lifestream NRE / aborted) while still in range.
+	/// </summary>
+	public const int ChangeReissueMs = 3_000;
 
 	/// <summary>Throttle for setting aetheryte target (EzThrottler-style).</summary>
 	public const int TargetThrottleMs = 200;
@@ -143,13 +152,16 @@ public static class InstanceChangeDecision
 		=> $"change={result}";
 
 	/// <summary>
-	/// Tick the change-instance wait (15s HTA parity). Prefer succeed on current==num.
+	/// Tick the change-instance wait. Prefer succeed on current==num.
+	/// Re-issue when Lifestream is idle again after a failed/aborted invoke
+	/// (<paramref name="reissueReady"/> — caller throttles via <see cref="ChangeReissueMs"/>).
 	/// </summary>
 	public static ChangeTickResult DecideChangeTick(
 		bool alreadyOnInstance,
 		bool canChangeInstance,
 		bool changeIssued,
-		bool timedOut)
+		bool timedOut,
+		bool reissueReady = false)
 	{
 		if (alreadyOnInstance)
 			return ChangeTickResult.Succeeded;
@@ -157,7 +169,7 @@ public static class InstanceChangeDecision
 		if (timedOut)
 			return ChangeTickResult.TimedOut;
 
-		if (!changeIssued && canChangeInstance)
+		if (canChangeInstance && (!changeIssued || reissueReady))
 			return ChangeTickResult.IssueChange;
 
 		return ChangeTickResult.Continue;

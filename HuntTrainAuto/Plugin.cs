@@ -1852,11 +1852,6 @@ public sealed class Plugin : IDalamudPlugin
 		}
 		if (combat.InCombatPhase)
 			divertingToEngage = false;
-		// Some short/“small monster” fights can flip ConditionFlag.InCombat
-		// without our internal A-rank combat phase latching. If local combat
-		// is now clear, un-block post-TP remount / flag travel.
-		else if (divertingToEngage && !condition[ConditionFlag.InCombat])
-			divertingToEngage = false;
 		TryFlushDeferredCombatFlag(wasInCombatPhase, combat.InCombatPhase);
 		// Hunt PF join after combat tick so we skip mid-fight thrash.
 		var nowMs = Environment.TickCount64;
