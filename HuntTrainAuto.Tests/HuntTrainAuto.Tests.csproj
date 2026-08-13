@@ -85,6 +85,7 @@
 		<Compile Include="..\HuntTrainAuto\HuntAlerts\HuntAlertsAvailability.cs" Link="HuntAlerts\HuntAlertsAvailability.cs" />
 		<Compile Include="..\HuntTrainAuto\HuntAlerts\HuntAlertsConductorParse.cs" Link="HuntAlerts\HuntAlertsConductorParse.cs" />
 		<Compile Include="..\HuntTrainAuto\HuntAlerts\HuntAlertsConductorDecision.cs" Link="HuntAlerts\HuntAlertsConductorDecision.cs" />
+		<Compile Include="..\HuntTrainAuto\HuntAlerts\HuntJoinDecision.cs" Link="HuntAlerts\HuntJoinDecision.cs" />
 		<Compile Include="..\HuntTrainAuto\HuntAlerts\HuntTrainMessage.cs" Link="HuntAlerts\HuntTrainMessage.cs" />
 		<Compile Include="..\HuntTrainAuto\HuntAlerts\HuntTrainMessageCoerce.cs" Link="HuntAlerts\HuntTrainMessageCoerce.cs" />
 		<Compile Include="..\HuntTrainAuto\HuntAlerts\HuntTrainMessageMapper.cs" Link="HuntAlerts\HuntTrainMessageMapper.cs" />

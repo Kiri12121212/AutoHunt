@@ -35,6 +35,11 @@ internal static class AlertTheme
 	public static readonly uint SuccessBtnHover = 0xFF5CC65C;
 	public static readonly uint SuccessBtnActive = 0xFF2C862C;
 
+	public static readonly Vector4 EnabledOn = new(0.45f, 0.85f, 0.45f, 1f);
+	public static readonly Vector4 EnabledOff = new(0.55f, 0.55f, 0.58f, 1f);
+	public static readonly Vector4 Available = new(0.45f, 0.85f, 0.45f, 1f);
+	public static readonly Vector4 Missing = new(0.95f, 0.40f, 0.40f, 1f);
+
 	public static Vector2 BadgePadding => new(6, 1);
 }
 

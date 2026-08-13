@@ -207,6 +207,8 @@ public sealed class HuntAlertsIpc : IHuntAlertsService
 				out var offsetX,
 				out var offsetY);
 
+			lastTrainMessage = accepted.Clone();
+
 			if (!HuntTrainMessageMapper.TryMap(
 				    accepted,
 				    config.HuntAlertsIntegration,
@@ -228,7 +230,6 @@ public sealed class HuntAlertsIpc : IHuntAlertsService
 			}
 
 			lastMappedAlert = HuntAlertsAvailability.FromMappedFlag(flag);
-			lastTrainMessage = accepted.Clone();
 			RememberIntake(
 				$"mapped {flag.HuntWorld ?? "?"} / {flag.PlaceName ?? $"territory {flag.TerritoryTypeId}"}",
 				now);

@@ -6,40 +6,64 @@ namespace HuntTrainAuto.Tests.Windows;
 public sealed class ConfigTabsTests
 {
 	[Fact]
-	public void Labels_match_phase8_and_debug_tabs()
+	public void Labels_match()
 	{
 		Assert.Equal(
-			["Status", "Settings", "Mount", "Engage", "Combat", "Integrations", "Debug"],
+			["Status", "Hunt", "Combat", "Plugins", "Debug"],
 			ConfigTabs.Labels);
-		Assert.Equal(7, ConfigTabs.Labels.Length);
+		Assert.Equal(5, ConfigTabs.Labels.Length);
 		Assert.Equal(0, ConfigTabs.Status);
-		Assert.Equal(1, ConfigTabs.Settings);
-		Assert.Equal(2, ConfigTabs.Mount);
-		Assert.Equal(3, ConfigTabs.Engage);
-		Assert.Equal(4, ConfigTabs.Combat);
-		Assert.Equal(5, ConfigTabs.Integrations);
-		Assert.Equal(6, ConfigTabs.Debug);
+		Assert.Equal(1, ConfigTabs.Hunt);
+		Assert.Equal(2, ConfigTabs.Combat);
+		Assert.Equal(3, ConfigTabs.Plugins);
+		Assert.Equal(4, ConfigTabs.Debug);
 	}
 
 	[Theory]
 	[InlineData(-3, 0)]
 	[InlineData(0, 0)]
 	[InlineData(2, 2)]
-	[InlineData(5, 5)]
-	[InlineData(6, 6)]
-	[InlineData(99, 6)]
+	[InlineData(4, 4)]
+	[InlineData(99, 4)]
 	public void ClampSelected_stays_in_range(int input, int expected)
 		=> Assert.Equal(expected, ConfigTabs.ClampSelected(input));
 
 	[Theory]
+	[InlineData(-3, 0)]
+	[InlineData(0, 0)]
+	[InlineData(2, 2)]
+	[InlineData(3, 3)]
+	[InlineData(4, 3)]
+	[InlineData(6, 3)]
+	[InlineData(99, 3)]
+	public void ClampSelected_stays_in_range_prod(int input, int expected)
+		=> Assert.Equal(expected, ConfigTabs.ClampSelected(input, isDev: false));
+
+	[Theory]
+	[InlineData(true, 5)]
+	[InlineData(false, 4)]
+	public void VisibleTabCount_by_build(bool isDev, int expected)
+		=> Assert.Equal(expected, ConfigTabs.VisibleTabCount(isDev));
+
+	[Theory]
+	[InlineData(true, true)]
+	[InlineData(false, false)]
+	public void IsDebugVisible_by_build(bool isDev, bool expected)
+		=> Assert.Equal(expected, ConfigTabs.IsDebugVisible(isDev));
+
+	[Theory]
 	[InlineData(0, "Status")]
-	[InlineData(1, "Settings")]
-	[InlineData(2, "Mount")]
-	[InlineData(5, "Integrations")]
-	[InlineData(6, "Debug")]
+	[InlineData(1, "Hunt")]
+	[InlineData(4, "Debug")]
 	[InlineData(-1, "Status")]
 	public void LabelAt_uses_clamped_index(int index, string expected)
 		=> Assert.Equal(expected, ConfigTabs.LabelAt(index));
+
+	[Theory]
+	[InlineData(4, "Plugins")]
+	[InlineData(6, "Plugins")]
+	public void LabelAt_prod_clamps_to_last_visible(int index, string expected)
+		=> Assert.Equal(expected, ConfigTabs.LabelAt(index, isDev: false));
 
 	[Theory]
 	[InlineData(-10, 0)]

@@ -1,7 +1,9 @@
 #nullable enable
+
 using System;
 using System.Numerics;
 using Dalamud.Bindings.ImGui;
+using Dalamud.Interface;
 using Dalamud.Interface.Windowing;
 using HuntTrainAuto.Domain;
 using HuntTrainAuto.HuntAlerts;
@@ -10,9 +12,6 @@ namespace HuntTrainAuto.Windows;
 
 public sealed class ConfigWindow : Window, IDisposable
 {
-	private static readonly Vector4 AvailableColor = new(0.45f, 0.85f, 0.45f, 1f);
-	private static readonly Vector4 MissingColor = new(0.95f, 0.40f, 0.40f, 1f);
-
 	private readonly Configuration config;
 	private readonly Action saveConfig;
 	private readonly Func<bool> teleporterAvailable;
@@ -33,7 +32,11 @@ public sealed class ConfigWindow : Window, IDisposable
 	private readonly Func<string?>? startFakeHuntInstanceSwap;
 	private readonly Func<string?>? endFakeHuntCombat;
 	private readonly Func<string?>? clearFakeHunt;
+	private readonly Func<HuntTrainMessage?, string?>? startJoinHunt;
+	private readonly Func<string>? getJoinHuntStatus;
+	private readonly bool isDev;
 	private string? fakeHuntStatusMessage;
+	private string? joinHuntStatusMessage;
 	private string conductorInput = string.Empty;
 	private int selectedConductor;
 	private int selectedTab;
@@ -58,7 +61,10 @@ public sealed class ConfigWindow : Window, IDisposable
 		Func<string?>? startFakeHuntMapFlag = null,
 		Func<string?>? startFakeHuntInstanceSwap = null,
 		Func<string?>? endFakeHuntCombat = null,
-		Func<string?>? clearFakeHunt = null) : base(PluginVersion.WindowTitle)
+		Func<string?>? clearFakeHunt = null,
+		Func<HuntTrainMessage?, string?>? startJoinHunt = null,
+		Func<string>? getJoinHuntStatus = null,
+		bool isDev = false) : base(PluginVersion.WindowTitle)
 	{
 		this.config = config;
 		this.saveConfig = saveConfig;
@@ -80,21 +86,24 @@ public sealed class ConfigWindow : Window, IDisposable
 		this.startFakeHuntInstanceSwap = startFakeHuntInstanceSwap;
 		this.endFakeHuntCombat = endFakeHuntCombat;
 		this.clearFakeHunt = clearFakeHunt;
+		this.startJoinHunt = startJoinHunt;
+		this.getJoinHuntStatus = getJoinHuntStatus;
+		this.isDev = isDev;
 		SizeConstraints = new WindowSizeConstraints
 		{
-			MinimumSize = new Vector2(420, 420),
+			MinimumSize = new Vector2(480, 420),
 			MaximumSize = new Vector2(900, 700),
 		};
 	}
 
 	public override void Draw()
 	{
-		DrawMasterAndConductors();
+		DrawHeader();
 		ImGui.Spacing();
 		ImGui.Separator();
 		ImGui.Spacing();
 
-		selectedTab = ConfigTabs.ClampSelected(selectedTab);
+		selectedTab = ConfigTabs.ClampSelected(selectedTab, isDev);
 		if (!ImGui.BeginTabBar("##htaConfigTabs"))
 			return;
 
@@ -105,24 +114,10 @@ public sealed class ConfigWindow : Window, IDisposable
 			ImGui.EndTabItem();
 		}
 
-		if (ImGui.BeginTabItem(ConfigTabs.Labels[ConfigTabs.Settings]))
+		if (ImGui.BeginTabItem(ConfigTabs.Labels[ConfigTabs.Hunt]))
 		{
-			selectedTab = ConfigTabs.Settings;
-			DrawSettingsTab();
-			ImGui.EndTabItem();
-		}
-
-		if (ImGui.BeginTabItem(ConfigTabs.Labels[ConfigTabs.Mount]))
-		{
-			selectedTab = ConfigTabs.Mount;
-			DrawMountTab();
-			ImGui.EndTabItem();
-		}
-
-		if (ImGui.BeginTabItem(ConfigTabs.Labels[ConfigTabs.Engage]))
-		{
-			selectedTab = ConfigTabs.Engage;
-			DrawEngageTab();
+			selectedTab = ConfigTabs.Hunt;
+			DrawHuntTab();
 			ImGui.EndTabItem();
 		}
 
@@ -133,14 +128,15 @@ public sealed class ConfigWindow : Window, IDisposable
 			ImGui.EndTabItem();
 		}
 
-		if (ImGui.BeginTabItem(ConfigTabs.Labels[ConfigTabs.Integrations]))
+		if (ImGui.BeginTabItem(ConfigTabs.Labels[ConfigTabs.Plugins]))
 		{
-			selectedTab = ConfigTabs.Integrations;
-			DrawIntegrationsTab();
+			selectedTab = ConfigTabs.Plugins;
+			DrawPluginsTab();
 			ImGui.EndTabItem();
 		}
 
-		if (ImGui.BeginTabItem(ConfigTabs.Labels[ConfigTabs.Debug]))
+		if (ConfigTabs.IsDebugVisible(isDev)
+		    && ImGui.BeginTabItem(ConfigTabs.Labels[ConfigTabs.Debug]))
 		{
 			selectedTab = ConfigTabs.Debug;
 			DrawDebugTab();
@@ -150,17 +146,14 @@ public sealed class ConfigWindow : Window, IDisposable
 		ImGui.EndTabBar();
 	}
 
-	private void DrawMasterAndConductors()
+	private void DrawHeader()
 	{
-		var enabled = config.Enabled;
-		if (ImGui.Checkbox("Enabled", ref enabled))
-		{
-			config.Enabled = enabled;
-			saveConfig();
-		}
+		DrawEnabledToggle();
 
 		ImGui.Spacing();
-		ImGui.Text($"Conductors: {config.Conductors.Count}");
+		ConfigUi.SectionHeader(FontAwesomeIcon.Users, "Conductors");
+		ImGui.SameLine();
+		ImGui.TextDisabled($"({config.Conductors.Count})");
 		ImGui.SameLine();
 		if (ImGui.SmallButton("Clear"))
 		{
@@ -185,7 +178,7 @@ public sealed class ConfigWindow : Window, IDisposable
 		ImGui.SetNextItemWidth(-1);
 		ImGui.ListBox("##conds", ref selectedConductor, names, height);
 
-		ImGui.Text("Add conductor:");
+		ImGui.TextUnformatted("Add conductor:");
 		ImGui.SameLine();
 		ImGui.SetNextItemWidth(150f);
 		if (ImGui.InputText("##newCond", ref conductorInput, 50, ImGuiInputTextFlags.EnterReturnsTrue))
@@ -196,70 +189,121 @@ public sealed class ConfigWindow : Window, IDisposable
 				saveConfig();
 			}
 		}
+
+		DrawJoinHuntButton();
+	}
+
+	private void DrawEnabledToggle()
+	{
+		var enabled = config.Enabled;
+		ImGui.PushStyleColor(ImGuiCol.Text, enabled ? AlertTheme.EnabledOn : AlertTheme.EnabledOff);
+		ImGui.PushFont(UiBuilder.IconFont);
+		ImGui.TextUnformatted((enabled ? FontAwesomeIcon.CheckCircle : FontAwesomeIcon.Circle).ToIconString());
+		ImGui.PopFont();
+		ImGui.SameLine();
+		if (ImGui.Checkbox("Enabled", ref enabled))
+		{
+			config.Enabled = enabled;
+			saveConfig();
+		}
+
+		ImGui.PopStyleColor();
+		if (ImGui.IsItemHovered())
+		{
+			ImGui.SetTooltip(enabled
+				? "HuntTrainAuto is listening for conductor flags and HuntAlerts."
+				: "Turn on to follow the train.");
+		}
+	}
+
+	private void DrawJoinHuntButton()
+	{
+		if (startJoinHunt == null)
+			return;
+
+		ImGui.Spacing();
+		var msg = SafeGetHuntAlertsLastMessage();
+		ConfigUi.Subtle(AlertInfoDisplay.FormatStatusSummary(msg));
+
+		if (AlertComponents.ActionButton(FontAwesomeIcon.LocationArrow, "Go to hunt + find conductor", AlertButtonRole.Success))
+			joinHuntStatusMessage = startJoinHunt(msg);
+		if (ImGui.IsItemHovered())
+		{
+			ImGui.SetTooltip(
+				"Teleport to the last HuntAlerts world + start aetheryte. "
+				+ "After landing, runs /sea first <conductor> and assigns them.");
+		}
+
+		var joinStatus = joinHuntStatusMessage ?? getJoinHuntStatus?.Invoke();
+		if (!string.IsNullOrEmpty(joinStatus))
+			ConfigUi.Subtle(joinStatus);
 	}
 
 	private void DrawStatusTab()
 	{
-		ImGui.TextWrapped("Live train pipeline status (read-only).");
+		ConfigUi.Subtle("Live pipeline — what the train is doing right now.");
 		ImGui.Spacing();
 		ImGui.TextDisabled(PluginVersion.StatusLine);
 		ImGui.Spacing();
 
 		var snap = StatusDisplay.SafeCapture(getStatus);
-		ImGui.Text(StatusDisplay.FormatPhaseLine(snap.Phase));
-		ImGui.Text(StatusDisplay.FormatMountLine(
+		AlertComponents.PhaseBadge(snap.Phase);
+		ImGui.SameLine();
+		ImGui.TextDisabled("phase");
+		ImGui.Spacing();
+
+		ImGui.TextUnformatted(StatusDisplay.FormatMountLine(
 			snap.Mounted,
 			snap.MountPipeline,
 			snap.UnmountPipeline));
-		ImGui.Text(StatusDisplay.FormatNavLine(
+		ImGui.TextUnformatted(StatusDisplay.FormatNavLine(
 			snap.NavPathRunning,
 			snap.NavWaypoints,
 			snap.NavPathfindInProgress));
-		ImGui.Text(StatusDisplay.FormatBossModAvailable(
-			snap.BossModAvailable,
-			snap.BossModProviderName));
-		ImGui.Text(StatusDisplay.FormatBossModAi(snap.BossModAiActive));
-		ImGui.Text(StatusDisplay.FormatFakeHuntLine(
-			snap.FakeHuntActive,
-			snap.FakeARankSet,
-			snap.FakeHuntSummary));
+		AlertComponents.AvailabilityLine(
+			StatusDisplay.FormatBossModAvailable(snap.BossModAvailable, snap.BossModProviderName),
+			snap.BossModAvailable);
+		ImGui.TextUnformatted(StatusDisplay.FormatBossModAi(snap.BossModAiActive));
+
+		if (isDev)
+			ImGui.TextUnformatted(StatusDisplay.FormatFakeHuntLine(
+				snap.FakeHuntActive,
+				snap.FakeARankSet,
+				snap.FakeHuntSummary));
 
 		ImGui.Spacing();
 		ImGui.Separator();
 		ImGui.Spacing();
-		ImGui.Text("HuntAlerts");
+		ConfigUi.SectionHeader(FontAwesomeIcon.Flag, "Last HuntAlerts");
 		var lastMessage = SafeGetHuntAlertsLastMessage();
-		ImGui.TextWrapped(AlertInfoDisplay.FormatStatusSummary(lastMessage));
-		if (lastMessage != null && openAlertInfo != null && ImGui.Button("Open alert info"))
+		ConfigUi.Subtle(AlertInfoDisplay.FormatStatusSummary(lastMessage));
+		if (lastMessage != null && openAlertInfo != null
+		    && AlertComponents.ActionButton(FontAwesomeIcon.InfoCircle, "Open alert info", AlertButtonRole.Info))
 			openAlertInfo();
 	}
 
-	private void DrawSettingsTab()
+	private void DrawHuntTab()
 	{
-		var autoTeleport = config.AutoTeleport;
-		if (ImGui.Checkbox("Auto-teleport on conductor flag", ref autoTeleport))
-		{
-			config.AutoTeleport = autoTeleport;
-			saveConfig();
-		}
-
-		var autoOpenMap = config.AutoOpenMap;
-		if (ImGui.Checkbox("Auto-open map on conductor flag", ref autoOpenMap))
-		{
-			config.AutoOpenMap = autoOpenMap;
-			saveConfig();
-		}
-
-		var contextMenu = config.ContextMenu;
-		if (ImGui.Checkbox("Context menu (Add as conductor)", ref contextMenu))
-		{
-			config.ContextMenu = contextMenu;
-			saveConfig();
-		}
+		ConfigUi.SectionHeader(FontAwesomeIcon.Flag, "Flags & travel");
+		ImGui.Spacing();
+		DrawBoolOption(
+			"Teleport to conductor flags",
+			() => config.AutoTeleport,
+			v => config.AutoTeleport = v,
+			"World-hop and same-zone TP when a conductor places a flag.");
+		DrawBoolOption(
+			"Open map on flags",
+			() => config.AutoOpenMap,
+			v => config.AutoOpenMap = v);
+		DrawBoolOption(
+			"Add conductor from context menu",
+			() => config.ContextMenu,
+			v => config.ContextMenu = v,
+			"Right-click a player → Add as conductor.");
 
 		ImGui.Spacing();
 		var skipDist = config.AutoTeleportAetheryteDistanceDiff;
-		ImGui.SetNextItemWidth(200f);
+		ImGui.SetNextItemWidth(220f);
 		if (ImGui.SliderFloat(
 			    "Same-zone TP skip distance (yalms)",
 			    ref skipDist,
@@ -271,77 +315,77 @@ public sealed class ConfigWindow : Window, IDisposable
 			saveConfig();
 		}
 
-		var retainFloor = config.AutoTeleportRetainDistanceFloor;
-		if (ImGui.Checkbox("Keep distance threshold as floor / fallback", ref retainFloor))
-		{
-			config.AutoTeleportRetainDistanceFloor = retainFloor;
-			saveConfig();
-		}
+		if (ImGui.IsItemHovered())
+			ImGui.SetTooltip("If you are already close enough to the flag aetheryte, skip teleporting.");
 
-		ImGui.SetNextItemWidth(200f);
-		var castSec = config.AutoTeleportCastSeconds;
-		if (ImGui.SliderFloat(
-			    "TP cast estimate (s)",
-			    ref castSec,
-			    ConfigTabs.MinTeleportCastSeconds,
-			    ConfigTabs.MaxTeleportCastSeconds,
-			    "%.1f"))
-		{
-			config.AutoTeleportCastSeconds = ConfigTabs.ClampTeleportCastSeconds(castSec);
-			saveConfig();
-		}
-
-		ImGui.SetNextItemWidth(200f);
-		var loadSec = config.AutoTeleportLoadEstimateSeconds;
-		if (ImGui.SliderFloat(
-			    "TP load estimate (s)",
-			    ref loadSec,
-			    ConfigTabs.MinTeleportLoadEstimateSeconds,
-			    ConfigTabs.MaxTeleportLoadEstimateSeconds,
-			    "%.1f"))
-		{
-			config.AutoTeleportLoadEstimateSeconds = ConfigTabs.ClampTeleportLoadEstimateSeconds(loadSec);
-			saveConfig();
-		}
-
-		ImGui.SetNextItemWidth(200f);
-		var mountSpeed = config.AutoTeleportMountSpeedYalmsPerSec;
-		if (ImGui.SliderFloat(
-			    "Mount speed (yalms/s)",
-			    ref mountSpeed,
-			    ConfigTabs.MinMountSpeedYalmsPerSec,
-			    ConfigTabs.MaxMountSpeedYalmsPerSec,
-			    "%.1f"))
-		{
-			config.AutoTeleportMountSpeedYalmsPerSec = ConfigTabs.ClampMountSpeedYalmsPerSec(mountSpeed);
-			saveConfig();
-		}
-
-		ImGui.SetNextItemWidth(200f);
-		var mountUp = config.AutoTeleportMountUpSeconds;
-		if (ImGui.SliderFloat(
-			    "Mount-up overhead (s)",
-			    ref mountUp,
-			    ConfigTabs.MinMountUpSeconds,
-			    ConfigTabs.MaxMountUpSeconds,
-			    "%.1f"))
-		{
-			config.AutoTeleportMountUpSeconds = ConfigTabs.ClampMountUpSeconds(mountUp);
-			saveConfig();
-		}
-
-		ImGui.Spacing();
-		ImGui.Text("Teleport delay");
 		var delayEnabled = config.TeleportDelayEnabled;
-		if (ImGui.Checkbox("Random pre-delay before TP", ref delayEnabled))
+		if (ConfigUi.Checkbox(
+			    "Random pre-delay before TP",
+			    ref delayEnabled,
+			    "Adds a short random wait before teleporting."))
 		{
 			config.TeleportDelayEnabled = delayEnabled;
 			saveConfig();
 		}
 
+		DrawTeleportDelaySection();
+
+		ImGui.Spacing();
+		ImGui.Separator();
+		ImGui.Spacing();
+		ConfigUi.SectionHeader(FontAwesomeIcon.Bell, "Notifications");
+		ImGui.Spacing();
+		DrawBoolOption(
+			"Toast when a flag lands",
+			() => config.EnableNotifications,
+			v => config.EnableNotifications = v);
+		DrawBoolOption(
+			"Play a sound",
+			() => config.EnableNotificationSound,
+			v => config.EnableNotificationSound = v);
+		DrawBoolOption(
+			"Open alert card on HuntAlerts map",
+			() => config.ShowHuntAlertsInfoWindow,
+			v => config.ShowHuntAlertsInfoWindow = v);
+		DrawBoolOption(
+			"Chat notice (click for info)",
+			() => config.ShowHuntAlertsChatNotice,
+			v => config.ShowHuntAlertsChatNotice = v);
+
+		ImGui.Spacing();
+		ImGui.Separator();
+		ImGui.Spacing();
+		ConfigUi.SectionHeader(FontAwesomeIcon.Horse, "At the flag");
+		ImGui.Spacing();
+		DrawBoolOption(
+			"Dismount at the flag",
+			() => config.AutoUnmountAtFlag,
+			v => config.AutoUnmountAtFlag = v);
+		DrawBoolOption(
+			"Join hunt Party Finder at the flag",
+			() => config.AutoJoinHuntPf,
+			v => config.AutoJoinHuntPf = v);
+		DrawBoolOption(
+			"Leave party when the train ends",
+			() => config.AutoLeaveHuntParty,
+			v => config.AutoLeaveHuntParty = v);
+
+		ImGui.Spacing();
+		ImGui.Separator();
+		ImGui.Spacing();
+		DrawHuntAlertsIntakeSection();
+	}
+
+	private void DrawTeleportDelaySection()
+	{
+		if (!ImGui.CollapsingHeader("Teleport delay"))
+			return;
+
+		ImGui.Indent();
+		ImGui.BeginDisabled(!config.TeleportDelayEnabled);
 		var delayMin = config.TeleportDelayMin;
-		ImGui.SetNextItemWidth(200f);
-		if (ImGui.SliderInt("TP delay min (ms)", ref delayMin, ConfigTabs.MinTeleportDelayMs, ConfigTabs.MaxTeleportDelayMs))
+		ImGui.SetNextItemWidth(220f);
+		if (ImGui.SliderInt("Min (ms)", ref delayMin, ConfigTabs.MinTeleportDelayMs, ConfigTabs.MaxTeleportDelayMs))
 		{
 			var (min, max) = ConfigTabs.ClampTeleportDelayRange(delayMin, config.TeleportDelayMax);
 			config.TeleportDelayMin = min;
@@ -350,8 +394,8 @@ public sealed class ConfigWindow : Window, IDisposable
 		}
 
 		var delayMax = config.TeleportDelayMax;
-		ImGui.SetNextItemWidth(200f);
-		if (ImGui.SliderInt("TP delay max (ms)", ref delayMax, ConfigTabs.MinTeleportDelayMs, ConfigTabs.MaxTeleportDelayMs))
+		ImGui.SetNextItemWidth(220f);
+		if (ImGui.SliderInt("Max (ms)", ref delayMax, ConfigTabs.MinTeleportDelayMs, ConfigTabs.MaxTeleportDelayMs))
 		{
 			var (min, max) = ConfigTabs.ClampTeleportDelayRange(config.TeleportDelayMin, delayMax);
 			config.TeleportDelayMin = min;
@@ -359,115 +403,51 @@ public sealed class ConfigWindow : Window, IDisposable
 			saveConfig();
 		}
 
+		ImGui.EndDisabled();
+		ImGui.Unindent();
+	}
+
+	private void DrawHuntAlertsIntakeSection()
+	{
+		if (!ImGui.CollapsingHeader("HuntAlerts intake", ImGuiTreeNodeFlags.DefaultOpen))
+			return;
+
+		ImGui.Indent();
+		DrawBoolOption(
+			"Enable HuntAlerts integration",
+			() => config.HuntAlertsIntegration,
+			v => config.HuntAlertsIntegration = v,
+			"When a hunt mark arrives, teleport to the target world and zone.");
+		ImGui.BeginDisabled(!config.HuntAlertsIntegration);
+		DrawBoolOption(
+			"Auto-assign conductor from HuntAlerts message",
+			() => config.HuntAlertsAutoConductor,
+			v => config.HuntAlertsAutoConductor = v,
+			"Parses \"Conductor - Name\" / \"Conductor: [World] Name\" from toast text.");
+
 		ImGui.Spacing();
-		ImGui.Text("Notifications");
-		var enableNotifications = config.EnableNotifications;
-		if (ImGui.Checkbox("Notify on conductor flag", ref enableNotifications))
-		{
-			config.EnableNotifications = enableNotifications;
-			saveConfig();
-		}
+		ImGui.TextUnformatted("Accept ranks");
+		DrawHuntAlertsRankCheckbox("A-rank trains (new_hunt)", HuntMarkRank.A);
+		DrawHuntAlertsRankCheckbox("S-rank alerts (srank)", HuntMarkRank.S);
 
-		var enableSound = config.EnableNotificationSound;
-		if (ImGui.Checkbox("Play sound on conductor flag", ref enableSound))
-		{
-			config.EnableNotificationSound = enableSound;
-			saveConfig();
-		}
-
-		var showHaInfo = config.ShowHuntAlertsInfoWindow;
-		if (ImGui.Checkbox("Open alert info on HuntAlerts map", ref showHaInfo))
-		{
-			config.ShowHuntAlertsInfoWindow = showHaInfo;
-			saveConfig();
-		}
-
-		var showHaChat = config.ShowHuntAlertsChatNotice;
-		if (ImGui.Checkbox("Chat notice on HuntAlerts map (click for info)", ref showHaChat))
-		{
-			config.ShowHuntAlertsChatNotice = showHaChat;
-			saveConfig();
-		}
+		ImGui.Spacing();
+		ImGui.TextUnformatted("Accept expansions");
+		if (ImGui.IsItemHovered())
+			ImGui.SetTooltip("Empty = all. Prefers start-zone ExVersion; else HuntAlerts huntKind.");
+		foreach (var group in HuntAlertsFilter.TrainGroups.All)
+			DrawHuntAlertsTrainGroupCheckbox(group);
+		ImGui.EndDisabled();
+		ImGui.Unindent();
 	}
 
-	private void DrawMountTab()
+	private void DrawCombatTab()
 	{
-		ImGui.TextDisabled("Mount: always on (random / GeneralAction 9).");
-
-		var autoUnmount = config.AutoUnmountAtFlag;
-		if (ImGui.Checkbox("Auto-unmount at flag", ref autoUnmount))
-		{
-			config.AutoUnmountAtFlag = autoUnmount;
-			saveConfig();
-		}
-
-		var autoJoinPf = config.AutoJoinHuntPf;
-		if (ImGui.Checkbox("Auto-join hunt Party Finder at flag", ref autoJoinPf))
-		{
-			config.AutoJoinHuntPf = autoJoinPf;
-			saveConfig();
-		}
-
-		ImGui.BeginDisabled(!config.AutoJoinHuntPf);
-		var pfRetry = config.HuntPfRetryIntervalMs;
-		ImGui.SetNextItemWidth(200f);
-		if (ImGui.SliderInt(
-			    "Hunt PF retry interval (ms)",
-			    ref pfRetry,
-			    HuntPfDecision.MinRetryIntervalMs,
-			    HuntPfDecision.MaxRetryIntervalMs))
-		{
-			config.HuntPfRetryIntervalMs = HuntPfDecision.ClampRetryIntervalMs(pfRetry);
-			saveConfig();
-		}
-
-		ImGui.EndDisabled();
-
-		var autoLeavePf = config.AutoLeaveHuntParty;
-		if (ImGui.Checkbox("Auto-leave hunt party when train ends", ref autoLeavePf))
-		{
-			config.AutoLeaveHuntParty = autoLeavePf;
-			saveConfig();
-		}
-
-		ImGui.BeginDisabled(!config.AutoLeaveHuntParty);
-		var idleLeave = config.HuntPartyIdleLeaveMs;
-		ImGui.SetNextItemWidth(200f);
-		if (ImGui.SliderInt(
-			    "Hunt party idle leave (ms)",
-			    ref idleLeave,
-			    HuntPfLeaveDecision.MinIdleLeaveMs,
-			    HuntPfLeaveDecision.MaxIdleLeaveMs))
-		{
-			config.HuntPartyIdleLeaveMs = HuntPfLeaveDecision.ClampIdleLeaveMs(idleLeave);
-			saveConfig();
-		}
-
-		ImGui.EndDisabled();
-
-		var arrival = config.FlagArrivalTolerance;
-		ImGui.SetNextItemWidth(200f);
-		if (ImGui.SliderFloat(
-			    "Flag arrival tolerance (yalms)",
-			    ref arrival,
-			    ConfigTabs.MinFlagArrivalTolerance,
-			    ConfigTabs.MaxFlagArrivalTolerance,
-			    "%.1f"))
-		{
-			config.FlagArrivalTolerance = ConfigTabs.ClampFlagArrivalTolerance(arrival);
-			saveConfig();
-		}
-	}
-
-	private void DrawEngageTab()
-	{
-		ImGui.TextWrapped(
-			"After the mark: path to the flag (or divert to a nearby mob), land/unmount on the floor, " +
-			"then stop vnav at engage range and let BossMod AI position you. Does not follow players.");
+		ConfigUi.Subtle(
+			"Path to the flag, engage nearby A-ranks, then RSR handles rotation while BossMod AI handles movement.");
 		ImGui.Spacing();
 
 		var engageRange = config.EngageRange;
-		ImGui.SetNextItemWidth(200f);
+		ImGui.SetNextItemWidth(220f);
 		if (ImGui.SliderFloat(
 			    "Engage range (yalms)",
 			    ref engageRange,
@@ -479,16 +459,11 @@ public sealed class ConfigWindow : Window, IDisposable
 			saveConfig();
 		}
 
-		ImGui.TextWrapped(
-			"Vnav PathStops at this distance. BossMod (Combat tab) handles melee close-in and dodge; " +
-			"RSR keeps the GCD.");
-
-		ImGui.TextWrapped(
-			"Scan / divert radius around the active conductor flag (min of player→mob and flag→mob). " +
-			"Large enough to find A-ranks near the flag after unmount.");
+		if (ImGui.IsItemHovered())
+			ImGui.SetTooltip("vnav stops pathing at this distance; BossMod closes in for melee.");
 
 		var aRankScan = config.ARankScanRange;
-		ImGui.SetNextItemWidth(200f);
+		ImGui.SetNextItemWidth(220f);
 		if (ImGui.SliderFloat(
 			    "A-rank scan range (yalms)",
 			    ref aRankScan,
@@ -500,33 +475,30 @@ public sealed class ConfigWindow : Window, IDisposable
 			saveConfig();
 		}
 
-		var preferHint = config.PreferARankNearHuntHint;
-		if (ImGui.Checkbox("Prefer A-rank nearest hunt hint", ref preferHint))
-		{
-			config.PreferARankNearHuntHint = preferHint;
-			saveConfig();
-		}
+		if (ImGui.IsItemHovered())
+			ImGui.SetTooltip("Search radius around the flag after unmount.");
 
-		ImGui.TextWrapped(
-			"When several A-ranks are in range, bias toward the last conductor / HuntAlerts " +
-			"(or soft Sonar chat) map position. Sonar is optional — no IPC; chat map-links only.");
-	}
+		DrawBoolOption(
+			"Prefer A-rank nearest hunt hint",
+			() => config.PreferARankNearHuntHint,
+			v => config.PreferARankNearHuntHint = v,
+			"Bias toward the last conductor / HuntAlerts map position when several A-ranks are in range.");
 
-	private void DrawCombatTab()
-	{
-		ImGui.TextWrapped(
-			"RSR = GCD rotation. BossMod AI = hunt dodge / safe-zone movement. " +
-			"HTA sets BM ForbidActions while enabling AI so they do not fight for casts.");
+		ImGui.Spacing();
+		ImGui.Separator();
+		ImGui.Spacing();
+		ConfigUi.SectionHeader(FontAwesomeIcon.Crosshairs, "Rotation & AI");
 		ImGui.Spacing();
 		DrawRsrHostileCombo();
 		DrawRsrTargetingCombo("Tank targeting", config.RsrTargetingTank, v => config.RsrTargetingTank = v);
 		DrawRsrTargetingCombo("Non-tank targeting", config.RsrTargetingNonTank, v => config.RsrTargetingNonTank = v);
 
 		ImGui.Spacing();
-		ImGui.Separator();
-		ImGui.Spacing();
 		var bm = config.BossModIntegration;
-		if (ImGui.Checkbox("Enable BossMod AI in combat", ref bm))
+		if (ConfigUi.Checkbox(
+			    "Enable BossMod AI in combat",
+			    ref bm,
+			    "HTA enables BM AI and forbids conflicting casts while RSR runs the GCD."))
 		{
 			config.BossModIntegration = bm;
 			saveConfig();
@@ -537,9 +509,10 @@ public sealed class ConfigWindow : Window, IDisposable
 		ImGui.EndDisabled();
 	}
 
-	private void DrawIntegrationsTab()
+	private void DrawPluginsTab()
 	{
-		ImGui.Text("Plugin availability:");
+		ConfigUi.SectionHeader(FontAwesomeIcon.Plug, "Dependencies");
+		ImGui.Spacing();
 		DrawDependencyLine(DependencyAvailability.TeleporterDisplayName, teleporterAvailable);
 		DrawDependencyLine(DependencyAvailability.LifestreamDisplayName, lifestreamAvailable);
 		DrawDependencyLine(DependencyAvailability.VnavmeshDisplayName, vnavmeshAvailable);
@@ -548,44 +521,15 @@ public sealed class ConfigWindow : Window, IDisposable
 		DrawHuntAlertsAvailabilityLine();
 
 		ImGui.Spacing();
-		var huntAlerts = config.HuntAlertsIntegration;
-		if (ImGui.Checkbox("Enable HuntAlerts integration", ref huntAlerts))
-		{
-			config.HuntAlertsIntegration = huntAlerts;
-			saveConfig();
-		}
-
-		ImGui.BeginDisabled(!config.HuntAlertsIntegration);
-		ImGui.Indent();
-		var autoConductor = config.HuntAlertsAutoConductor;
-		if (ImGui.Checkbox("Auto-assign conductor from HuntAlerts message", ref autoConductor))
-		{
-			config.HuntAlertsAutoConductor = autoConductor;
-			saveConfig();
-		}
-
-		ImGui.TextDisabled("Parses \"Conductor - Name\" / \"Conductor: [World] Name\" from toast text.");
+		ImGui.Separator();
 		ImGui.Spacing();
-		ImGui.Text("Accept ranks");
-		DrawHuntAlertsRankCheckbox("A-rank trains (new_hunt)", HuntMarkRank.A);
-		DrawHuntAlertsRankCheckbox("S-rank alerts (srank)", HuntMarkRank.S);
-
+		ConfigUi.SectionHeader(FontAwesomeIcon.Bullhorn, "HuntAlerts feed");
 		ImGui.Spacing();
-		ImGui.Text("Accept expansions");
-		ImGui.TextDisabled("Empty = all. Prefers start-zone ExVersion; else HuntAlerts huntKind.");
-		foreach (var group in HuntAlertsFilter.TrainGroups.All)
-			DrawHuntAlertsTrainGroupCheckbox(group);
-		ImGui.Unindent();
-		ImGui.EndDisabled();
-
-		ImGui.TextDisabled(HuntAlertsAvailability.FormatLastAlertStatus(
-			SafeGetHuntAlertsLastAlert()));
-		ImGui.TextDisabled(HuntAlertsAvailability.FormatLastIntakeStatus(
-			SafeGetHuntAlertsLastIntake()));
-		if (openAlertInfo != null && ImGui.Button("Open HuntAlerts alert info"))
+		ConfigUi.Subtle(HuntAlertsAvailability.FormatLastAlertStatus(SafeGetHuntAlertsLastAlert()));
+		ConfigUi.Subtle(HuntAlertsAvailability.FormatLastIntakeStatus(SafeGetHuntAlertsLastIntake()));
+		if (openAlertInfo != null
+		    && AlertComponents.ActionButton(FontAwesomeIcon.InfoCircle, "Open HuntAlerts alert info", AlertButtonRole.Info))
 			openAlertInfo();
-		ImGui.TextWrapped(
-			"When a hunt mark notification is received from HuntAlerts, automatically teleport to the target world and zone.");
 	}
 
 	private void DrawHuntAlertsRankCheckbox(string label, HuntMarkRank rank)
@@ -616,8 +560,10 @@ public sealed class ConfigWindow : Window, IDisposable
 	private void DrawHuntAlertsAvailabilityLine()
 	{
 		var status = HuntAlertsAvailability.SafeEvaluate(huntAlertsStatus);
-		var color = status == HuntAlertsPluginStatus.Available ? AvailableColor : MissingColor;
-		ImGui.TextColored(color, HuntAlertsAvailability.FormatAvailabilityLine(status));
+		var available = status == HuntAlertsPluginStatus.Available;
+		AlertComponents.AvailabilityLine(
+			HuntAlertsAvailability.FormatAvailabilityLine(status),
+			available);
 	}
 
 	private HuntAlertsLastAlert? SafeGetHuntAlertsLastAlert()
@@ -659,7 +605,7 @@ public sealed class ConfigWindow : Window, IDisposable
 	private void DrawDebugTab()
 	{
 		var debugLogging = config.EnableDebugLogging;
-		if (ImGui.Checkbox("Record automation events", ref debugLogging))
+		if (ConfigUi.Checkbox("Record automation events", ref debugLogging))
 		{
 			config.EnableDebugLogging = debugLogging;
 			saveConfig();
@@ -671,13 +617,10 @@ public sealed class ConfigWindow : Window, IDisposable
 
 		ImGui.Spacing();
 		ImGui.Separator();
-		ImGui.Text("Fake Hunt");
-		ImGui.TextWrapped(
-			"Inject a conductor-style flag + synthetic A-rank near it (also places the map pin). "
-			+ "Tests mount/TP/nav, divert, land/unmount, engage, auto combat-end remount. "
-			+ "Instance swap: far flag + wrong-instance hint (SwitchInstance / ChangeInstance). "
-			+ "Does not enable RSR/BossMod (no real target). "
-			+ "Plugin must be Enabled. Enables event recording.");
+		ConfigUi.SectionHeader(FontAwesomeIcon.Flask, "Fake Hunt");
+		ConfigUi.Subtle(
+			"Inject a conductor flag + synthetic A-rank for mount/TP/nav/combat testing. "
+			+ "Plugin must be Enabled.");
 		ImGui.Spacing();
 
 		if (ImGui.Button("Near (~250y)"))
@@ -712,8 +655,9 @@ public sealed class ConfigWindow : Window, IDisposable
 
 		if (!string.IsNullOrEmpty(fakeHuntStatusMessage))
 		{
-			var err = !fakeHuntStatusMessage.StartsWith("OK:", StringComparison.Ordinal);
-			ImGui.TextColored(err ? MissingColor : AvailableColor, fakeHuntStatusMessage);
+			AlertComponents.AvailabilityLine(
+				fakeHuntStatusMessage,
+				fakeHuntStatusMessage.StartsWith("OK:", StringComparison.Ordinal));
 		}
 		else
 		{
@@ -737,13 +681,23 @@ public sealed class ConfigWindow : Window, IDisposable
 		}
 
 		var height = Math.Clamp(events.Count, 4, 16) * ImGui.GetTextLineHeightWithSpacing();
-		if (!ImGui.BeginChild("##htaDebugLog", new Vector2(-1, height), border: true))
-			return;
-
-		foreach (var e in events)
-			ImGui.TextUnformatted(DebugEventFormatter.FormatLine(e));
+		if (ImGui.BeginChild("##htaDebugLog", new Vector2(-1, height), border: true))
+		{
+			foreach (var e in events)
+				ImGui.TextUnformatted(DebugEventFormatter.FormatLine(e));
+		}
 
 		ImGui.EndChild();
+	}
+
+	private void DrawBoolOption(string label, Func<bool> getter, Action<bool> setter, string? tooltip = null)
+	{
+		var value = getter();
+		if (!ConfigUi.Checkbox(label, ref value, tooltip))
+			return;
+
+		setter(value);
+		saveConfig();
 	}
 
 	private static string FormatFakeHuntUiResult(string? errorOrNull, string okMessage)
@@ -752,8 +706,9 @@ public sealed class ConfigWindow : Window, IDisposable
 	private static void DrawDependencyLine(string displayName, Func<bool> probe)
 	{
 		var available = DependencyAvailability.SafeIsAvailable(probe);
-		var color = available ? AvailableColor : MissingColor;
-		ImGui.TextColored(color, DependencyAvailability.FormatLine(displayName, available));
+		AlertComponents.AvailabilityLine(
+			DependencyAvailability.FormatLine(displayName, available),
+			available);
 	}
 
 	private void DrawRsrHostileCombo()
@@ -805,23 +760,13 @@ public sealed class ConfigWindow : Window, IDisposable
 	{
 		ImGui.SetNextItemWidth(280f);
 		var current = BossModCommands.ClampPreference(config.BossModPreference);
-		var preview = current switch
-		{
-			BossModPreference.PreferVbm => "Prefer Boss Mod (vbm)",
-			_ => "Prefer BossMod Reborn (BMR)",
-		};
-		if (!ImGui.BeginCombo("BossMod preference (if both loaded)", preview))
+		if (!ImGui.BeginCombo("BossMod preference (if both loaded)", FormatBossModPreference(current)))
 			return;
 
 		foreach (BossModPreference value in Enum.GetValues<BossModPreference>())
 		{
-			var label = value switch
-			{
-				BossModPreference.PreferVbm => "Prefer Boss Mod (vbm)",
-				_ => "Prefer BossMod Reborn (BMR)",
-			};
 			var selected = value == current;
-			if (ImGui.Selectable(label, selected))
+			if (ImGui.Selectable(FormatBossModPreference(value), selected))
 			{
 				config.BossModPreference = BossModCommands.ClampPreference(value);
 				saveConfig();
@@ -833,6 +778,13 @@ public sealed class ConfigWindow : Window, IDisposable
 
 		ImGui.EndCombo();
 	}
+
+	private static string FormatBossModPreference(BossModPreference preference)
+		=> preference switch
+		{
+			BossModPreference.PreferVbm => "Prefer Boss Mod (vbm)",
+			_ => "Prefer BossMod Reborn (BMR)",
+		};
 
 	public void Dispose()
 	{

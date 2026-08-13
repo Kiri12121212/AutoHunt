@@ -55,6 +55,7 @@ public sealed class HuntAlertsConductorParseTests
 
 	[Theory]
 	[InlineData("Conductor: Alice Bob", "Alice Bob", null)]
+	[InlineData("(Conductor: Sassy Kitten [Lich]).", "Sassy Kitten", null)]
 	[InlineData("conductor: Alice Bob", "Alice Bob", null)]
 	[InlineData("Conductor: Alice Bob @Ragnarok", "Alice Bob", "Ragnarok")]
 	[InlineData("Conductor — Alice Bob", "Alice Bob", null)]

@@ -19,18 +19,25 @@ public sealed class AlertInfoWindow : Window, IDisposable
 	private readonly Func<HuntTrainMessage?> getMessage;
 	private readonly IChatOutput chat;
 	private readonly Action? openConfig;
+	private readonly Func<HuntTrainMessage?, string?>? startJoinHunt;
+	private readonly Func<string>? getJoinHuntStatus;
 	private HuntTrainMessage? overrideMessage;
 	private string defaultRelayChannel = AlertRelay.DefaultChannel;
+	private string? joinHuntStatusMessage;
 
 	public AlertInfoWindow(
 		Func<HuntTrainMessage?> getMessage,
 		IChatOutput chat,
-		Action? openConfig = null)
+		Action? openConfig = null,
+		Func<HuntTrainMessage?, string?>? startJoinHunt = null,
+		Func<string>? getJoinHuntStatus = null)
 		: base("HuntTrainAuto Notification", ImGuiWindowFlags.NoScrollbar | ImGuiWindowFlags.NoScrollWithMouse)
 	{
 		this.getMessage = getMessage ?? throw new ArgumentNullException(nameof(getMessage));
 		this.chat = chat ?? throw new ArgumentNullException(nameof(chat));
 		this.openConfig = openConfig;
+		this.startJoinHunt = startJoinHunt;
+		this.getJoinHuntStatus = getJoinHuntStatus;
 
 		Size = new Vector2(540, 380);
 		SizeCondition = ImGuiCond.FirstUseEver;
@@ -171,6 +178,19 @@ public sealed class AlertInfoWindow : Window, IDisposable
 
 	private void DrawActions(HuntTrainMessage entry)
 	{
+		if (startJoinHunt != null
+		    && AlertComponents.ActionButton(FontAwesomeIcon.LocationArrow, "Go + conductor", AlertButtonRole.Success))
+			joinHuntStatusMessage = startJoinHunt(entry);
+		if (startJoinHunt != null && ImGui.IsItemHovered())
+		{
+			ImGui.SetTooltip(
+				"Teleport to this hunt's world + start aetheryte. "
+				+ "After landing, runs /sea first <conductor> and assigns them.");
+		}
+
+		if (startJoinHunt != null)
+			ImGui.SameLine();
+
 		if (AlertComponents.ActionButton(FontAwesomeIcon.Users, "Party Finder", AlertButtonRole.Info))
 			chat.TryExecuteCommand("/partyfinder");
 
@@ -206,6 +226,15 @@ public sealed class AlertInfoWindow : Window, IDisposable
 			}
 
 			ImGui.EndPopup();
+		}
+
+		var joinStatus = joinHuntStatusMessage ?? getJoinHuntStatus?.Invoke();
+		if (!string.IsNullOrEmpty(joinStatus))
+		{
+			ImGui.Spacing();
+			ImGui.PushStyleColor(ImGuiCol.Text, AlertTheme.Subtle);
+			ImGui.TextWrapped(joinStatus);
+			ImGui.PopStyleColor();
 		}
 	}
 

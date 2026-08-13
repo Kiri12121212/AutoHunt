@@ -9,21 +9,17 @@ namespace HuntTrainAuto.Windows;
 public static class ConfigTabs
 {
 	public const int Status = 0;
-	public const int Settings = 1;
-	public const int Mount = 2;
-	public const int Engage = 3;
-	public const int Combat = 4;
-	public const int Integrations = 5;
-	public const int Debug = 6;
+	public const int Hunt = 1;
+	public const int Combat = 2;
+	public const int Plugins = 3;
+	public const int Debug = 4;
 
 	public static readonly string[] Labels =
 	[
 		"Status",
-		"Settings",
-		"Mount",
-		"Engage",
+		"Hunt",
 		"Combat",
-		"Integrations",
+		"Plugins",
 		"Debug",
 	];
 
@@ -61,18 +57,33 @@ public static class ConfigTabs
 	public const float MinMountUpSeconds = 0f;
 	public const float MaxMountUpSeconds = 15f;
 
-	/// <summary>Clamp tab index into <see cref="Labels"/> range.</summary>
-	public static int ClampSelected(int selected)
+	/// <summary>Prod hides Debug (last label). Dev shows all labels.</summary>
+	public static int VisibleTabCount(bool isDev)
+		=> isDev ? Labels.Length : Math.Max(0, Labels.Length - 1);
+
+	public static int ClampSelected(int selected, bool isDev)
 	{
+		var max = VisibleTabCount(isDev) - 1;
+		if (max < 0)
+			return Status;
 		if (selected < 0)
 			return Status;
-		if (selected >= Labels.Length)
-			return Labels.Length - 1;
+		if (selected > max)
+			return max;
 		return selected;
 	}
 
+	/// <summary>Backward-compat: assume Dev (Debug visible).</summary>
+	public static int ClampSelected(int selected)
+		=> ClampSelected(selected, isDev: true);
+
+	public static string LabelAt(int index, bool isDev)
+		=> Labels[ClampSelected(index, isDev)];
+
 	public static string LabelAt(int index)
-		=> Labels[ClampSelected(index)];
+		=> LabelAt(index, isDev: true);
+
+	public static bool IsDebugVisible(bool isDev) => isDev;
 
 	/// <summary>
 	/// Clamp a single TP delay endpoint; NaN-safe via int (already finite).

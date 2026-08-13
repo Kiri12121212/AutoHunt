@@ -38,6 +38,7 @@ public sealed class Plugin : IDalamudPlugin
 	private readonly Chat2Ipc chat2Ipc;
 	private readonly ContextMenuService contextMenu;
 	private readonly HuntAlertsIpc huntAlertsIpc;
+	private readonly HuntJoinRunner huntJoin;
 	private readonly ChatMessageHandler chatMessageHandler;
 	private readonly MapManager mapManager;
 	private readonly TeleportPlan teleportPlan = new();
@@ -373,11 +374,41 @@ public sealed class Plugin : IDalamudPlugin
 			pluginLog,
 			() => pluginInterface.SavePluginConfig(Config));
 
+		instanceChange = new InstanceChangeRunner(
+			LifestreamIpc,
+			chat,
+			clientState,
+			objectTable,
+			targetManager,
+			condition,
+			pluginLog,
+			() => Config.EnableDebugLogging);
+		huntJoin = new HuntJoinRunner(
+			LifestreamIpc,
+			TeleporterIpc,
+			chat,
+			clientState,
+			objectTable,
+			condition,
+			pluginLog,
+			() => Config.EnableDebugLogging,
+			() => Config.Conductors,
+			() => pluginInterface.SavePluginConfig(Config),
+			TryGetCurrentWorldName,
+			(instance, territory) => instanceChange.Enqueue(instance, territory),
+			() => instanceChange.IsActive,
+			() => InstanceChangeDecision.ResolveCurrentInstance(
+				PublicInstanceReader.TryReadInstanceId(pluginLog, Config.EnableDebugLogging),
+				LifestreamIpc.GetCurrentInstance(),
+				(int)clientState.Instance));
+
 		System.Action openSettings = () => { };
 		alertInfoWindow = new AlertInfoWindow(
 			() => huntAlertsIpc.LastTrainMessage,
 			chat,
-			() => openSettings());
+			() => openSettings(),
+			StartHuntJoin,
+			() => huntJoin.Status);
 		alertChatLinker = new AlertChatLinker(
 			chatGui,
 			msg =>
@@ -412,7 +443,10 @@ public sealed class Plugin : IDalamudPlugin
 			StartFakeHuntMapFlag,
 			StartFakeHuntInstanceSwap,
 			EndFakeHuntCombat,
-			ClearFakeHunt);
+			ClearFakeHunt,
+			StartHuntJoin,
+			() => huntJoin.Status,
+			isDev: pluginInterface.IsDev);
 		openSettings = () => configWindow.IsOpen = true;
 		windowSystem.AddWindow(configWindow);
 		windowSystem.AddWindow(alertInfoWindow);
@@ -430,15 +464,6 @@ public sealed class Plugin : IDalamudPlugin
 			Config,
 			() => pluginInterface.SavePluginConfig(Config),
 			() => configWindow.IsOpen = true);
-		instanceChange = new InstanceChangeRunner(
-			LifestreamIpc,
-			chat,
-			clientState,
-			objectTable,
-			targetManager,
-			condition,
-			pluginLog,
-			() => Config.EnableDebugLogging);
 		mount = new MountRunner(
 			LifestreamIpc,
 			chat,
@@ -1760,6 +1785,7 @@ public sealed class Plugin : IDalamudPlugin
 		}
 
 		instanceChange.Tick();
+		huntJoin.Tick();
 		if (!Config.Enabled)
 		{
 			// RSR stop: RsrStopTrigger.MasterOff → ImmediateClear (Tick skipped below).
@@ -2954,6 +2980,19 @@ public sealed class Plugin : IDalamudPlugin
 		}
 	}
 
+	private string? StartHuntJoin(HuntTrainMessage? message = null)
+	{
+		try
+		{
+			return huntJoin.Start(message ?? huntAlertsIpc.LastTrainMessage);
+		}
+		catch (Exception ex)
+		{
+			pluginLog.Debug($"HuntJoin start soft-fail: {ex.Message}");
+			return ex.Message;
+		}
+	}
+
 	private string? StartFakeHuntPreset(FakeHuntPreset preset)
 	{
 		try
@@ -3090,6 +3129,7 @@ public sealed class Plugin : IDalamudPlugin
 		trainKillHistory.Clear();
 		HuntAlertsFlagQueue.Clear(huntAlertsFlagQueue, DebugHuntAlerts);
 		instanceChange.Clear();
+		huntJoin.Clear();
 		mount.Clear();
 		activeHuntFlag = null;
 		flagArrival.Clear();

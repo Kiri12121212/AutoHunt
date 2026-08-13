@@ -27,7 +27,9 @@ public interface IHuntAlertsService : IDisposable
 	HuntAlertsLastAlert? LastMappedAlert { get; }
 
 	/// <summary>
-	/// Last successfully mapped HuntAlerts train/S payload (cloned), for the alert info window.
+	/// Last accepted HuntAlerts train/S payload (cloned), even when mapping
+	/// was rejected (missing coords). Used by the alert info window and
+	/// go-to-hunt + find-conductor button.
 	/// </summary>
 	HuntTrainMessage? LastTrainMessage { get; }
 

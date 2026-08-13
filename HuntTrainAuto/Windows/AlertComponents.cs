@@ -57,4 +57,23 @@ internal static class AlertComponents
 		ImGui.PopStyleColor(3);
 		return clicked;
 	}
+
+	public static void PhaseBadge(HuntTrainPhase phase)
+	{
+		var style = phase switch
+		{
+			HuntTrainPhase.Teleport => AlertBadgeStyle.World,
+			HuntTrainPhase.Mount or HuntTrainPhase.Navigate or HuntTrainPhase.Unmount => AlertBadgeStyle.Train,
+			HuntTrainPhase.Combat => AlertBadgeStyle.SRank,
+			_ => AlertBadgeStyle.Kind,
+		};
+		Badge(StatusDisplay.FormatPhase(phase), style);
+	}
+
+	public static void AvailabilityLine(string text, bool available)
+	{
+		ImGui.PushStyleColor(ImGuiCol.Text, available ? AlertTheme.Available : AlertTheme.Missing);
+		ImGui.TextUnformatted(text);
+		ImGui.PopStyleColor();
+	}
 }
