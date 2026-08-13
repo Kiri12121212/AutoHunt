@@ -32,6 +32,7 @@ public sealed class HuntAlertsIpc : IHuntAlertsService
 	private readonly Func<uint, uint?>? resolveExVersion;
 	private readonly Action<HuntFlag>? onFlag;
 	private readonly Action? saveConfig;
+	private readonly Action? onMapped;
 	private readonly IPluginLog? log;
 	private readonly ICallGateSubscriber<HuntTrainMessage, object> onHuntTrain;
 	private bool subscribed;
@@ -51,6 +52,10 @@ public sealed class HuntAlertsIpc : IHuntAlertsService
 	/// Persist config after auto-adding a conductor from HA message text.
 	/// Null skips save (tests / no-op).
 	/// </param>
+	/// <param name="onMapped">
+	/// Optional callback after a successful <see cref="HuntTrainMessageMapper.TryMap"/>.
+	/// Null skips (tests / no-op).
+	/// </param>
 	public HuntAlertsIpc(
 		IDalamudPluginInterface pluginInterface,
 		Configuration config,
@@ -58,7 +63,8 @@ public sealed class HuntAlertsIpc : IHuntAlertsService
 		Action<HuntFlag>? onFlag = null,
 		Func<uint, uint?>? resolveExVersion = null,
 		IPluginLog? log = null,
-		Action? saveConfig = null)
+		Action? saveConfig = null,
+		Action? onMapped = null)
 	{
 		this.pluginInterface = pluginInterface;
 		this.config = config;
@@ -66,6 +72,7 @@ public sealed class HuntAlertsIpc : IHuntAlertsService
 		this.resolveExVersion = resolveExVersion;
 		this.onFlag = onFlag;
 		this.saveConfig = saveConfig;
+		this.onMapped = onMapped;
 		this.log = log;
 
 		onHuntTrain = pluginInterface.GetIpcSubscriber<HuntTrainMessage, object>(
@@ -238,6 +245,15 @@ public sealed class HuntAlertsIpc : IHuntAlertsService
 			DebugBehavior.Info(log!, "HuntAlerts",
 				$"flag handoff world={flag.HuntWorld} place={flag.PlaceName} territory={flag.TerritoryTypeId}");
 			onFlag?.Invoke(flag);
+
+			try
+			{
+				onMapped?.Invoke();
+			}
+			catch (Exception ex)
+			{
+				Debug($"onMapped soft-fail: {ex.Message}");
+			}
 
 			// Best-effort conductor from Message free text — after onFlag so save/parse never delays TP/nav.
 			TryAutoAssignConductor(accepted.Message);

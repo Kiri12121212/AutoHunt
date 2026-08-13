@@ -72,8 +72,8 @@ public sealed class Configuration : IPluginConfiguration
 	public bool AutoUnmountAtFlag { get; set; } = true;
 
 	/// <summary>
-	/// After flag arrival / unmount, find a The Hunt Party Finder listing and join it.
-	/// Retries until joined (or disabled / new flag). Soft-fails agent/UI join attempts.
+	/// After Go to hunt (hunt start), find a The Hunt Party Finder listing and join it.
+	/// Retries until joined (or disabled / master off / hunt-party leave). Soft-fails agent/UI join attempts.
 	/// Default off — opt-in until the join path is trusted in live trains.
 	/// </summary>
 	public bool AutoJoinHuntPf { get; set; } = false;
@@ -173,7 +173,7 @@ public sealed class Configuration : IPluginConfiguration
 	public bool EnableDebugLogging { get; set; } = true;
 
 	/// <summary>
-	/// Optional HuntAlerts IPC intake (TASKS 10.1). Default off — feature stays inert until enabled.
+	/// HuntAlerts IPC intake — always on; property kept for persisted configs and call sites.
 	/// </summary>
 	public bool HuntAlertsIntegration { get; set; } = HuntAlertsFilter.DefaultIntegration;
 

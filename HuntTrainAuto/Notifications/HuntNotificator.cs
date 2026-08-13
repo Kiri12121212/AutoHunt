@@ -38,6 +38,22 @@ public sealed class HuntNotificator
 		this.isDebugEnabled = isDebugEnabled ?? (() => false);
 	}
 
+	/// <summary>Play HuntAlerts parse-success sound. Soft-fails if handler unavailable.</summary>
+	public void NotifyHuntAlertParsed(bool mappedSuccessfully = true)
+	{
+		try
+		{
+			if (!NotificationDecision.ShouldPlayHuntAlertSound(mappedSuccessfully))
+				return;
+
+			TryPlaySound();
+		}
+		catch (Exception ex)
+		{
+			LogDebug($"hunt-alert sound soft-fail: {ex.Message}");
+		}
+	}
+
 	/// <summary>Notify on a conductor hunt flag. Soft-fails if manager / sound unavailable.</summary>
 	public void NotifyConductorFlag(HuntFlag flag)
 	{

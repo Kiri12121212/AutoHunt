@@ -332,7 +332,9 @@ public sealed class Plugin : IDalamudPlugin
 			RsrSettingsDecision.DefaultNonTankTargeting);
 		Config.BossModPreference = BossModCommands.ClampPreference(Config.BossModPreference);
 		Config.HuntPfRetryIntervalMs = HuntPfDecision.ClampRetryIntervalMs(Config.HuntPfRetryIntervalMs);
-		if (migratedSkipDistance || migratedConfigVersion)
+		var persistHuntAlertsOn = !Config.HuntAlertsIntegration;
+		Config.HuntAlertsIntegration = true;
+		if (migratedSkipDistance || migratedConfigVersion || persistHuntAlertsOn)
 			pluginInterface.SavePluginConfig(Config);
 
 		windowSystem = new WindowSystem(typeof(Plugin).Assembly.GetName()?.Name ?? "HuntTrainAuto");
@@ -372,7 +374,8 @@ public sealed class Plugin : IDalamudPlugin
 			OnHuntAlertsFlag,
 			ResolveTerritoryExVersion,
 			pluginLog,
-			() => pluginInterface.SavePluginConfig(Config));
+			() => pluginInterface.SavePluginConfig(Config),
+			() => notificator.NotifyHuntAlertParsed());
 
 		instanceChange = new InstanceChangeRunner(
 			LifestreamIpc,
@@ -498,7 +501,9 @@ public sealed class Plugin : IDalamudPlugin
 			() => Config.AutoLeaveHuntParty,
 			() => Config.HuntPartyIdleLeaveMs,
 			() => huntPf.JoinedLatch,
-			() => huntPf.Clear());
+			() => huntPf.Clear(),
+			() => Config.EnableDebugLogging,
+			() => huntPf.ClearLatch());
 		movement = new MovementHelper(
 			VNavmeshIpc,
 			chat,
@@ -1501,10 +1506,7 @@ public sealed class Plugin : IDalamudPlugin
 		if (plan.ClearMount)
 			mount.Clear();
 		if (plan.ClearFlagArrival)
-		{
 			flagArrival.Clear();
-			huntPf.Clear();
-		}
 		if (plan.ClearUnmount)
 			unmount.ClearAll();
 		if (plan.ClearEngage)
@@ -1597,10 +1599,7 @@ public sealed class Plugin : IDalamudPlugin
 			movement.ResetMeshPathfindRetry();
 
 		if (plan.ClearFlagArrival)
-		{
 			flagArrival.Clear();
-			huntPf.Clear();
-		}
 		if (plan.ClearUnmount)
 			unmount.ClearAll();
 		if (plan.ClearEngage)
@@ -1879,9 +1878,9 @@ public sealed class Plugin : IDalamudPlugin
 		if (combat.InCombatPhase)
 			divertingToEngage = false;
 		TryFlushDeferredCombatFlag(wasInCombatPhase, combat.InCombatPhase);
-		// Hunt PF join after combat tick so we skip mid-fight thrash.
+		// Hunt PF join at hunt start (armed by Go to hunt), after combat tick.
 		var nowMs = Environment.TickCount64;
-		if (unmount.ReadyForGroundFollow && !playerDead)
+		if (huntPf.HuntStartArmed && !playerDead)
 		{
 			huntPf.Tick(
 				atHuntStart: true,
@@ -2984,7 +2983,10 @@ public sealed class Plugin : IDalamudPlugin
 	{
 		try
 		{
-			return huntJoin.Start(message ?? huntAlertsIpc.LastTrainMessage);
+			var reject = huntJoin.Start(message ?? huntAlertsIpc.LastTrainMessage);
+			if (reject is null)
+				huntPf.ArmHuntStart();
+			return reject;
 		}
 		catch (Exception ex)
 		{

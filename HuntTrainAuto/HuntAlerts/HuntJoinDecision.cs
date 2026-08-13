@@ -50,7 +50,9 @@ public static class HuntJoinDecision
 		=> $"/sea first {conductorName.Trim()}";
 
 	public static string Describe(Plan plan)
-		=> $"{plan.World} / {plan.PlaceName} → {plan.ConductorName}";
+		=> string.IsNullOrEmpty(plan.ConductorName)
+			? $"{plan.World} / {plan.PlaceName}"
+			: $"{plan.World} / {plan.PlaceName} → {plan.ConductorName}";
 
 	public static bool TryPlan(HuntTrainMessage? message, out Plan plan, out string rejectReason)
 	{
@@ -80,11 +82,9 @@ public static class HuntJoinDecision
 			return false;
 		}
 
-		if (!HuntAlertsConductorParse.TryExtract(message.Message, out var name, out _))
-		{
-			rejectReason = "no conductor name";
-			return false;
-		}
+		var conductorName = HuntAlertsConductorParse.TryExtract(message.Message, out var name, out _)
+			? name
+			: "";
 
 		var place = FirstNonEmpty(message.startLocation, message.startZone) ?? "start";
 		plan = new Plan(
@@ -92,7 +92,7 @@ public static class HuntJoinDecision
 			message.startTerritoryTypeId,
 			message.startLocationAetheryteId,
 			place,
-			name,
+			conductorName,
 			message.instance);
 		rejectReason = "";
 		return true;

@@ -15,12 +15,12 @@ namespace HuntTrainAuto.HuntAlerts;
 public static partial class HuntAlertsConductorParse
 {
 	/// <summary>
-	/// FFXIV character names are First Last (letters, apostrophe, hyphen).
-	/// Optional <c>[World]</c> or trailing <c>@World</c>.
+	/// FFXIV character names are 1–3 tokens (letters, apostrophe, hyphen).
+	/// Optional world: leading <c>[World]</c>, <c>(World)</c>, trailing <c>@World</c>, or trailing <c>[World]</c>.
 	/// Negative lookbehind skips <c>Former</c>/<c>Not</c>/<c>Ex</c> Conductor phrases.
 	/// </summary>
 	[GeneratedRegex(
-		@"(?<!(?i:Not|Former|Ex)\s)\bConductor\b[\t *_]*[:\-–—][\t *_]*[ \t]*(?:\[(?<world>[^\]]+)\][ \t]*)?(?<name>[A-Za-z][A-Za-z'\-]{0,14}(?:[ \t]+[A-Za-z][A-Za-z'\-]{0,14}){1,2})(?:[ \t]*@[ \t]*(?<world2>[A-Za-z][A-Za-z'\-]{0,19}))?",
+		@"(?<!(?i:Not|Former|Ex)\s)\bConductor\b[\t *_]*[:\-–—][\t *_]*[ \t]*(?:\[(?<world>[^\]]+)\][ \t]*)?(?:\((?<worldParen>[^)]+)\)[ \t]*)?(?<name>[A-Za-z][A-Za-z'\-]{0,14}(?:[ \t]+[A-Za-z][A-Za-z'\-]{0,14}){0,2})(?:[ \t]*@[ \t]*(?<world2>[A-Za-z][A-Za-z'\-]{0,19}))?(?:[ \t]*\[(?<world3>[^\]]+)\])?",
 		RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
 	private static partial Regex ConductorRegex();
 
@@ -34,6 +34,16 @@ public static partial class HuntAlertsConductorParse
 		"Bullet Train",
 		"Full Speed",
 		"Super Fast",
+		"Soon",
+		"TBD",
+		"TBA",
+		"None",
+		"Unknown",
+		"N/A",
+		"NA",
+		"Fast",
+		"Slow",
+		"Bullet",
 	};
 
 	/// <summary>
@@ -75,13 +85,11 @@ public static partial class HuntAlertsConductorParse
 		if (string.IsNullOrEmpty(chosenName))
 			return false;
 
-		var worldGroup = best.Groups["world"];
-		var world2Group = best.Groups["world2"];
-		string? rawWorld = null;
-		if (worldGroup.Success && !string.IsNullOrWhiteSpace(worldGroup.Value))
-			rawWorld = worldGroup.Value.Trim().Trim('*', '_', '`');
-		else if (world2Group.Success && !string.IsNullOrWhiteSpace(world2Group.Value))
-			rawWorld = world2Group.Value.Trim().Trim('*', '_', '`');
+		string? rawWorld = FirstNonEmptyWorld(
+			best.Groups["world"],
+			best.Groups["worldParen"],
+			best.Groups["world2"],
+			best.Groups["world3"]);
 
 		if (string.IsNullOrEmpty(rawWorld))
 			rawWorld = null;
@@ -94,6 +102,21 @@ public static partial class HuntAlertsConductorParse
 	/// <summary>Convenience overload when world is unused.</summary>
 	public static bool TryExtract(string? message, out string name)
 		=> TryExtract(message, out name, out _);
+
+	private static string? FirstNonEmptyWorld(params Group[] groups)
+	{
+		foreach (var group in groups)
+		{
+			if (!group.Success || string.IsNullOrWhiteSpace(group.Value))
+				continue;
+
+			var trimmed = group.Value.Trim().Trim('*', '_', '`');
+			if (!string.IsNullOrEmpty(trimmed))
+				return trimmed;
+		}
+
+		return null;
+	}
 
 	private static int ScoreMatch(string message, Match match)
 	{

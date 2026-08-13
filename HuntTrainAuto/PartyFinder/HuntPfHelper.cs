@@ -9,7 +9,7 @@ using HuntTrainAuto.Logging;
 namespace HuntTrainAuto.PartyFinder;
 
 /// <summary>
-/// Framework wiring for hunt PF auto-join after flag arrival.
+/// Framework wiring for hunt PF auto-join at hunt start (Go to hunt button).
 /// Caches <see cref="IPartyFinderGui.ReceiveListing"/>; soft-fails agent/UI join.
 /// </summary>
 public sealed class HuntPfHelper : IDisposable
@@ -32,6 +32,8 @@ public sealed class HuntPfHelper : IDisposable
 	private bool subscribed;
 	/// <summary>True while Tick is actively seeking a join (gates ReceiveListing cache).</summary>
 	private bool seeking;
+	/// <summary>True after Go to hunt succeeds; cleared by <see cref="Clear"/>.</summary>
+	private bool huntStartArmed;
 
 
 	public HuntPfHelper(
@@ -64,8 +66,11 @@ public sealed class HuntPfHelper : IDisposable
 		}
 	}
 
-	/// <summary>True after observing an in-party join for the current flag leg.</summary>
+	/// <summary>True after observing an in-party join for the current hunt session.</summary>
 	public bool JoinedLatch => joinedLatch;
+
+	/// <summary>True after <see cref="ArmHuntStart"/> until <see cref="Clear"/>.</summary>
+	public bool HuntStartArmed => huntStartArmed;
 
 	public void Dispose()
 	{
@@ -83,8 +88,29 @@ public sealed class HuntPfHelper : IDisposable
 		subscribed = false;
 	}
 
-	/// <summary>Reset latch + cache (new flag / territory / master off / dispose).</summary>
+	/// <summary>Reset armed session + latch + cache (master off / train-end leave / fake-hunt clear).</summary>
 	public void Clear()
+	{
+		huntStartArmed = false;
+		ResetSeekState();
+	}
+
+	/// <summary>
+	/// Drop join latch + listing cache but keep <see cref="HuntStartArmed"/> so a mid-train
+	/// party loss can re-seek. Train-end leave still uses <see cref="Clear"/>.
+	/// </summary>
+	public void ClearLatch()
+		=> ResetSeekState();
+
+	/// <summary>Arm PF join for this hunt; resets latch + listing cache for a fresh listing.</summary>
+	public void ArmHuntStart()
+	{
+		huntStartArmed = true;
+		ResetSeekState();
+	}
+
+	/// <summary>Latch / throttle / cache reset shared by <see cref="Clear"/> and <see cref="ArmHuntStart"/>.</summary>
+	private void ResetSeekState()
 	{
 		joinedLatch = false;
 		nextActionMs = 0;
@@ -143,7 +169,7 @@ public sealed class HuntPfHelper : IDisposable
 			return;
 		}
 
-		// Throttle before addon walks / cache scans — ReadyForGroundFollow can last minutes.
+		// Throttle before addon walks / cache scans — armed session can last the whole train.
 		if (!HuntPfDecision.IsActionReady(nowMs, nextActionMs))
 		{
 			LogDebugThrottled(nowMs, "join suppressed: action throttle pending");

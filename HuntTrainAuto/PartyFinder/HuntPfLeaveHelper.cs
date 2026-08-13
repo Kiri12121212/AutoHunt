@@ -21,6 +21,7 @@ public sealed class HuntPfLeaveHelper
 	private readonly Func<int> getIdleLeaveMs;
 	private readonly Func<bool> isSessionActive;
 	private readonly Action onLeft;
+	private readonly Action onLatchCleared;
 	private readonly Func<bool> isDebugEnabled;
 
 	private bool armedLastStop;
@@ -37,7 +38,8 @@ public sealed class HuntPfLeaveHelper
 		Func<int> getIdleLeaveMs,
 		Func<bool> isSessionActive,
 		Action onLeft,
-		Func<bool>? isDebugEnabled = null)
+		Func<bool>? isDebugEnabled = null,
+		Action? onLatchCleared = null)
 	{
 		this.chat = chat ?? throw new ArgumentNullException(nameof(chat));
 		this.partyList = partyList ?? throw new ArgumentNullException(nameof(partyList));
@@ -47,6 +49,7 @@ public sealed class HuntPfLeaveHelper
 		this.getIdleLeaveMs = getIdleLeaveMs ?? throw new ArgumentNullException(nameof(getIdleLeaveMs));
 		this.isSessionActive = isSessionActive ?? throw new ArgumentNullException(nameof(isSessionActive));
 		this.onLeft = onLeft ?? throw new ArgumentNullException(nameof(onLeft));
+		this.onLatchCleared = onLatchCleared ?? onLeft;
 		this.isDebugEnabled = isDebugEnabled ?? (() => false);
 	}
 
@@ -158,7 +161,16 @@ public sealed class HuntPfLeaveHelper
 		{
 			case HuntPfLeaveKind.ClearLatchOnly:
 				DebugBehavior.Info(pluginLog, "PF", $"party gone; clearing latches ({HuntPfLeaveDecision.Describe(kind)})");
-				FinishLeft();
+				Clear();
+				try
+				{
+					onLatchCleared();
+				}
+				catch (Exception ex)
+				{
+					LogDebug($"onLatchCleared soft-fail: {ex.Message}");
+				}
+
 				break;
 
 			case HuntPfLeaveKind.LeaveAfterArmedCombatEnd:

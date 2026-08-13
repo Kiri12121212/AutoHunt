@@ -57,8 +57,64 @@ public sealed class HuntJoinDecisionTests
 
 		var noCond = LichTrain();
 		noCond.Message = "Hunt train starting soon";
-		Assert.False(HuntJoinDecision.TryPlan(noCond, out _, out var missingCond));
-		Assert.Equal("no conductor name", missingCond);
+		Assert.True(HuntJoinDecision.TryPlan(noCond, out var noCondPlan, out var noCondReject));
+		Assert.Equal("", noCondReject);
+		Assert.Equal("", noCondPlan.ConductorName);
+		Assert.Equal("Lich / Electrope Strike", HuntJoinDecision.Describe(noCondPlan));
+	}
+
+	[Fact]
+	public void TryPlan_odin_style_without_conductor()
+	{
+		var msg = new HuntTrainMessage
+		{
+			huntType = HuntAlertsFilter.HuntTypeATrain,
+			huntKind = "Dawntrail",
+			huntWorld = "Odin",
+			startLocation = "The Ocular",
+			startLocationAetheryteId = 8,
+			startZone = "Central Shroud",
+			startTerritoryTypeId = 148,
+			instance = 2,
+			Message =
+				"**[Odin]** Hunt train starting 05:30 PM at **The Ocular, Central Shroud - Instance 2** | FAST.",
+		};
+
+		Assert.True(HuntJoinDecision.TryPlan(msg, out var plan, out var reject));
+		Assert.Equal("", reject);
+		Assert.Equal("Odin", plan.World);
+		Assert.Equal(148u, plan.TerritoryTypeId);
+		Assert.Equal(8u, plan.AetheryteId);
+		Assert.Equal("The Ocular", plan.PlaceName);
+		Assert.Equal("", plan.ConductorName);
+		Assert.Equal(2, plan.Instance);
+		Assert.Equal("Odin / The Ocular", HuntJoinDecision.Describe(plan));
+		Assert.DoesNotContain("→", HuntJoinDecision.Describe(plan));
+	}
+
+	[Fact]
+	public void TryPlan_alpha_ptm_live_ha_message()
+	{
+		var msg = new HuntTrainMessage
+		{
+			huntType = HuntAlertsFilter.HuntTypeATrain,
+			huntKind = "Dawntrail",
+			huntWorld = "Alpha",
+			startLocation = "Yyasulani Station",
+			startLocationAetheryteId = 210,
+			startZone = "Heritage Found",
+			startTerritoryTypeId = 1191,
+			instance = 1,
+			Message =
+				"**[Alpha]** Hunt train starting 05:43 PM at   Train & chill ->  Heritage Found -> Yyasulani Station  -> Instance 1     (Conductor: Ptm).",
+		};
+
+		Assert.True(HuntJoinDecision.TryPlan(msg, out var plan, out var reject));
+		Assert.Equal("", reject);
+		Assert.Equal("Alpha", plan.World);
+		Assert.Equal(210u, plan.AetheryteId);
+		Assert.Equal("Ptm", plan.ConductorName);
+		Assert.Equal("Alpha / Yyasulani Station → Ptm", HuntJoinDecision.Describe(plan));
 	}
 
 	[Fact]

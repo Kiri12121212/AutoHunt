@@ -231,7 +231,8 @@ public sealed class ConfigWindow : Window, IDisposable
 		{
 			ImGui.SetTooltip(
 				"Teleport to the last HuntAlerts world + start aetheryte. "
-				+ "After landing, runs /sea first <conductor> and assigns them.");
+				+ "After landing, runs /sea first <conductor> and assigns them when a conductor name is parsed; "
+				+ "otherwise search/assign is skipped.");
 		}
 
 		var joinStatus = joinHuntStatusMessage ?? getJoinHuntStatus?.Invoke();
@@ -274,11 +275,13 @@ public sealed class ConfigWindow : Window, IDisposable
 		ImGui.Spacing();
 		ImGui.Separator();
 		ImGui.Spacing();
-		ConfigUi.SectionHeader(FontAwesomeIcon.Flag, "Last HuntAlerts");
+		ConfigUi.SectionHeader(FontAwesomeIcon.Bullhorn, "HuntAlerts feed");
 		var lastMessage = SafeGetHuntAlertsLastMessage();
 		ConfigUi.Subtle(AlertInfoDisplay.FormatStatusSummary(lastMessage));
-		if (lastMessage != null && openAlertInfo != null
-		    && AlertComponents.ActionButton(FontAwesomeIcon.InfoCircle, "Open alert info", AlertButtonRole.Info))
+		ConfigUi.Subtle(HuntAlertsAvailability.FormatLastAlertStatus(SafeGetHuntAlertsLastAlert()));
+		ConfigUi.Subtle(HuntAlertsAvailability.FormatLastIntakeStatus(SafeGetHuntAlertsLastIntake()));
+		if (openAlertInfo != null
+		    && AlertComponents.ActionButton(FontAwesomeIcon.InfoCircle, "Open HuntAlerts alert info", AlertButtonRole.Info))
 			openAlertInfo();
 	}
 
@@ -361,10 +364,17 @@ public sealed class ConfigWindow : Window, IDisposable
 			"Dismount at the flag",
 			() => config.AutoUnmountAtFlag,
 			v => config.AutoUnmountAtFlag = v);
+
+		ImGui.Spacing();
+		ImGui.Separator();
+		ImGui.Spacing();
+		ConfigUi.SectionHeader(FontAwesomeIcon.Users, "Party Finder");
+		ImGui.Spacing();
 		DrawBoolOption(
-			"Join hunt Party Finder at the flag",
+			"Join hunt Party Finder when going to hunt",
 			() => config.AutoJoinHuntPf,
-			v => config.AutoJoinHuntPf = v);
+			v => config.AutoJoinHuntPf = v,
+			"Starts PF join when you press Go to hunt + find conductor. Does not wait for flag arrival.");
 		DrawBoolOption(
 			"Leave party when the train ends",
 			() => config.AutoLeaveHuntParty,
@@ -414,12 +424,6 @@ public sealed class ConfigWindow : Window, IDisposable
 
 		ImGui.Indent();
 		DrawBoolOption(
-			"Enable HuntAlerts integration",
-			() => config.HuntAlertsIntegration,
-			v => config.HuntAlertsIntegration = v,
-			"When a hunt mark arrives, teleport to the target world and zone.");
-		ImGui.BeginDisabled(!config.HuntAlertsIntegration);
-		DrawBoolOption(
 			"Auto-assign conductor from HuntAlerts message",
 			() => config.HuntAlertsAutoConductor,
 			v => config.HuntAlertsAutoConductor = v,
@@ -436,7 +440,6 @@ public sealed class ConfigWindow : Window, IDisposable
 			ImGui.SetTooltip("Empty = all. Prefers start-zone ExVersion; else HuntAlerts huntKind.");
 		foreach (var group in HuntAlertsFilter.TrainGroups.All)
 			DrawHuntAlertsTrainGroupCheckbox(group);
-		ImGui.EndDisabled();
 		ImGui.Unindent();
 	}
 
@@ -519,17 +522,6 @@ public sealed class ConfigWindow : Window, IDisposable
 		DrawDependencyLine(DependencyAvailability.RsrDisplayName, rsrAvailable);
 		DrawDependencyLine(DependencyAvailability.BossModDisplayName, bossModAvailable);
 		DrawHuntAlertsAvailabilityLine();
-
-		ImGui.Spacing();
-		ImGui.Separator();
-		ImGui.Spacing();
-		ConfigUi.SectionHeader(FontAwesomeIcon.Bullhorn, "HuntAlerts feed");
-		ImGui.Spacing();
-		ConfigUi.Subtle(HuntAlertsAvailability.FormatLastAlertStatus(SafeGetHuntAlertsLastAlert()));
-		ConfigUi.Subtle(HuntAlertsAvailability.FormatLastIntakeStatus(SafeGetHuntAlertsLastIntake()));
-		if (openAlertInfo != null
-		    && AlertComponents.ActionButton(FontAwesomeIcon.InfoCircle, "Open HuntAlerts alert info", AlertButtonRole.Info))
-			openAlertInfo();
 	}
 
 	private void DrawHuntAlertsRankCheckbox(string label, HuntMarkRank rank)

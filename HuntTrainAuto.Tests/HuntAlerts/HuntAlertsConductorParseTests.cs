@@ -55,7 +55,7 @@ public sealed class HuntAlertsConductorParseTests
 
 	[Theory]
 	[InlineData("Conductor: Alice Bob", "Alice Bob", null)]
-	[InlineData("(Conductor: Sassy Kitten [Lich]).", "Sassy Kitten", null)]
+	[InlineData("(Conductor: Sassy Kitten [Lich]).", "Sassy Kitten", "Lich")]
 	[InlineData("conductor: Alice Bob", "Alice Bob", null)]
 	[InlineData("Conductor: Alice Bob @Ragnarok", "Alice Bob", "Ragnarok")]
 	[InlineData("Conductor — Alice Bob", "Alice Bob", null)]
@@ -92,5 +92,41 @@ public sealed class HuntAlertsConductorParseTests
 
 		Assert.True(HuntAlertsConductorParse.TryExtract(message, out var name, out _));
 		Assert.Equal("Petrichor Daydream", name);
+	}
+
+	[Theory]
+	[InlineData("(Conductor: Ptm).", "Ptm", null)]
+	[InlineData("(Conductor: Hypsilon [Phoenix]).", "Hypsilon", "Phoenix")]
+	[InlineData("(Conductor: North [Zodiark]).", "North", "Zodiark")]
+	[InlineData("(Conductor: Rora 🦆).", "Rora", null)]
+	[InlineData("(Conductor: (Alpha) Akira Onoir).", "Akira Onoir", "Alpha")]
+	public void TryExtract_live_ha_parenthetical_variants(string message, string expectedName, string? expectedWorld)
+	{
+		Assert.True(HuntAlertsConductorParse.TryExtract(message, out var name, out var world));
+		Assert.Equal(expectedName, name);
+		Assert.Equal(expectedWorld, world);
+	}
+
+	[Fact]
+	public void TryExtract_alpha_ptm_from_live_ha_history()
+	{
+		const string message =
+			"""
+			Kind: Hunt Train
+			Hunt: Dawntrail
+			Start Zone: Heritage Found
+			Aetheryte: Yyasulani Station
+			World: Alpha
+			Posted: 05:33 PM
+
+			**[Alpha]** Hunt train starting 05:33 PM at **Yyasulani Station, Heritage Found - Instance 1** | FAST
+			[Marks] DT: 14/14
+			[Speed] FAST
+			(Conductor: Ptm).
+			""";
+
+		Assert.True(HuntAlertsConductorParse.TryExtract(message, out var name, out var world));
+		Assert.Equal("Ptm", name);
+		Assert.Null(world);
 	}
 }

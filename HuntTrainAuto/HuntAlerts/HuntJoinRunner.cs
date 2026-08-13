@@ -230,6 +230,14 @@ public sealed class HuntJoinRunner
 
 	private void SearchAndAssign(HuntJoinDecision.Plan plan)
 	{
+		if (string.IsNullOrWhiteSpace(plan.ConductorName))
+		{
+			session.Clear();
+			session.Status = "arrived (no conductor name)";
+			Debug(session.Status);
+			return;
+		}
+
 		var command = HuntJoinDecision.FormatSearchCommand(plan.ConductorName);
 		var searched = chat.TryExecuteCommand(command);
 		Debug($"{command} {(searched ? "ok" : "soft-fail")}");

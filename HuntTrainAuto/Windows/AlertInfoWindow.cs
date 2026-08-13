@@ -185,7 +185,8 @@ public sealed class AlertInfoWindow : Window, IDisposable
 		{
 			ImGui.SetTooltip(
 				"Teleport to this hunt's world + start aetheryte. "
-				+ "After landing, runs /sea first <conductor> and assigns them.");
+				+ "After landing, runs /sea first <conductor> and assigns them when a conductor name is parsed; "
+				+ "otherwise search/assign is skipped.");
 		}
 
 		if (startJoinHunt != null)

@@ -18,6 +18,10 @@ public static class NotificationDecision
 	public static bool ShouldPlaySound(bool pluginEnabled, bool enableSound)
 		=> pluginEnabled && enableSound;
 
+	/// <summary>HuntAlerts parse success sound — no extra toggles.</summary>
+	public static bool ShouldPlayHuntAlertSound(bool mappedSuccessfully)
+		=> mappedSuccessfully;
+
 	/// <summary>Compact, side-effect-free toast diagnostic for call-site logging.</summary>
 	public static string DescribeToast(bool shouldShowToast)
 		=> shouldShowToast ? "toast=show" : "toast=suppressed";

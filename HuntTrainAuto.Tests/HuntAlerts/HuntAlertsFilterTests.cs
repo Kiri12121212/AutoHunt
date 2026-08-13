@@ -7,8 +7,8 @@ namespace HuntTrainAuto.Tests.HuntAlerts;
 public sealed class HuntAlertsFilterTests
 {
 	[Fact]
-	public void DefaultIntegration_is_off()
-		=> Assert.False(HuntAlertsFilter.DefaultIntegration);
+	public void DefaultIntegration_is_on()
+		=> Assert.True(HuntAlertsFilter.DefaultIntegration);
 
 	[Theory]
 	[InlineData(HuntAlertsFilter.HuntTypeATrain, HuntMarkRank.A)]

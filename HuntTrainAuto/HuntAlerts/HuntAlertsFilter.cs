@@ -12,8 +12,8 @@ namespace HuntTrainAuto.HuntAlerts;
 /// </summary>
 public static class HuntAlertsFilter
 {
-	/// <summary>Default for <c>Configuration.HuntAlertsIntegration</c> (feature off).</summary>
-	public const bool DefaultIntegration = false;
+	/// <summary>Default for <c>Configuration.HuntAlertsIntegration</c> (feature on).</summary>
+	public const bool DefaultIntegration = true;
 
 	/// <summary>HuntAlerts <c>huntType</c> for A-train start.</summary>
 	public const string HuntTypeATrain = "new_hunt";

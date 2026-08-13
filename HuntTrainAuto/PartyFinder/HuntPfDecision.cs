@@ -19,7 +19,7 @@ public enum HuntPfKind
 }
 
 /// <summary>
-/// Pure edge + retry gating for auto-join hunt PF after flag arrival.
+/// Pure edge + retry gating for auto-join hunt PF at hunt start (Go to hunt button).
 /// Soft-fail / agent wiring stays in the Framework helper.
 /// </summary>
 public static class HuntPfDecision
@@ -71,14 +71,14 @@ public static class HuntPfDecision
 		=> nowMs + ClampOpenSettleMs(settleMs);
 
 	/// <summary>
-	/// Gate from arrival + party latch + listing/detail readiness.
+	/// Gate from hunt-start arm + party latch + listing/detail readiness.
 	/// Skips while in combat so PF UI is not opened mid-fight.
 	/// </summary>
 	/// <param name="enabled">Config auto-join toggle.</param>
-	/// <param name="atHuntStart">Player ready at flag (e.g. ReadyForGroundFollow).</param>
+	/// <param name="atHuntStart">Hunt-start session armed (Go to hunt button).</param>
 	/// <param name="inCombat">Local player in combat / combat phase — do not thrash PF.</param>
 	/// <param name="inParty">Already in a multi-member / CW party.</param>
-	/// <param name="joinedLatch">True after we observed a successful join this flag leg.</param>
+	/// <param name="joinedLatch">True after we observed a successful join this hunt session.</param>
 	/// <param name="hasSuitableListing">Cached hunt PF with open slots.</param>
 	/// <param name="detailReadyToJoin">LookingForGroupDetail open with Join enabled.</param>
 	/// <param name="pluginOpenedListing">
@@ -137,7 +137,7 @@ public static class HuntPfDecision
 
 	/// <summary>
 	/// Next success latch. Sets when we see <paramref name="inParty"/> while seeking;
-	/// clears only via helper Clear (new flag / territory / master off).
+	/// clears via helper Clear or ArmHuntStart (new hunt / master off).
 	/// </summary>
 	public static bool NextJoinedLatch(bool inParty, bool joinedLatch)
 	{

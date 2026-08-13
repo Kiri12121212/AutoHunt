@@ -53,4 +53,12 @@ public sealed class NotificationDecisionTests
 		Assert.Equal(toast, NotificationDecision.DescribeToast(enabled));
 		Assert.Equal(sound, NotificationDecision.DescribeSound(enabled));
 	}
+
+	[Fact]
+	public void ShouldPlayHuntAlertSound_true_when_mappedSuccessfully()
+		=> Assert.True(NotificationDecision.ShouldPlayHuntAlertSound(mappedSuccessfully: true));
+
+	[Fact]
+	public void ShouldPlayHuntAlertSound_false_when_not_mapped()
+		=> Assert.False(NotificationDecision.ShouldPlayHuntAlertSound(mappedSuccessfully: false));
 }
